@@ -28,18 +28,18 @@ public class JwtWebFilter implements WebFilter {
             String token = cookie.getValue();
             if (jwtService.isTokenValid(token)) {
                 String email = jwtService.extractEmail(token);
-                // Create an authentication object (no authorities currently assigned)
+                // Creating an authentication object as no authorities currently assigned
                 UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
                         email, null, List.of()
                 );
                 
-                // Add the authentication to the reactive security context
+                // Adding the authentication to the reactive security context
                 return chain.filter(exchange)
                         .contextWrite(ReactiveSecurityContextHolder.withAuthentication(auth));
             }
         }
 
-        // Proceed without authentication
+        // Proceeding without authentication
         return chain.filter(exchange);
     }
 }

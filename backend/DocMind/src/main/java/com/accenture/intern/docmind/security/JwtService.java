@@ -32,7 +32,7 @@ public class JwtService {
     }
 
 
-    /** Extract the subject (email) from a JWT token */
+    // Extracting the email from a JWT token
     public String extractEmail(String token) {
         return Jwts.parserBuilder()
                 .setSigningKey(getSignInKey())
@@ -42,7 +42,7 @@ public class JwtService {
                 .getSubject();
     }
 
-    /** Returns true if the token is well-formed, signed correctly, and not expired */
+    // Returns true if the token is well-formed, signed correctly, and not expired
     public boolean isTokenValid(String token) {
         try {
             Jwts.parserBuilder()
