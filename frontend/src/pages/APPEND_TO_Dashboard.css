@@ -1,0 +1,36 @@
+/* ── Append these to your existing Dashboard.css ── */
+
+/* Error system message */
+.message-wrapper.system-error .message-text,
+.message-text.error-msg {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+/* System message (success/info) */
+.message-wrapper.system .message-text {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 8px 14px;
+  color: #15803d;
+  font-size: 13px;
+  text-align: center;
+  margin: 0 auto;
+  max-width: 480px;
+}
+
+/* Active session highlight */
+.session-item.active {
+  background: var(--color-bg-secondary, #f0f0f0);
+  border-radius: 8px;
+}
+
+/* Spinner keyframe (used by UploadPanel) */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

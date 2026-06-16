@@ -5,7 +5,8 @@ import com.accenture.intern.docmind.entities.User;
 import com.accenture.intern.docmind.repository.UserRepository;
 import com.accenture.intern.docmind.security.JwtService;
 import com.accenture.intern.docmind.service.AuthService;
-import org.springframework.http.server.reactive.ServerHttpRequest;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
@@ -44,7 +45,7 @@ public class AuthController {
 
    
     @PostMapping("/logout")
-    public ResponseEntity<?> logout(ServerHttpRequest request) {
+    public ResponseEntity<?> logout(HttpServletRequest request) {
         String refreshToken = extractCookieValue(request, "refresh_token");
         AuthService.logout(refreshToken);
 
@@ -52,7 +53,7 @@ public class AuthController {
                 .httpOnly(true)
                 .secure(false)
                 .path("/")
-                .maxAge(0)           // Expires immediately
+                .maxAge(0)
                 .sameSite("Strict")
                 .build();
 
@@ -72,7 +73,7 @@ public class AuthController {
 
    
     @PostMapping("/refresh")
-    public ResponseEntity<?> refresh(ServerHttpRequest request) {
+    public ResponseEntity<?> refresh(HttpServletRequest request) {
         String refreshToken = extractCookieValue(request, "refresh_token");
         if (refreshToken == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -88,7 +89,7 @@ public class AuthController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<?> me(ServerHttpRequest request) {
+    public ResponseEntity<?> me(HttpServletRequest request) {
         String token = extractCookieValue(request, "access_token");
 
         if (token == null || !jwtService.isTokenValid(token)) {
@@ -148,15 +149,16 @@ public class AuthController {
     }
 
     
-    private String extractCookieValue(ServerHttpRequest request, String name) {
+    private String extractCookieValue(HttpServletRequest request, String name) {
         if (request.getCookies() == null) return null;
-        HttpCookie cookie = request.getCookies().getFirst(name);
-        if (cookie != null) {
-            return cookie.getValue();
+        for (Cookie cookie : request.getCookies()) {
+            if (name.equals(cookie.getName())) {
+                return cookie.getValue();
+            }
         }
         return null;
     }
 
-    // Simple inline error DTO
+
     record ErrorResponse(String message) {}
 }

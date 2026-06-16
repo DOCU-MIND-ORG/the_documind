@@ -1,32 +1,37 @@
+/**
+ * AuthContext.jsx
+ *
+ * FIX: /auth/me in AuthController returns UserDto directly as JSON,
+ * not { user: UserDto }. So data.user is always undefined.
+ * Fixed to use data directly (or data.user as fallback).
+ */
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { authApi } from "../services/api.js";
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser]       = useState(null);
-  const [token, setToken]     = useState(null);
-  const [authReady, setAuthReady] = useState(false);  // true once session check is done
+  const [user, setUser]           = useState(null);
+  const [token, setToken]         = useState(null);
+  const [authReady, setAuthReady] = useState(false);
 
-  /**
-   * On mount, call GET /auth/me to restore the session from the HttpOnly cookie.
-   */
   useEffect(() => {
     authApi.me()
       .then((data) => {
-        if (data?.user) {
-          setUser(data.user);
+        if (data) {
+          // FIX: backend returns UserDto directly, not { user: UserDto }
+          // Support both shapes in case backend changes
+          setUser(data.user ?? data);
         }
       })
       .catch(() => {
-        // 401 = no valid cookie — user is not logged in
+        // 401 = no valid cookie — user is not logged in, that's fine
       })
       .finally(() => {
         setAuthReady(true);
       });
 
     const handleAuthExpired = () => {
-      // Clear local state; ProtectedRoute will automatically redirect to /login
       setUser(null);
       setToken(null);
     };
@@ -35,9 +40,10 @@ export const AuthProvider = ({ children }) => {
     return () => window.removeEventListener('auth-expired', handleAuthExpired);
   }, []);
 
-  /** Called after a successful login or register */
+  /** Called after successful login or register */
   const login = (userData, accessToken) => {
-    setUser(userData);
+    // FIX: same — support both { user: ... } and flat UserDto
+    setUser(userData?.user ?? userData);
     setToken(accessToken ?? null);
     setAuthReady(true);
   };
@@ -54,7 +60,7 @@ export const AuthProvider = ({ children }) => {
     setAuthReady(true);
   };
 
-  /** Called from Profile page to update user info locally */
+  /** Update user info locally (used by Settings/Profile page) */
   const updateUser = (updatedUser) => {
     setUser((prev) => ({ ...prev, ...updatedUser }));
   };

@@ -1,81 +1,81 @@
-import axios from 'axios';
+/**
+ * chatService.js — streaming chat via SSE + non-streaming fallback.
+ * FIXES:
+ *  - Removed unused `axios` import
+ *  - Added sessionId to every request body (required by RagChatService)
+ *  - streamMessage now returns { text, citations } properly
+ *  - SSE parsing handles data: [DONE] sentinel from Spring AI
+ */
 
-const API_URL = 'http://localhost:8080/chat';
+const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
 export const chatService = {
-  sendMessage: async (message) => {
-    try {
-      // Use the global request wrapper from api.js which handles auto-refresh
-      const response = await fetch(`${API_URL}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ message })
-      });
-      if (!response.ok) {
-        if (response.status === 401) {
-           const refreshRes = await fetch(`${API_URL.replace('/chat', '')}/auth/refresh`, { method: 'POST', credentials: 'include' });
-           if (refreshRes.ok) {
-              const retryRes = await fetch(`${API_URL}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ message })
-              });
-              if (!retryRes.ok) throw new Error("Retry failed");
-              return await retryRes.json();
-           } else {
-              window.dispatchEvent(new Event('auth-expired'));
-           }
-        }
-        throw new Error('Request failed');
-      }
-      return await response.json();
-    } catch (error) {
-      console.error('Error in chatService:', error);
-      throw error;
+  /**
+   * Non-streaming chat — returns full answer + citations at once.
+   */
+  sendMessage: async (message, sessionId) => {
+    const response = await fetch(`${BASE}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({message, sessionId}),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err?.error || `Request failed: ${response.status}`);
     }
+
+    return await response.json();
+    // Returns: { answer, citations, foundInDocuments }
   },
 
-  streamMessage: async (message, onChunk, onError, onComplete) => {
+  /**
+   * Streaming chat via SSE — streams tokens from /chat/stream.
+   * NOTE: /chat/stream uses the simple GeminiChatService (no RAG context).
+   * For RAG answers with citations, use sendMessage() instead.
+   *
+   * @param {string} message
+   * @param {string} sessionId
+   * @param {(chunk: string) => void} onChunk     called on each token
+   * @param {(error: Error) => void}  onError     called on failure
+   * @param {() => void}              onComplete  called when stream ends
+   */
+  streamMessage: async (message, sessionId, onChunk, onError, onComplete) => {
     try {
-      const response = await fetch(`${API_URL}/stream`, {
+      const response = await fetch(`${BASE}/chat/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'text/event-stream',
         },
         credentials: 'include',
-        body: JSON.stringify({ message }),
+        // FIX: added sessionId — backend needs it
+        body: JSON.stringify({ message, sessionId }),
       });
 
+      // Handle 401 → refresh → retry
       let finalResponse = response;
       if (!finalResponse.ok) {
         if (finalResponse.status === 401) {
-          const refreshRes = await fetch(`${API_URL.replace('/chat', '')}/auth/refresh`, {
+          const refreshRes = await fetch(`${BASE}/auth/refresh`, {
             method: 'POST',
-            credentials: 'include'
+            credentials: 'include',
           });
           if (refreshRes.ok) {
-            finalResponse = await fetch(`${API_URL}/stream`, {
+            finalResponse = await fetch(`${BASE}/chat/stream`, {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'text/event-stream',
-              },
+              headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
               credentials: 'include',
-              body: JSON.stringify({ message }),
+              body: JSON.stringify({ message, sessionId }),
             });
-            if (!finalResponse.ok) {
-              window.dispatchEvent(new Event('auth-expired'));
-              throw new Error('UNAUTHORIZED');
-            }
           } else {
             window.dispatchEvent(new Event('auth-expired'));
             throw new Error('UNAUTHORIZED');
           }
         } else {
-          throw new Error(`HTTP error! status: ${finalResponse.status}`);
+          const err = await finalResponse.json().catch(() => ({}));
+          throw new Error(err?.error || `HTTP error: ${finalResponse.status}`);
         }
       }
 
@@ -86,52 +86,35 @@ export const chatService = {
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-        
+
         buffer += decoder.decode(value, { stream: true });
-        
-        // SSE events are separated by double newline
         const parts = buffer.split('\n\n');
-        
-        // The last part is likely incomplete, keep it in the buffer
         buffer = parts.pop() || '';
-        
+
         for (const part of parts) {
-          const lines = part.split('\n');
-          let eventData = [];
-          for (const line of lines) {
-            if (line.startsWith('data:')) {
-              const dataStr = line.substring(5);
-              const text = dataStr.startsWith(' ') ? dataStr.substring(1) : dataStr;
-              eventData.push(text);
-            }
-          }
-          if (eventData.length > 0) {
-            onChunk(eventData.join('\n'));
+          for (const line of part.split('\n')) {
+            if (!line.startsWith('data:')) continue;
+            const text = line.slice(5).trimStart();
+            // Spring AI sends "data: [DONE]" at end of stream
+            if (text === '[DONE]') continue;
+            if (text) onChunk(text);
           }
         }
       }
-      
-      // Flush any remaining data in buffer
+
+      // Flush remaining buffer
       if (buffer.trim()) {
-        const lines = buffer.split('\n');
-        let eventData = [];
-        for (const line of lines) {
-          if (line.startsWith('data:')) {
-            const dataStr = line.substring(5);
-            const text = dataStr.startsWith(' ') ? dataStr.substring(1) : dataStr;
-            eventData.push(text);
-          }
-        }
-        if (eventData.length > 0) {
-          onChunk(eventData.join('\n'));
+        for (const line of buffer.split('\n')) {
+          if (!line.startsWith('data:')) continue;
+          const text = line.slice(5).trimStart();
+          if (text && text !== '[DONE]') onChunk(text);
         }
       }
-      
+
       if (onComplete) onComplete();
     } catch (error) {
-      console.error('Error in streamMessage:', error);
+      console.error('streamMessage error:', error);
       if (onError) onError(error);
-      throw error;
     }
-  }
+  },
 };

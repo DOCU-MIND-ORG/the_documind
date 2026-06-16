@@ -1,18 +1,21 @@
 package com.accenture.intern.docmind.security;
 
-import org.springframework.http.HttpCookie;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.ReactiveSecurityContextHolder;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
-import org.springframework.web.server.ServerWebExchange;
-import org.springframework.web.server.WebFilter;
-import org.springframework.web.server.WebFilterChain;
-import reactor.core.publisher.Mono;
+import org.springframework.web.filter.OncePerRequestFilter;
 
-import java.util.List;
+import java.io.IOException;
 
 @Component
-public class JwtWebFilter implements WebFilter {
+public class JwtWebFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
 
@@ -21,25 +24,33 @@ public class JwtWebFilter implements WebFilter {
     }
 
     @Override
-    public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
-        HttpCookie cookie = exchange.getRequest().getCookies().getFirst("access_token");
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
+        if (SecurityContextHolder.getContext().getAuthentication() == null) {
+            String token = extractCookieValue(request, "access_token");
 
-        if (cookie != null) {
-            String token = cookie.getValue();
-            if (jwtService.isTokenValid(token)) {
+            if (token != null && jwtService.isTokenValid(token)) {
                 String email = jwtService.extractEmail(token);
-                // Creating an authentication object as no authorities currently assigned
                 UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
-                        email, null, List.of()
+                        email, null, AuthorityUtils.NO_AUTHORITIES
                 );
-                
-                // Adding the authentication to the reactive security context
-                return chain.filter(exchange)
-                        .contextWrite(ReactiveSecurityContextHolder.withAuthentication(auth));
+                auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(auth);
             }
         }
 
-        // Proceeding without authentication
-        return chain.filter(exchange);
+        filterChain.doFilter(request, response);
+    }
+
+    private String extractCookieValue(HttpServletRequest request, String name) {
+        if (request.getCookies() == null) {
+            return null;
+        }
+        for (Cookie cookie : request.getCookies()) {
+            if (name.equals(cookie.getName())) {
+                return cookie.getValue();
+            }
+        }
+        return null;
     }
 }

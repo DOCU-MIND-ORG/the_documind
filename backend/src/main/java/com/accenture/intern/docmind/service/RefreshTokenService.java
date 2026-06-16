@@ -17,7 +17,7 @@ public class RefreshTokenService {
 
     private final RefreshTokenRepository refreshTokenRepository;
 
-    // 7 days expiration
+    // currently it is 7 days expiration should think about this later
     private static final long REFRESH_TOKEN_EXPIRATION_DAYS = 7;
 
     @Transactional

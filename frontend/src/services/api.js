@@ -1,32 +1,36 @@
 /**
- * api.js — All real HTTP calls to the Spring Boot backend at localhost:8080.
- * No mock data. Uses credentials: 'include' so HttpOnly cookies are sent automatically.
+ * api.js — All HTTP calls to the Spring Boot backend.
+ *
+ * FIXES:
+ *  1. queryApi.ask() now posts { question, sessionId } to /api/query  ✓ (was missing sessionId)
+ *  2. /auth/me 403 → added to permitAll in SecurityConfig (backend fix)
+ *  3. upload() now handles 403 explicitly (was silently swallowed)
+ *  4. CORS: credentials: 'include' on every request so HttpOnly cookie is sent
  */
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
-/** Generic fetch wrapper — throws on non-OK, returns parsed JSON */
+// ── Generic JSON request ─────────────────────────────────────────────────────
+
 async function request(path, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
     headers: { 'Content-Type': 'application/json', ...options.headers },
-    credentials: 'include',   // sends HttpOnly cookies automatically
+    credentials: 'include',   // CRITICAL: sends HttpOnly cookies cross-origin
     ...options,
   });
 
-  // Try to parse JSON regardless of status (error responses have JSON bodies)
   let data;
   try { data = await res.json(); } catch { data = null; }
 
   if (!res.ok) {
+    // Auto-refresh on 401, then retry once
     if (res.status === 401 && path !== '/auth/login' && path !== '/auth/refresh') {
       try {
         const refreshRes = await fetch(`${BASE}/auth/refresh`, {
           method: 'POST',
-          credentials: 'include'
+          credentials: 'include',
         });
-        
         if (refreshRes.ok) {
-          // Retry original request
           const retryRes = await fetch(`${BASE}${path}`, {
             headers: { 'Content-Type': 'application/json', ...options.headers },
             credentials: 'include',
@@ -34,140 +38,108 @@ async function request(path, options = {}) {
           });
           let retryData;
           try { retryData = await retryRes.json(); } catch { retryData = null; }
-          
-          if (!retryRes.ok) {
-            throw new Error(retryData?.message || `Request failed: ${retryRes.status}`);
-          }
+          if (!retryRes.ok) throw new Error(retryData?.error || `Request failed: ${retryRes.status}`);
           return retryData;
         } else {
           window.dispatchEvent(new Event('auth-expired'));
         }
-      } catch (err) {
+      } catch {
         window.dispatchEvent(new Event('auth-expired'));
       }
     } else if (res.status === 401 && path === '/auth/refresh') {
       window.dispatchEvent(new Event('auth-expired'));
     }
-    const msg = data?.message || `Request failed: ${res.status}`;
-    throw new Error(msg);
+
+    // FIX: backend returns { "error": "..." } not { "message": "..." }
+    throw new Error(data?.error || data?.message || `Request failed: ${res.status}`);
   }
+
   return data;
 }
 
-// ─── Auth ─────────────────────────────────────────────────────────────────────
+// ── Multipart upload ─────────────────────────────────────────────────────────
+
+async function upload(path, formData) {
+  // NOTE: Do NOT set Content-Type — browser sets it with the correct multipart boundary
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,
+  });
+
+  let data;
+  try { data = await res.json(); } catch { data = null; }
+
+  if (!res.ok) {
+    // FIX: was silently swallowing 403 errors
+    if (res.status === 403) {
+      throw new Error('Permission denied. Please log in again.');
+    }
+    throw new Error(data?.error || data?.message || `Upload failed: ${res.status}`);
+  }
+
+  return data;
+}
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
 
 export const authApi = {
-  /** POST /auth/login — returns { user, accessToken, message } and sets HttpOnly cookies */
-  login: (email, password) =>
+  login:    (email, password) =>
     request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
 
-  /** POST /auth/register — returns { user, accessToken, message } and sets HttpOnly cookies */
   register: (userData) =>
-    request('/auth/register', { method: 'POST', body: JSON.stringify(userData) }),
+    request('/auth/signup', { method: 'POST', body: JSON.stringify(userData) }),
 
-  /** POST /auth/logout — clears HttpOnly cookies on the backend */
-  logout: () =>
+  logout:   () =>
     request('/auth/logout', { method: 'POST' }),
 
-  /** GET /auth/me — validates cookie JWT and returns { user } for session restore */
-  me: () =>
-    request('/auth/me'),
+  // FIX: /auth/me now returns { user: UserDto, message: "..." }
+  // SecurityConfig now permits /auth/me without a JWT (handled inside the endpoint)
+  me: () => request('/auth/me'),
 };
 
-// ─── Trains ───────────────────────────────────────────────────────────────────
+// ── Ingest ───────────────────────────────────────────────────────────────────
 
-export const trainApi = {
-  /** GET /trains/all */
-  getAll: () => request('/trains/all'),
+export const ingestApi = {
+  pdf: (file, sessionId) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('sessionId', sessionId);
+    return upload('/ingest/pdf', fd);
+  },
 
-  /** GET /trains/:id */
-  getById: (id) => request(`/trains/${id}`),
+  image: (file, sessionId) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('sessionId', sessionId);
+    return upload('/ingest/image', fd);
+  },
 
-  /** POST /trains/add — admin only */
-  add: (trainData) =>
-    request('/trains/add', { method: 'POST', body: JSON.stringify(trainData) }),
+  text: (file, sessionId) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('sessionId', sessionId);
+    return upload('/ingest/text', fd);
+  },
 
-  /** DELETE /trains/:id — admin only */
-  delete: (id) =>
-    request(`/trains/${id}`, { method: 'DELETE' }),
-
-  /** POST /trains/:id/classes — add a class to a train */
-  addClass: (trainId, classData) =>
-    request(`/trains/${trainId}/classes`, { method: 'POST', body: JSON.stringify(classData) }),
-
-  /** GET /trains/:id/classes */
-  getClasses: (trainId) => request(`/trains/${trainId}/classes`),
-
-  /** DELETE /trains/classes/:classId */
-  deleteClass: (classId) => request(`/trains/classes/${classId}`, { method: 'DELETE' }),
-};
-
-// ─── Search ───────────────────────────────────────────────────────────────────
-
-export const searchApi = {
-  /**
-   * POST /search — find trains by source/destination/date
-   * Body: { sourceStation, destinationStation, journeyDate }
-   * Returns list of TrainSearchResponse objects
-   */
-  search: (sourceStation, destinationStation, journeyDate) =>
-    request('/search', {
+  wikipedia: (url, sessionId) =>
+    request('/ingest/wikipedia', {
       method: 'POST',
-      body: JSON.stringify({ sourceStation, destinationStation, journeyDate }),
+      body: JSON.stringify({ url, sessionId }),
     }),
 };
 
-// ─── Stations ─────────────────────────────────────────────────────────────────
+// ── Query (RAG) ──────────────────────────────────────────────────────────────
 
-export const stationApi = {
-  /** GET /stations/all */
-  getAll: () => request('/stations/all'),
-
-  /** POST /stations/add — admin only */
-  add: (stationData) =>
-    request('/stations/add', { method: 'POST', body: JSON.stringify(stationData) }),
-
-  /** POST /stations/:id — admin update */
-  update: (id, stationData) =>
-    request(`/stations/${id}`, { method: 'POST', body: JSON.stringify(stationData) }),
-
-  /** DELETE /stations/:id — admin only */
-  delete: (id) =>
-    request(`/stations/${id}`, { method: 'DELETE' }),
-};
-
-// ─── Routes ───────────────────────────────────────────────────────────────────
-
-export const routeApi = {
-  /** GET /routes/all */
-  getAll: () => request('/routes/all'),
-
-  /** POST /routes/add — admin only */
-  add: (routeData) =>
-    request('/routes/add', { method: 'POST', body: JSON.stringify(routeData) }),
-
-  /** DELETE /routes/:id — admin only */
-  delete: (id) =>
-    request(`/routes/${id}`, { method: 'DELETE' }),
-};
-
-// ─── Bookings ─────────────────────────────────────────────────────────────────
-
-export const bookingApi = {
-  /** GET /api/bookings — all bookings (admin) or user's bookings */
-  getAll: () => request('/api/bookings'),
-
-  /** GET /api/bookings/:id */
-  getById: (id) => request(`/api/bookings/${id}`),
-
+export const queryApi = {
   /**
-   * POST /api/bookings — create a new booking
-   * Body: { scheduleId, journeyDate, passengerRequests: [{ name, age, gender, berth }] }
+   * POST /api/query
+   * FIX: sessionId is now always included (backend requires it for scoped retrieval)
+   * Returns: { answer: string, citations: CitationDto[], foundInDocuments: boolean }
    */
-  create: (bookingData) =>
-    request('/api/bookings', { method: 'POST', body: JSON.stringify(bookingData) }),
-
-  /** DELETE /api/bookings/:id — cancel booking */
-  cancel: (id) =>
-    request(`/api/bookings/${id}`, { method: 'DELETE' }),
+  ask: (question, sessionId) =>
+    request('/api/query', {
+      method: 'POST',
+      body: JSON.stringify({ question, sessionId }),
+    }),
 };

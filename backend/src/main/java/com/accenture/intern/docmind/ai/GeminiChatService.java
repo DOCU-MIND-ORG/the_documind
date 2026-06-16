@@ -15,16 +15,18 @@ public class GeminiChatService {
         this.chatClient = chatClientBuilder.build();
     }
 
-    public String chat(ChatRequest request) {
+    // This should be used later for restructuring the user sent query
+    public String chat(String request) {
         return this.chatClient.prompt()
-                .user(request.getMessage())
+                .user(request)
                 .call()
                 .content();
     }
 
-    public Flux<ServerSentEvent<String>> streamChat(ChatRequest request) {
+    // This is for getting chatgpt style response
+    public Flux<ServerSentEvent<String>> streamChat(String request) {
         return this.chatClient.prompt()
-                .user(request.getMessage())
+                .user(request)
                 .stream()
                 .content()
                 .map(content -> ServerSentEvent.builder(content).build())
