@@ -1,7 +1,9 @@
-package com.accenture.intern.docmind.controllers;
+package com.accenture.intern.docmind.controller;
 
-import com.accenture.intern.docmind.dto.*;
-import com.accenture.intern.docmind.entities.User;
+import com.accenture.intern.docmind.dto.auth.LoginRequest;
+import com.accenture.intern.docmind.dto.auth.LoginResponse;
+import com.accenture.intern.docmind.dto.auth.SignupRequest;
+import com.accenture.intern.docmind.entity.User;
 import com.accenture.intern.docmind.repository.UserRepository;
 import com.accenture.intern.docmind.security.JwtService;
 import com.accenture.intern.docmind.service.AuthService;
@@ -23,7 +25,7 @@ public class AuthController {
     @PostMapping("/signup")
     public ResponseEntity<?> SignUp(@RequestBody SignupRequest request) {
         try {
-            AuthResponse response = AuthService.SignUp(request);
+            LoginResponse response = AuthService.SignUp(request);
             return buildCookieResponse(response);
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -34,7 +36,7 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest request) {
         try {
-            AuthResponse response = AuthService.Login(request);
+            LoginResponse response = AuthService.Login(request);
             return buildCookieResponse(response);
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -79,7 +81,7 @@ public class AuthController {
                     .body(new ErrorResponse("Refresh token is missing"));
         }
         try {
-            AuthResponse response = AuthService.refreshToken(refreshToken);
+            LoginResponse response = AuthService.refreshToken(refreshToken);
             return buildCookieResponse(response);
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -104,7 +106,8 @@ public class AuthController {
                     .body(new ErrorResponse("User not found"));
         }
 
-        UserDto userDto = UserDto.builder()
+        com.accenture.intern.docmind.dto.auth.UserDto userDto =
+                com.accenture.intern.docmind.dto.auth.UserDto.builder()
                 .id(user.getId())
                 .name(user.getName())
                 .email(user.getEmail())                    
@@ -119,7 +122,7 @@ public class AuthController {
 
     
 
-    private ResponseEntity<?> buildCookieResponse(AuthResponse response) {
+    private ResponseEntity<?> buildCookieResponse(LoginResponse response) {
         ResponseCookie jwtCookie = ResponseCookie.from("access_token", response.getAccessToken())
                 .httpOnly(true)
                 .secure(false) 

@@ -1,10 +1,10 @@
 package com.accenture.intern.docmind.service;
 
-import com.accenture.intern.docmind.dto.AuthResponse;
-import com.accenture.intern.docmind.dto.LoginRequest;
-import com.accenture.intern.docmind.dto.SignupRequest;
-import com.accenture.intern.docmind.dto.UserDto;
-import com.accenture.intern.docmind.entities.*;
+import com.accenture.intern.docmind.dto.auth.LoginResponse;
+import com.accenture.intern.docmind.dto.auth.LoginRequest;
+import com.accenture.intern.docmind.dto.auth.SignupRequest;
+import com.accenture.intern.docmind.dto.auth.UserDto;
+import com.accenture.intern.docmind.entity.*;
 import com.accenture.intern.docmind.repository.UserRepository;
 import com.accenture.intern.docmind.security.JwtService;
 import lombok.RequiredArgsConstructor;
@@ -24,7 +24,7 @@ public class AuthService {
     private final BCryptPasswordEncoder passwordEncoder =
             new BCryptPasswordEncoder();
 
-    public AuthResponse SignUp(SignupRequest request) {
+    public LoginResponse SignUp(SignupRequest request) {
 
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new RuntimeException("Email already exists");
@@ -42,7 +42,7 @@ public class AuthService {
         return generateAuthResponse(user, "User Registered Successfully");
     }
 
-    public AuthResponse Login(LoginRequest request) {
+    public LoginResponse Login(LoginRequest request) {
 
         String email = request.getEmail();
         User user = userRepository.findByEmail(email);
@@ -58,7 +58,7 @@ public class AuthService {
         return generateAuthResponse(user, "Successfully logged in .");
     }
 
-    private AuthResponse generateAuthResponse(User user, String message) {
+    private LoginResponse generateAuthResponse(User user, String message) {
         
 
         String accessToken = jwtService.generateAccessToken(user);
@@ -74,7 +74,7 @@ public class AuthService {
 
         
 
-        AuthResponse authResponse = new AuthResponse(
+        LoginResponse authResponse = new LoginResponse(
                 userDto,
                 accessToken,
                 refreshToken,
@@ -87,7 +87,7 @@ public class AuthService {
     }
 
     @Transactional
-    public AuthResponse refreshToken(String refreshTokenStr) {
+    public LoginResponse refreshToken(String refreshTokenStr) {
         return refreshTokenService.findByToken(refreshTokenStr)
                 .map(refreshTokenService::verifyExpiration)
                 .map(RefreshToken::getUser)
@@ -98,7 +98,7 @@ public class AuthService {
                             .name(user.getName())
                             .email(user.getEmail())                
                             .build();
-                    return new AuthResponse(userDto, accessToken, refreshTokenStr, "Token refreshed successfully");
+                    return new LoginResponse(userDto, accessToken, refreshTokenStr, "Token refreshed successfully");
                 })
                 .orElseThrow(() -> new RuntimeException("Refresh token is not in database!"));
     }
@@ -109,4 +109,3 @@ public class AuthService {
         }
     }
 }
-

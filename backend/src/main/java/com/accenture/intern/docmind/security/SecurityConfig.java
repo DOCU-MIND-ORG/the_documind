@@ -33,7 +33,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(List.of("http://localhost:5173"));
-        config.setAllowedMethods(List.of("GET", "POST", "OPTIONS"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Content-Type", "Authorization", "Accept"));
         config.setAllowCredentials(true);
 
@@ -49,19 +49,26 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable())
-                .addFilterAt(jwtWebFilter, org.springframework.security.config.web.server.SecurityWebFiltersOrder.AUTHENTICATION)
+                .addFilterAt(jwtWebFilter,
+                        org.springframework.security.config.web.server.SecurityWebFiltersOrder.AUTHENTICATION)
                 .authorizeExchange(exchanges -> exchanges
-                        .pathMatchers("/auth/login", "/auth/signup", "/auth/logout", "/auth/refresh").permitAll()
-                        .anyExchange().authenticated()
-                )
+                        .pathMatchers(
+                                "/auth/login",
+                                "/auth/signup",
+                                "/auth/logout",
+                                "/auth/refresh",
+
+                                "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/v3/api-docs/**",
+                                "/webjars/**")
+                        .permitAll()
+                        .anyExchange().authenticated())
                 .exceptionHandling(exceptionHandling -> exceptionHandling
-                        .authenticationEntryPoint((swe, e) -> 
-                            Mono.fromRunnable(() -> swe.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED))
-                        )
-                        .accessDeniedHandler((swe, e) -> 
-                            Mono.fromRunnable(() -> swe.getResponse().setStatusCode(HttpStatus.FORBIDDEN))
-                        )
-                )
+                        .authenticationEntryPoint((swe, e) -> Mono
+                                .fromRunnable(() -> swe.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED)))
+                        .accessDeniedHandler((swe, e) -> Mono
+                                .fromRunnable(() -> swe.getResponse().setStatusCode(HttpStatus.FORBIDDEN))))
                 .build();
     }
 }

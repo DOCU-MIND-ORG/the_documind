@@ -7,24 +7,24 @@ import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
 
 @Service
-public class GeminiChatService {
+public class GeminiService {
 
     private final ChatClient chatClient;
 
-    public GeminiChatService(ChatClient.Builder chatClientBuilder) {
+    public GeminiService(ChatClient.Builder chatClientBuilder) {
         this.chatClient = chatClientBuilder.build();
     }
 
-    public String chat(ChatRequest request) {
+    public String chat(String message) {
         return this.chatClient.prompt()
-                .user(request.getMessage())
+                .user(message)
                 .call()
                 .content();
     }
 
-    public Flux<ServerSentEvent<String>> streamChat(ChatRequest request) {
+    public Flux<ServerSentEvent<String>> streamChat(String message) {
         return this.chatClient.prompt()
-                .user(request.getMessage())
+                .user(message)
                 .stream()
                 .content()
                 .map(content -> ServerSentEvent.builder(content).build())

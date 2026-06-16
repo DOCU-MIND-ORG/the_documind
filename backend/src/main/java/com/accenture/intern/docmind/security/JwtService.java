@@ -1,6 +1,6 @@
 package com.accenture.intern.docmind.security;
 
-import com.accenture.intern.docmind.entities.User;
+import com.accenture.intern.docmind.entity.User;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;

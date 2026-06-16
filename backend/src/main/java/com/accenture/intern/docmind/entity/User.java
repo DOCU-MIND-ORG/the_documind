@@ -1,4 +1,4 @@
-package com.accenture.intern.docmind.entities;
+package com.accenture.intern.docmind.entity;
 
 import jakarta.persistence.*;
 import lombok.*;

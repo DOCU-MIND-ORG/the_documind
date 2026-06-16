@@ -1,4 +1,4 @@
-package com.accenture.intern.docmind.ai;
+package com.accenture.intern.docmind.dto.session;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -7,6 +7,6 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class ChatRequest {
-    private String message;
+public class CreateSessionRequest {
+    private String title;
 }

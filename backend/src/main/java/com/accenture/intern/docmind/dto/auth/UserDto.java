@@ -1,4 +1,4 @@
-package com.accenture.intern.docmind.dto;
+package com.accenture.intern.docmind.dto.auth;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -16,5 +16,5 @@ public class UserDto {
     private String name;
     private String email;
     private String phoneNumber;
-    private List<String> roles; 
+    private List<String> roles;
 }
