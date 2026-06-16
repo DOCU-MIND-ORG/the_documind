@@ -11,22 +11,15 @@ import Dashboard from './pages/Dashboard.jsx';
 import Settings from './pages/Settings.jsx';
 
 // Styles
-import './App.css';
+// (App.css removed)
 
 /** Show a full-page spinner while the /auth/me session check completes */
 function AuthLoading() {
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      height: '100vh', background: 'var(--bg-base, #0f172a)',
-    }}>
-      <div style={{ textAlign: 'center', color: 'var(--text-muted, #94a3b8)' }}>
-        <div style={{
-          width: 48, height: 48, border: '3px solid rgba(59,130,246,0.3)',
-          borderTopColor: 'var(--primary, #3b82f6)', borderRadius: '50%',
-          animation: 'spin 0.8s linear infinite', margin: '0 auto 16px',
-        }} />
-        <p style={{ fontSize: '0.875rem' }}>Loading…</p>
+    <div className="flex items-center justify-center h-screen bg-[#0f172a]">
+      <div className="text-center text-[#94a3b8]">
+        <div className="w-12 h-12 border-3 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mx-auto mb-4" />
+        <p className="text-sm">Loading…</p>
       </div>
     </div>
   );

@@ -1,9 +1,0 @@
-/* Register-specific additions */
-.reg-password-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-4);
-}
-@media (max-width: 480px) {
-  .reg-password-row { grid-template-columns: 1fr; }
-}
