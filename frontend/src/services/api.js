@@ -3,12 +3,17 @@
  * No mock data. Uses credentials: 'include' so HttpOnly cookies are sent automatically.
  */
 
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+const BASE = import.meta.env.VITE_API_URL || '';
 
 /** Generic fetch wrapper — throws on non-OK, returns parsed JSON */
 async function request(path, options = {}) {
+  const isMultipart = options.body instanceof FormData;
+  const headers = isMultipart 
+    ? { ...options.headers } 
+    : { 'Content-Type': 'application/json', ...options.headers };
+
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
+    headers,
     credentials: 'include',   // sends HttpOnly cookies automatically
     ...options,
   });
@@ -170,4 +175,42 @@ export const bookingApi = {
   /** DELETE /api/bookings/:id — cancel booking */
   cancel: (id) =>
     request(`/api/bookings/${id}`, { method: 'DELETE' }),
+};
+
+// ─── Sessions / Document Q&A ───────────────────────────────────────────────
+
+export const sessionApi = {
+  /** GET /api/sessions — list user sessions */
+  getAll: () => request('/api/sessions'),
+
+  /** POST /api/sessions — create a new session */
+  create: (name) => request('/api/sessions', {
+    method: 'POST',
+    body: JSON.stringify({ name })
+  }),
+
+  /** DELETE /api/sessions/:id — delete session */
+  delete: (id) => request(`/api/sessions/${id}`, { method: 'DELETE' }),
+
+  /** GET /api/sessions/:id/messages — fetch session message history */
+  getMessages: (id) => request(`/api/sessions/${id}/messages`),
+
+  /** POST /api/sessions/:id/document — upload PDF/TXT/MD/Image */
+  uploadDocument: (id, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return request(`/api/sessions/${id}/document`, {
+      method: 'POST',
+      body: formData
+    });
+  },
+
+  /** POST /api/sessions/:id/wikipedia — ingest Wikipedia page URL */
+  loadWikipedia: (id, url) => request(`/api/sessions/${id}/wikipedia`, {
+    method: 'POST',
+    body: JSON.stringify({ url })
+  }),
+
+  /** GET /api/sessions/:id/suggestions — fetch suggested questions */
+  getSuggestions: (id) => request(`/api/sessions/${id}/suggestions`)
 };

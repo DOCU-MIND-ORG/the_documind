@@ -5,7 +5,7 @@ import { useToast } from '../context/ToastContext.jsx';
 
 
 export default function Login() {
-  const endpoint = import.meta.env.VITE_API_URL;
+  const endpoint = import.meta.env.VITE_API_URL || '';
   const navigate = useNavigate();
   const { login } = useAuth();
   const { showToast } = useToast();
@@ -52,7 +52,7 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-[#0f1115] bg-[radial-gradient(circle_at_15%_50%,rgba(59,130,246,0.12),transparent_25%),radial-gradient(circle_at_85%_30%,rgba(147,51,234,0.12),transparent_25%)] p-4 sm:p-8">
       <div className="w-full max-w-[450px] bg-[#16181d]/60 backdrop-blur-xl border border-white/5 rounded-2xl flex flex-col px-6 py-8 sm:px-10 sm:py-12 shadow-2xl animate-fade-in-up">
         <div className="text-center mb-8">
-          <div className="text-3xl mb-2 inline-block bg-gradient-to-r from-white to-[#94a3b8] bg-clip-text text-transparent font-bold tracking-tight">Soul Society</div>
+          <div className="text-3xl mb-2 inline-block bg-gradient-to-r from-white to-[#94a3b8] bg-clip-text text-transparent font-bold tracking-tight">DocuMind</div>
           <h1 className="text-xl text-white font-semibold mb-1">Welcome back</h1>
           <p className="text-[#94a3b8] text-sm">Sign in to continue your session</p>
         </div>
