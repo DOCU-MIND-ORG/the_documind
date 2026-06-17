@@ -3,6 +3,7 @@ package com.accenture.intern.docmind.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
+import java.util.*;
 
 
 @Entity
@@ -28,12 +29,10 @@ public class Message {
     @Column(columnDefinition = "TEXT")
     private String content;
 
-    @ManyToOne
-    @JoinColumn(name = "parent_message_id")
-    private Message parentMessage;
 
     @Enumerated(EnumType.STRING)
     private MessageStatus status;
+
     
     private LocalDateTime createdAt;
 }

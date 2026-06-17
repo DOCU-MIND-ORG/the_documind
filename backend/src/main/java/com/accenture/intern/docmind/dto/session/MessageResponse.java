@@ -7,15 +7,15 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
+import com.accenture.intern.docmind.entity.MessageRole;
+
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class SessionResponse {
-    private Long sessionId;
-    private String title;
-    private Boolean archived;
+public class MessageResponse {
+    private String id;
+    private MessageRole role;
+    private String text;
     private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
-    private java.util.List<MessageResponse> messages;
 }

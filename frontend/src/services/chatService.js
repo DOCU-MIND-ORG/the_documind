@@ -2,7 +2,7 @@ const BASE_URL = import.meta.env.VITE_API_URL || '';
 
 export const chatService = {
   streamMessage: async (sessionId, message, onChunk, onError, onComplete) => {
-    const streamUrl = `${BASE_URL}/api/sessions/${sessionId}/stream`;
+    const streamUrl = `${BASE_URL}/api/chat/${sessionId}/stream`;
     try {
       const response = await fetch(streamUrl, {
         method: 'POST',

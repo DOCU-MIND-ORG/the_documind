@@ -3,6 +3,7 @@ package com.accenture.intern.docmind.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
+import java.util.*;
 
 @Entity
 @Table(name = "sessions")
@@ -24,7 +25,12 @@ public class Session {
 
     private Boolean archived = false;
 
+    @OneToMany(mappedBy = "session", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<Message> messages = new ArrayList<>();
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
 }
+

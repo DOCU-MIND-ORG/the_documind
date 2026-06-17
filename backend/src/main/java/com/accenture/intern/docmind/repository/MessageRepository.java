@@ -13,4 +13,6 @@ import java.util.List;
 public interface MessageRepository extends JpaRepository<Message, Long> {
 
     List<Message> findBySession(Session session);
+
+    List<Message> findBySessionOrderByCreatedAtAsc(Session session);
 }

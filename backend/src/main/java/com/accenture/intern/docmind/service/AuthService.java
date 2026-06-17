@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@Transactional
 public class AuthService {
 
     private final UserRepository userRepository;
@@ -86,7 +87,6 @@ public class AuthService {
         return authResponse;
     }
 
-    @Transactional
     public LoginResponse refreshToken(String refreshTokenStr) {
         return refreshTokenService.findByToken(refreshTokenStr)
                 .map(refreshTokenService::verifyExpiration)

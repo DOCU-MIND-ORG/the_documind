@@ -2,6 +2,7 @@ package com.accenture.intern.docmind.controller;
 
 import com.accenture.intern.docmind.dto.session.CreateSessionRequest;
 import com.accenture.intern.docmind.dto.session.SessionResponse;
+import com.accenture.intern.docmind.dto.session.MessageResponse;
 import com.accenture.intern.docmind.service.SessionService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -58,5 +59,15 @@ public class SessionController {
     ) {
         sessionService.deleteSession(principal.getName(),id);
         return ResponseEntity.noContent().build();
+    }
+
+    // GET /api/sessions/{id}/messages
+    @GetMapping("/{id}/messages")
+    public ResponseEntity<List<MessageResponse>> getSessionMessages(
+            @PathVariable Long id,
+            Principal principal
+    ) {
+        List<MessageResponse> messages = sessionService.getSessionMessages(principal.getName(), id);
+        return ResponseEntity.ok(messages);
     }
 }
