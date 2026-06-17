@@ -133,10 +133,10 @@ export default function Dashboard() {
     setSuggestions([]);
     if (!session) return;
     try {
-      const msgs = await sessionApi.getMessages(session.id);
+      const msgs = await sessionApi.getMessages(session.sessionId);
       setMessages(msgs);
       if (session.documentType && msgs.length === 0) {
-        const suggs = await sessionApi.getSuggestions(session.id);
+        const suggs = await sessionApi.getSuggestions(session.sessionId);
         setSuggestions(suggs);
       }
     } catch (err) {
@@ -144,16 +144,30 @@ export default function Dashboard() {
     }
   };
 
-  const handleCreateSessionDirect = async () => {
-    const name = `Session ${sessions.length + 1}`;
-    try {
-      const newSession = await sessionApi.create(name);
-      setSessions(prev => [newSession, ...prev]);
-      handleSelectSession(newSession);
-      showToast('Session created successfully.', 'success');
-    } catch (err) {
-      showToast(err.message || 'Failed to create session.', 'error');
+  const handleCreateSessionDirect = () => {
+    const draftSession = {
+      sessionId: null,
+      title: 'New chat',
+      archived: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      isDraft: true,
+    };
+
+    setActiveSession(draftSession);
+    setMessages([]);
+    setSuggestions([]);
+    setIsSidebarOpen(false);
+  };
+
+  const createTitleFromQuery = (query) => {
+    const trimmed = query.trim();
+
+    if (trimmed.length <= 10) {
+      return trimmed;
     }
+
+    return `${trimmed.slice(0, 10)}...`;
   };
 
   const handleDeleteSession = async (e, sessionId) => {
@@ -162,9 +176,9 @@ export default function Dashboard() {
     try {
       await sessionApi.delete(sessionId);
       showToast('Session deleted successfully.', 'success');
-      setSessions(prev => prev.filter(s => s.id !== sessionId));
-      if (activeSession?.id === sessionId) {
-        const remaining = sessions.filter(s => s.id !== sessionId);
+      setSessions(prev => prev.filter(s => s.sessionId !== sessionId));
+      if (activeSession?.sessionId === sessionId) {
+        const remaining = sessions.filter(s => s.sessionId !== sessionId);
         if (remaining.length > 0) {
           handleSelectSession(remaining[0]);
         } else {
@@ -221,7 +235,7 @@ export default function Dashboard() {
 
     try {
       setIsUploading(true);
-      const res = await sessionApi.uploadDocument(activeSession.id, file);
+      const res = await sessionApi.uploadDocument(activeSession.sessionId, file);
       showToast('Document uploaded and indexed successfully!', 'success');
       
       const updatedSession = {
@@ -231,7 +245,7 @@ export default function Dashboard() {
       };
       
       setActiveSession(updatedSession);
-      setSessions(prev => prev.map(s => s.id === activeSession.id ? updatedSession : s));
+      setSessions(prev => prev.map(s => s.sessionId === activeSession.sessionId ? updatedSession : s));
       setSuggestions(res.suggestions || []);
     } catch (err) {
       showToast(err.message || 'Failed to process document.', 'error');
@@ -250,7 +264,7 @@ export default function Dashboard() {
 
     try {
       setIsUploading(true);
-      const res = await sessionApi.loadWikipedia(activeSession.id, wikiUrl.trim());
+      const res = await sessionApi.loadWikipedia(activeSession.sessionId, wikiUrl.trim());
       showToast('Wikipedia article fetched and indexed successfully!', 'success');
       setWikiUrl('');
 
@@ -261,7 +275,7 @@ export default function Dashboard() {
       };
 
       setActiveSession(updatedSession);
-      setSessions(prev => prev.map(s => s.id === activeSession.id ? updatedSession : s));
+      setSessions(prev => prev.map(s => s.sessionId === activeSession.sessionId ? updatedSession : s));
       setSuggestions(res.suggestions || []);
     } catch (err) {
       showToast(err.message || 'Failed to index Wikipedia URL.', 'error');
@@ -276,52 +290,64 @@ export default function Dashboard() {
     const query = directText || input;
     if (!query.trim() || !activeSession || isStreaming) return;
 
-    setInput('');
-    setSuggestions([]); // Clear suggestions on send
-
-    const userMsgId = crypto.randomUUID();
-    const botMsgId = crypto.randomUUID();
-
-    // Add user message
-    setMessages(prev => [...prev, {
-      id: userMsgId,
-      sender: 'user',
-      text: query,
-      createdAt: new Date().toISOString()
-    }]);
-
-    // Add empty bot message for stream
-    setMessages(prev => [...prev, {
-      id: botMsgId,
-      sender: 'bot',
-      text: '',
-      createdAt: new Date().toISOString()
-    }]);
-
-    setIsStreaming(true);
-    setStreamingMsgId(botMsgId);
+    let sessionForMessage = activeSession;
 
     try {
+      if (activeSession.isDraft) {
+        const title = createTitleFromQuery(query);
+        const createdSession = await sessionApi.create(title);
+
+        sessionForMessage = createdSession;
+
+        setActiveSession(createdSession);
+        setSessions(prev => [createdSession, ...prev]);
+      }
+
+      setInput('');
+      setSuggestions([]); // Clear suggestions on send
+
+      const userMsgId = crypto.randomUUID();
+      const botMsgId = crypto.randomUUID();
+
+      // Add user message
+      setMessages(prev => [...prev, {
+        id: userMsgId,
+        sender: 'user',
+        text: query,
+        createdAt: new Date().toISOString()
+      }]);
+
+      // Add empty bot message for stream
+      setMessages(prev => [...prev, {
+        id: botMsgId,
+        sender: 'bot',
+        text: '',
+        createdAt: new Date().toISOString()
+      }]);
+
+      setIsStreaming(true);
+      setStreamingMsgId(botMsgId);
+
       await chatService.streamMessage(
-        activeSession.id,
-        query,
-        (chunk) => {
-          setMessages(prev => prev.map(msg =>
-            msg.id === botMsgId ? { ...msg, text: msg.text + chunk } : msg
-          ));
-        },
-        (error) => {
-          showToast(error.message || 'Error occurred during streaming.', 'error');
-          setIsStreaming(false);
-          setStreamingMsgId(null);
-        },
-        () => {
-          setIsStreaming(false);
-          setStreamingMsgId(null);
-        }
+          sessionForMessage.sessionId,
+          query,
+          (chunk) => {
+            setMessages(prev => prev.map(msg =>
+                msg.id === botMsgId ? {...msg, text: msg.text + chunk} : msg
+            ));
+          },
+          (error) => {
+            showToast(error.message || 'Error occurred during streaming.', 'error');
+            setIsStreaming(false);
+            setStreamingMsgId(null);
+          },
+          () => {
+            setIsStreaming(false);
+            setStreamingMsgId(null);
+          }
       );
     } catch (error) {
-      console.error(error);
+      showToast(error.message || 'Failed to send message.', 'error');
       setIsStreaming(false);
       setStreamingMsgId(null);
     }
@@ -376,6 +402,8 @@ export default function Dashboard() {
     return badges[type?.toLowerCase()] || 'bg-gray-500/15 border-gray-500/30 text-gray-400 text-xs font-semibold px-2 py-0.5 rounded-md border shrink-0';
   };
 
+  const canShowChat = activeSession?.isDraft || activeSession?.documentType;
+
   return (
     <div className="flex h-screen bg-[#0f1115] text-[#e2e8f0] font-sans relative overflow-hidden">
       {/* Mobile Sidebar Overlay */}
@@ -428,10 +456,10 @@ export default function Dashboard() {
             </div>
           ) : (
             sessions.map(session => {
-              const isActive = activeSession?.id === session.id;
+              const isActive = activeSession?.sessionId === session.sessionId;
               return (
                 <div 
-                  key={session.id} 
+                  key={session.sessionId}
                   className={`group flex items-center justify-between px-4 py-3 rounded-xl cursor-pointer transition-all ${
                     isActive 
                       ? 'bg-white/[0.07] border border-white/5 text-white font-medium shadow-md' 
@@ -441,11 +469,11 @@ export default function Dashboard() {
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <ChatIcon />
-                    <span className="truncate text-sm">{session.name}</span>
+                    <span className="truncate text-sm">{session.title}</span>
                   </div>
                   <button 
                     className="p-1 hover:bg-white/5 rounded transition-all ml-2"
-                    onClick={(e) => handleDeleteSession(e, session.id)}
+                    onClick={(e) => handleDeleteSession(e, session.sessionId)}
                     title="Delete session"
                   >
                     <TrashIcon />
@@ -517,7 +545,7 @@ export default function Dashboard() {
 
             {activeSession ? (
               <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                <h2 className="font-semibold text-white truncate text-sm sm:text-base shrink-0">{activeSession.name}</h2>
+                <h2 className="font-semibold text-white truncate text-sm sm:text-base shrink-0">{activeSession.title}</h2>
                 {activeSession.documentType && (
                   <>
                     <span className="text-[#94a3b8]/50 hidden sm:inline">|</span>
@@ -535,9 +563,9 @@ export default function Dashboard() {
             )}
           </div>
 
-          {activeSession && (
+          {activeSession && !activeSession.isDraft && (
             <button 
-              onClick={(e) => handleDeleteSession(e, activeSession.id)}
+              onClick={(e) => handleDeleteSession(e, activeSession.sessionId)}
               className="flex items-center gap-2 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/40 text-red-400 rounded-xl text-xs font-semibold cursor-pointer active:scale-95 transition-all shadow-md shrink-0"
               title="Delete current session"
             >
@@ -577,7 +605,7 @@ export default function Dashboard() {
                 We are parsing, formatting, and indexing your content into memory. This will take just a few seconds.
               </p>
             </div>
-          ) : !activeSession.documentType ? (
+          ) : !canShowChat ? (
             /* Upload Ingestion Panel */
             <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-8 sm:py-12 flex flex-col items-center justify-center bg-[radial-gradient(circle_at_50%_30%,rgba(59,130,246,0.03),transparent_40%)]">
               <div className="w-full max-w-xl text-center mb-6 sm:mb-8 px-2">
@@ -645,11 +673,17 @@ export default function Dashboard() {
                   /* Empty conversation: Show suggested questions */
                   <div className="h-full flex flex-col items-center justify-center p-4">
                     <div className="text-center max-w-xl mb-6">
-                      <h3 className="text-lg font-bold text-white mb-1">Source Initialized!</h3>
-                      <p className="text-xs text-[#94a3b8]">Ask anything about your document or choose one of these starter questions:</p>
+                      <h3 className="text-lg font-bold text-white mb-1">
+                        {activeSession.isDraft ? 'New chat' : 'Source Initialized!'}
+                      </h3>
+                      <p className="text-xs text-[#94a3b8]">
+                        {activeSession.isDraft
+                            ? 'Send your first message to create this session.'
+                            : 'Ask anything about your document or choose one of these starter questions:'}
+                      </p>
                     </div>
 
-                    {suggestions.length > 0 && (
+                    {!activeSession.isDraft && suggestions.length > 0 && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 w-full max-w-3xl animate-fade-in-up">
                         {suggestions.map((sugg, idx) => (
                           <div 
@@ -681,7 +715,7 @@ export default function Dashboard() {
 
                     return (
                       <div 
-                        key={msg.id} 
+                        key={msg.id}
                         className={`flex items-start gap-2.5 sm:gap-3 max-w-[92%] sm:max-w-[85%] ${
                           isBot ? 'self-start' : 'self-end flex-row-reverse ml-auto'
                         }`}
@@ -703,7 +737,7 @@ export default function Dashboard() {
                             {isBot ? (
                               <Streaming 
                                 text={msg.text} 
-                                isStreaming={msg.id === streamingMsgId} 
+                                isStreaming={msg.id === streamingMsgId}
                               />
                             ) : (
                               <p className="whitespace-pre-wrap">{msg.text}</p>

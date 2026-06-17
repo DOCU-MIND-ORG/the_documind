@@ -33,22 +33,30 @@ public class SessionController {
 
     // GET /api/sessions
     @GetMapping
-    public ResponseEntity<List<SessionResponse>> getAllSessions() {
-        // TODO: implement
-        throw new UnsupportedOperationException("Not yet implemented");
+    public ResponseEntity<List<SessionResponse>> getAllSessions(
+            Principal principal
+    ) {
+        List<SessionResponse> sessions=sessionService.getAllSessions(principal.getName());
+        return ResponseEntity.ok(sessions);
     }
 
     // GET /api/sessions/{id}
     @GetMapping("/{id}")
-    public ResponseEntity<SessionResponse> getSessionById(@PathVariable Long id) {
-        // TODO: implement
-        throw new UnsupportedOperationException("Not yet implemented");
+    public ResponseEntity<SessionResponse> getSessionById(
+            @PathVariable Long id,
+            Principal principal
+    ) {
+        SessionResponse response=sessionService.getSessionById(principal.getName(),id);
+        return ResponseEntity.ok(response);
     }
 
     // DELETE /api/sessions/{id}
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteSession(@PathVariable Long id) {
-        // TODO: implement
-        throw new UnsupportedOperationException("Not yet implemented");
+    public ResponseEntity<Void> deleteSession(
+            @PathVariable Long id,
+            Principal principal
+    ) {
+        sessionService.deleteSession(principal.getName(),id);
+        return ResponseEntity.noContent().build();
     }
 }
