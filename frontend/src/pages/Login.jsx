@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
-
+import ForgotPasswordModal from '../components/ForgotPasswordModal.jsx';
+import logo from "../assets/Logo.png";
 
 export default function Login() {
   const endpoint = import.meta.env.VITE_API_URL;
@@ -11,6 +12,7 @@ export default function Login() {
   const { showToast } = useToast();
   const [form, setForm] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   const handleChange = e => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
 
@@ -51,12 +53,29 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0f1115] bg-[radial-gradient(circle_at_15%_50%,rgba(59,130,246,0.12),transparent_25%),radial-gradient(circle_at_85%_30%,rgba(147,51,234,0.12),transparent_25%)] p-4 sm:p-8">
       <div className="w-full max-w-[450px] bg-[#16181d]/60 backdrop-blur-xl border border-white/5 rounded-2xl flex flex-col px-6 py-8 sm:px-10 sm:py-12 shadow-2xl animate-fade-in-up">
-        <div className="text-center mb-8">
-          <div className="text-3xl mb-2 inline-block bg-gradient-to-r from-white to-[#94a3b8] bg-clip-text text-transparent font-bold tracking-tight">Soul Society</div>
-          <h1 className="text-xl text-white font-semibold mb-1">Welcome back</h1>
-          <p className="text-[#94a3b8] text-sm">Sign in to continue your session</p>
-        </div>
+       <div className="text-center mb-8">
+  <div className="flex flex-col items-center mb-6">
+   <div className="mb-3">
+  <img
+    src={logo}
+    alt="DocuMind Logo"
+    className="w-32 h-32 mx-auto object-contain"
+  />
+</div>
 
+    <h1 className="text-4xl font-bold bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
+      DocuMind
+    </h1>
+  </div>
+
+  <h2 className="text-xl text-white font-semibold mb-1">
+    Welcome back
+  </h2>
+
+  <p className="text-[#94a3b8] text-sm">
+    Sign in to continue your session
+  </p>
+</div>
         <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-2">
             <label className="text-xs text-[#94a3b8] font-medium" htmlFor="email">Email Address</label>
@@ -93,7 +112,13 @@ export default function Login() {
               <input type="checkbox" className="accent-[#e2e8f0] cursor-pointer" />
               <span>Remember me</span>
             </label>
-            <a href="#" className="text-[#94a3b8] transition-colors hover:text-white">Forgot password?</a>
+            <button
+              type="button"
+              onClick={() => setShowForgotPassword(true)}
+              className="text-[#94a3b8] transition-colors hover:text-white"
+            >
+              Forgot password?
+            </button>
           </div>
 
           <button
@@ -111,6 +136,11 @@ export default function Login() {
           Don't have an account? <Link to="/register" className="text-white font-medium ml-1 hover:underline">Create one</Link>
         </div>
       </div>
+
+      <ForgotPasswordModal
+        isOpen={showForgotPassword}
+        onClose={() => setShowForgotPassword(false)}
+      />
     </div>
   );
 }

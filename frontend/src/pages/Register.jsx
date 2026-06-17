@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
-
+import logo from '../assets/Logo.png';
 
 export default function Register() {
   const endpoint = import.meta.env.VITE_API_URL;
@@ -18,6 +18,11 @@ export default function Register() {
     e.preventDefault();
     if (!form.name || !form.email || !form.password) {
       showToast('Please fill in all required fields.', 'error');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(form.email)) {
+      showToast('Please enter a valid email address with @ and domain name (e.g., user@example.com).', 'error');
       return;
     }
     if (form.password !== form.confirm) {
@@ -70,10 +75,28 @@ export default function Register() {
     <div className="min-h-screen flex items-center justify-center bg-[#0f1115] bg-[radial-gradient(circle_at_15%_50%,rgba(59,130,246,0.12),transparent_25%),radial-gradient(circle_at_85%_30%,rgba(147,51,234,0.12),transparent_25%)] p-4 sm:p-8">
       <div className="w-full max-w-[450px] bg-[#16181d]/60 backdrop-blur-xl border border-white/5 rounded-2xl flex flex-col px-6 py-8 sm:px-10 sm:py-12 shadow-2xl animate-fade-in-up">
         <div className="text-center mb-8">
-          <div className="text-3xl mb-2 inline-block bg-gradient-to-r from-white to-[#94a3b8] bg-clip-text text-transparent font-bold tracking-tight">Soul Society</div>
-          <h1 className="text-xl text-white font-semibold mb-1">Create Account</h1>
-          <p className="text-[#94a3b8] text-sm">Join us to start querying</p>
-        </div>
+  <div className="flex flex-col items-center mb-6">
+    <div className="mb-3">
+      <img
+        src={logo}
+        alt="DocuMind Logo"
+        className="w-32 h-32 mx-auto object-contain"
+      />
+    </div>
+
+    <h1 className="text-4xl font-bold text-white">
+      DocuMind
+    </h1>
+  </div>
+
+  <h2 className="text-xl text-white font-semibold mb-1">
+    Create Account
+  </h2>
+
+  <p className="text-[#94a3b8] text-sm">
+    Join us to start querying
+  </p>
+</div>
 
         <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-2">
