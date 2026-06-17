@@ -58,6 +58,9 @@ public class SecurityConfig {
                                 "/auth/logout",
                                 "/auth/refresh",
 
+                                // Static file serving — storage/** exposed under /files/**
+                                "/files/**",
+
                                 "/swagger-ui.html",
                                 "/swagger-ui/**",
                                 "/v3/api-docs/**",

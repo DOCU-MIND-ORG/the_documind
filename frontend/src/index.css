@@ -40,19 +40,6 @@
 }
 
 /* Chat response styling */
-.streaming-cursor {
-  display: inline-block;
-  width: 2px;
-  height: 1.1em;
-  background-color: currentColor;
-  margin-left: 2px;
-  vertical-align: middle;
-  animation: blink 0.8s infinite;
-}
-
-@keyframes blink {
-  50% { opacity: 0; }
-}
 
 .streaming-markdown p {
   margin-bottom: 0.75rem;

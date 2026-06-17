@@ -40,16 +40,7 @@ public class SessionController {
         List<SessionResponse> sessions=sessionService.getAllSessions(principal.getName());
         return ResponseEntity.ok(sessions);
     }
-
-    // GET /api/sessions/{id}
-    @GetMapping("/{id}")
-    public ResponseEntity<SessionResponse> getSessionById(
-            @PathVariable Long id,
-            Principal principal
-    ) {
-        SessionResponse response=sessionService.getSessionById(principal.getName(),id);
-        return ResponseEntity.ok(response);
-    }
+   
 
     // DELETE /api/sessions/{id}
     @DeleteMapping("/{id}")

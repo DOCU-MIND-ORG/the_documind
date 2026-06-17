@@ -38,7 +38,11 @@ export default function Streaming({ text, isStreaming }) {
         <span className="streaming-line">{streamingLine}</span>
       )}
       {isStreaming && (
-        <span className="streaming-cursor" aria-hidden="true" />
+        <span className="inline-block ml-1.5 align-middle animate-pulse" aria-hidden="true" style={{ transform: 'translateY(-1px)' }}>
+          <svg className="w-3.5 h-3.5 text-[#A100FF]" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+            <path d="m.66 16.95 13.242-4.926L.66 6.852V0l22.68 9.132v5.682L.66 24Z"/>
+          </svg>
+        </span>
       )}
     </div>
   );

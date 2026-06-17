@@ -32,6 +32,20 @@ const TrashIcon = () => (
   </svg>
 );
 
+const DotsIcon = () => (
+  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+    <circle cx="12" cy="5" r="1.5" />
+    <circle cx="12" cy="12" r="1.5" />
+    <circle cx="12" cy="19" r="1.5" />
+  </svg>
+);
+
+const PaperclipIcon = () => (
+  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+  </svg>
+);
+
 const GearIcon = () => (
   <svg className="w-[14px] h-[14px] text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
     <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.43l-1.003.828c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.43l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.991l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
@@ -75,10 +89,11 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
   const navigate = useNavigate();
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [openMenuId, setOpenMenuId]     = useState(null); // which session's ⋮ menu is open
 
   // Derive active session from URL
   const activeId = location.pathname.startsWith('/chat/')
-    ? location.pathname.replace('/chat/', '')
+    ? location.pathname.split('/')[2] // handles /chat/:id and /chat/:id/attachments
     : null;
 
   const goNewChat  = () => { navigate('/dashboard'); setMobileOpen(false); };
@@ -86,6 +101,7 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
 
   const handleDelete = async (e, sessionId) => {
     e.stopPropagation();
+    setOpenMenuId(null);
     if (!window.confirm('Delete this session?')) return;
     try {
       await sessionService.delete(sessionId);
@@ -97,12 +113,24 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
     }
   };
 
+  const handleViewAttachments = (e, sessionId) => {
+    e.stopPropagation();
+    setOpenMenuId(null);
+    navigate(`/chat/${sessionId}/attachments`);
+    setMobileOpen(false);
+  };
+
+  const toggleMenu = (e, sessionId) => {
+    e.stopPropagation();
+    setOpenMenuId(prev => prev === sessionId ? null : sessionId);
+  };
+
   // ── Shared session list ────────────────────────────────────────────────────
 
   const SessionList = ({ alwaysExpanded = false }) => {
     const show = alwaysExpanded || expanded;
     return (
-      <div className="flex-1 overflow-y-auto mt-3 px-2 min-h-0">
+      <div className="flex-1 overflow-y-auto mt-3 px-2 min-h-0" onClick={() => setOpenMenuId(null)}>
         {show && (
           <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-[0.12em] px-2 pb-2 select-none">
             Recent
@@ -122,12 +150,13 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
         ) : (
           sessions.map(s => {
             const isActive = String(activeId) === String(s.sessionId);
+            const menuOpen = openMenuId === s.sessionId;
             return (
               <div
                 key={s.sessionId}
                 onClick={() => goSession(s.sessionId)}
                 title={!show ? s.title : undefined}
-                className={`group flex items-center gap-2.5 px-2.5 py-[9px] rounded-xl cursor-pointer transition-all duration-150 select-none mb-[2px] ${
+                className={`group relative flex items-center gap-2.5 px-2.5 py-[9px] rounded-xl cursor-pointer transition-all duration-150 select-none mb-[2px] ${
                   isActive
                     ? 'bg-white/[0.07] text-white'
                     : 'text-slate-400 hover:text-slate-100 hover:bg-white/[0.04]'
@@ -137,12 +166,39 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
                 {show && (
                   <>
                     <span className="flex-1 truncate text-[13px]">{s.title}</span>
+
+                    {/* ⋮ Three-dot menu button */}
                     <button
-                      onClick={(e) => handleDelete(e, s.sessionId)}
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-slate-500 hover:text-red-400 transition-all shrink-0"
+                      onClick={(e) => toggleMenu(e, s.sessionId)}
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-white/[0.06] transition-all shrink-0"
+                      title="More options"
                     >
-                      <TrashIcon />
+                      <DotsIcon />
                     </button>
+
+                    {/* Dropdown menu */}
+                    {menuOpen && (
+                      <div
+                        className="absolute right-1 top-8 z-50 bg-[#1c2028] border border-white/[0.08] rounded-xl shadow-2xl py-1 min-w-[160px]"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <button
+                          onClick={(e) => handleViewAttachments(e, s.sessionId)}
+                          className="flex items-center gap-2.5 w-full text-left px-3 py-2 text-[12px] text-slate-300 hover:text-white hover:bg-white/[0.05] transition-colors"
+                        >
+                          <PaperclipIcon />
+                          View Attachments
+                        </button>
+                        <div className="h-px bg-white/[0.05] mx-2 my-0.5" />
+                        <button
+                          onClick={(e) => handleDelete(e, s.sessionId)}
+                          className="flex items-center gap-2.5 w-full text-left px-3 py-2 text-[12px] text-red-400 hover:text-red-300 hover:bg-red-500/[0.07] transition-colors"
+                        >
+                          <TrashIcon />
+                          Delete session
+                        </button>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
