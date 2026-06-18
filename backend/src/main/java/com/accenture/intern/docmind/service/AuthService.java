@@ -67,10 +67,20 @@ public class AuthService {
         String refreshToken = refreshTokenEntity.getToken();
 
         UserDto userDto = UserDto.builder()
-                .id(user.getId())
-                .name(user.getName())
-                .email(user.getEmail())                
-                .build();
+            .id(user.getId())
+            .name(user.getName())
+            .email(user.getEmail())
+            .phoneNumber(user.getPhoneNumber())
+            .profilePicture(user.getProfilePicture())
+            .gender(user.getGender())
+            .occupation(user.getOccupation())
+            .organization(user.getOrganization())
+            .jobTitle(user.getJobTitle())
+            .education(user.getEducation())
+            .interests(user.getInterests())
+            .industry(user.getIndustry())
+            .bio(user.getBio())
+            .build();
 
         
 
@@ -84,6 +94,56 @@ public class AuthService {
                 
 
         return authResponse;
+    }
+
+    @Transactional
+    public UserDto updateUser(String email, User update) {
+        User user = userRepository.findByEmail(email);
+        if (user == null) throw new RuntimeException("User not found");
+
+        if (update.getName() != null) user.setName(update.getName());
+        if (update.getPhoneNumber() != null) user.setPhoneNumber(update.getPhoneNumber());
+        if (update.getProfilePicture() != null) user.setProfilePicture(update.getProfilePicture());
+        if (update.getGender() != null) user.setGender(update.getGender());
+        if (update.getOccupation() != null) user.setOccupation(update.getOccupation());
+        if (update.getOrganization() != null) user.setOrganization(update.getOrganization());
+        if (update.getJobTitle() != null) user.setJobTitle(update.getJobTitle());
+        if (update.getEducation() != null) user.setEducation(update.getEducation());
+        if (update.getInterests() != null) user.setInterests(update.getInterests());
+        if (update.getIndustry() != null) user.setIndustry(update.getIndustry());
+        if (update.getBio() != null) user.setBio(update.getBio());
+        if (update.getEmail() != null && !update.getEmail().equals(user.getEmail())) {
+            if (userRepository.existsByEmail(update.getEmail())) throw new RuntimeException("Email already exists");
+            user.setEmail(update.getEmail());
+        }
+        if (update.getPassword() != null && !update.getPassword().isEmpty()) {
+            user.setPassword(passwordEncoder.encode(update.getPassword()));
+        }
+
+        user = userRepository.save(user);
+
+        return UserDto.builder()
+                .id(user.getId())
+                .name(user.getName())
+                .email(user.getEmail())
+                .phoneNumber(user.getPhoneNumber())
+            .profilePicture(user.getProfilePicture())
+            .gender(user.getGender())
+            .occupation(user.getOccupation())
+            .organization(user.getOrganization())
+            .jobTitle(user.getJobTitle())
+            .education(user.getEducation())
+            .interests(user.getInterests())
+            .industry(user.getIndustry())
+            .bio(user.getBio())
+                .build();
+    }
+
+    @Transactional
+    public void deleteUser(String email) {
+        User user = userRepository.findByEmail(email);
+        if (user == null) throw new RuntimeException("User not found");
+        userRepository.delete(user);
     }
 
     @Transactional
