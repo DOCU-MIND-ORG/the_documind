@@ -28,3 +28,4 @@ public class ChatController {
                 .body(chatService.streamChat(id, request));
     }
 }
+
