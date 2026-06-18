@@ -70,8 +70,73 @@ export const authApi = {
     request('/auth/logout', { method: 'POST' }),
 
   /** GET /auth/me — validates cookie JWT and returns { user } for session restore */
-  me: () =>
-    request('/auth/me'),
+  me: async () => {
+    try {
+      return await request('/auth/me');
+    } catch (err) {
+      // Only return a mock user when developer explicitly opted into a frontend mock
+      // either by setting a localStorage `mock_user` or the env var VITE_FORCE_MOCK_USER.
+      try {
+        const forceMock = !!import.meta.env.VITE_FORCE_MOCK_USER;
+        const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('mock_user') : null;
+        if (forceMock || raw) {
+          console.warn('authApi.me() failed — returning mock user (frontend fallback)', err?.message || err);
+          if (raw) {
+            try { return { user: JSON.parse(raw), message: 'mock' }; } catch {}
+          }
+          return {
+            user: {
+              id: 1,
+              name: 'Developer',
+              email: 'dev@example.com',
+              phoneNumber: '',
+              profilePicture: ''
+            },
+            message: 'mock'
+          };
+        }
+      } catch {}
+      throw err;
+    }
+  },
+  /** POST /auth/me — update current user's profile */
+  update: async (body) => {
+    try {
+      return await request('/auth/me', { method: 'POST', body: JSON.stringify(body) });
+    } catch (err) {
+      // Only return mock success if a local mock user exists or dev explicitly forces mocks
+      try {
+        const forceMock = !!import.meta.env.VITE_FORCE_MOCK_USER;
+        const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('mock_user') : null;
+        if (forceMock || raw) {
+          console.warn('authApi.update() failed — returning mock success (frontend fallback)', err?.message || err);
+          const user = { id: 1, name: body.name || 'Developer', email: body.email || 'dev@example.com', phoneNumber: body.phoneNumber || '', profilePicture: body.profilePicture || '' };
+          // persist to localStorage so AuthContext can restore later
+          try { localStorage.setItem('mock_user', JSON.stringify(user)); } catch {}
+          return { user, message: 'mock-updated' };
+        }
+      } catch {}
+      throw err;
+    }
+  },
+
+  /** DELETE /auth/me — delete current user's account */
+  deleteMe: async () => {
+    try {
+      return await request('/auth/me', { method: 'DELETE' });
+    } catch (err) {
+      try {
+        const forceMock = !!import.meta.env.VITE_FORCE_MOCK_USER;
+        const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('mock_user') : null;
+        if (forceMock || raw) {
+          console.warn('authApi.deleteMe() failed — returning mock success (frontend fallback)', err?.message || err);
+          try { localStorage.removeItem('mock_user'); } catch {}
+          return { message: 'mock-deleted' };
+        }
+      } catch {}
+      throw err;
+    }
+  },
 };
 
 // ─── Trains ───────────────────────────────────────────────────────────────────

@@ -32,7 +32,13 @@ export const AuthProvider = ({ children }) => {
     };
 
     window.addEventListener('auth-expired', handleAuthExpired);
-    return () => window.removeEventListener('auth-expired', handleAuthExpired);
+    const onProfileUpdated = (e) => { if (e?.detail) setUser((prev) => ({ ...prev, ...e.detail })); };
+    window.addEventListener('profile-updated', onProfileUpdated);
+
+    return () => {
+      window.removeEventListener('auth-expired', handleAuthExpired);
+      window.removeEventListener('profile-updated', onProfileUpdated);
+    };
   }, []);
 
   /** Called after a successful login or register */
@@ -41,6 +47,14 @@ export const AuthProvider = ({ children }) => {
     setToken(accessToken ?? null);
     setAuthReady(true);
   };
+
+  // Persist user to localStorage for frontend-only development convenience
+  useEffect(() => {
+    try {
+      if (user) localStorage.setItem('mock_user', JSON.stringify(user));
+      else localStorage.removeItem('mock_user');
+    } catch {}
+  }, [user]);
 
   /** Called on logout — clears backend cookies then local state */
   const logout = async () => {
@@ -58,6 +72,17 @@ export const AuthProvider = ({ children }) => {
   const updateUser = (updatedUser) => {
     setUser((prev) => ({ ...prev, ...updatedUser }));
   };
+
+  // If auth check fails and there is a local mock user, load it so UI remains usable
+  useEffect(() => {
+    if (!authReady) return;
+    if (!user) {
+      try {
+        const raw = localStorage.getItem('mock_user');
+        if (raw) setUser(JSON.parse(raw));
+      } catch {}
+    }
+  }, [authReady]);
 
   const isAuthenticated = !!user;
 

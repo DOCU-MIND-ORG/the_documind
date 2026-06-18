@@ -5,7 +5,7 @@ import { useToast } from '../context/ToastContext.jsx';
 
 
 export default function Register() {
-  const endpoint = import.meta.env.VITE_API_URL;
+  const endpoint = import.meta.env.VITE_API_URL || 'http://localhost:8080';
   const navigate = useNavigate();
   const { login } = useAuth();
   const { showToast } = useToast();

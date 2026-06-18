@@ -2,9 +2,43 @@
 
 @layer base {
   body {
-    @apply bg-[#0f1115] text-[#e2e8f0] antialiased;
+    @apply antialiased;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
+}
+
+:root {
+  --bg-dark: #0f1115;
+  --bg-panel: #16181d;
+  --bg-input: rgba(255,255,255,0.02);
+  --text-main: #e2e8f0;
+  --text-muted: #94a3b8;
+  --border-color: rgba(255,255,255,0.04);
+  --accent-color: #3b82f6;
+  --shadow-elev: 0 10px 30px rgba(0,0,0,0.45);
+  --hover-bg: rgba(255,255,255,0.03);
+}
+
+.light {
+  --bg-dark: #f8fafc;
+  --bg-panel: #ffffff;
+  --bg-input: #f1f5f9;
+  --text-main: #0b1220;
+  --text-muted: #475569;
+  --border-color: rgba(11,18,32,0.06);
+  --accent-color: #2563eb;
+  --shadow-elev: 0 8px 24px rgba(11,18,32,0.06);
+  --hover-bg: rgba(11,18,32,0.04);
+}
+
+/* Apply background and text using variables */
+body.dark {
+  background: var(--bg-dark);
+  color: var(--text-main);
+}
+body.light {
+  background: var(--bg-dark);
+  color: var(--text-main);
 }
 
 /* Custom scrollbar styles */
@@ -37,4 +71,65 @@
 
 .animate-fade-in-up {
   animation: fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Improve select contrast and UI controls */
+select, .app-select {
+  background: var(--bg-panel);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.5rem;
+}
+
+select:focus, .app-select:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+  border-color: var(--accent-color);
+}
+
+/* Settings popover menu items should be block level for clear spacing */
+.settings-popover .settings-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+  background: transparent;
+  color: var(--text-main);
+  border: none;
+  border-radius: 8px;
+  margin-bottom: 0.35rem;
+}
+.settings-popover .settings-menu-item:hover {
+  background: var(--hover-bg);
+}
+
+.settings-popover { min-width: 180px; }
+
+/* Reusable variable-driven utilities */
+.panel {
+  background: var(--bg-panel);
+  color: var(--text-main);
+}
+.panel-muted {
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+  color: var(--text-main);
+}
+.panel-border {
+  border-right: 1px solid var(--border-color);
+}
+.input-bg {
+  background: var(--bg-input);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+}
+.text-main { color: var(--text-main); }
+.text-muted { color: var(--text-muted); }
+
+/* Small helper for rounded panels used in settings/profile */
+.panel-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 1rem;
+  box-shadow: var(--shadow-elev);
 }

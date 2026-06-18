@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useTheme } from '../context/ThemeContext.jsx';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { chatService } from '../services/chatService.js';
@@ -51,7 +52,9 @@ const BotAvatar = () => (
 );
 
 export default function Dashboard() {
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
+  const { theme, toggle } = useTheme();
+  const [collapsed, setCollapsed] = useState(false);
   const navigate = useNavigate();
   
   // Chat State
@@ -80,6 +83,12 @@ export default function Dashboard() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    const onUpdated = (e) => { if (e?.detail) updateUser(e.detail); };
+    window.addEventListener('profile-updated', onUpdated);
+    return () => window.removeEventListener('profile-updated', onUpdated);
+  }, [updateUser]);
 
   const handleSend = async (e) => {
     e.preventDefault();
@@ -152,9 +161,12 @@ export default function Dashboard() {
   return (
     <div className="dashboard-layout">
       {/* Sidebar */}
-      <aside className="chat-sidebar">
+      <aside className={`chat-sidebar ${collapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
           <div className="brand-title">Soul Society</div>
+          <div className="header-controls" style={{display:'flex', alignItems:'center', gap:8}}>
+            <button onClick={() => setCollapsed(c => !c)} className="p-1 text-muted hover:text-main">{collapsed ? '▶' : '◀'}</button>
+          </div>
         </div>
         
         <button className="new-chat-btn" onClick={() => setIsSessionModalOpen(true)}>
