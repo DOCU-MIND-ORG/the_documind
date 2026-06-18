@@ -15,6 +15,21 @@ export default function Login() {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   const handleChange = e => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
+  const isValidEmail = email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  const handleOpenForgotPassword = () => {
+    if (!form.email) {
+      showToast('Please enter your email address first.', 'error');
+      return;
+    }
+
+    if (!isValidEmail(form.email)) {
+      showToast('Please enter a valid email address.', 'error');
+      return;
+    }
+
+    setShowForgotPassword(true);
+  };
 
   const handleSubmit = async e => {
     e.preventDefault();
@@ -114,7 +129,7 @@ export default function Login() {
             </label>
             <button
               type="button"
-              onClick={() => setShowForgotPassword(true)}
+              onClick={handleOpenForgotPassword}
               className="text-[#94a3b8] transition-colors hover:text-white"
             >
               Forgot password?
@@ -139,6 +154,7 @@ export default function Login() {
 
       <ForgotPasswordModal
         isOpen={showForgotPassword}
+        email={form.email}
         onClose={() => setShowForgotPassword(false)}
       />
     </div>

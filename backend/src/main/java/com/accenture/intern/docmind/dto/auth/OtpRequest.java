@@ -1,4 +1,4 @@
 package com.accenture.intern.docmind.dto.auth;
 
-public class OtpRequest {
+public record OtpRequest(String email){
 }

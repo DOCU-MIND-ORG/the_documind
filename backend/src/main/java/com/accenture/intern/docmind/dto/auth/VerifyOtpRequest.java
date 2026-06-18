@@ -1,4 +1,4 @@
 package com.accenture.intern.docmind.dto.auth;
 
-public class VerifyOtpRequest {
+public record VerifyOtpRequest(String email,String otp) {
 }

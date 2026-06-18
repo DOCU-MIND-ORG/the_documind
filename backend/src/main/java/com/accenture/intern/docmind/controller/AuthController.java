@@ -11,6 +11,12 @@ import org.springframework.http.server.reactive.ServerHttpRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
+import com.accenture.intern.docmind.dto.auth.OtpRequest;
+import com.accenture.intern.docmind.dto.auth.VerifyOtpRequest;
+import com.accenture.intern.docmind.dto.auth.ResetPasswordRequest;
+
+import java.util.HashMap;
+import java.util.Map;
 
 
 @RestController
@@ -40,6 +46,56 @@ public class AuthController {
             return buildCookieResponse(response);
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ErrorResponse(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/request-otp")
+    public ResponseEntity<?> requestOtp(@RequestBody OtpRequest request){
+        try{
+            AuthService.requestOtp(request.email());
+
+            Map<String, String> body = new HashMap<>();
+            body.put("message", "OTP sent to your email");
+
+            return ResponseEntity.ok(body);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ErrorResponse(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/verify-otp")
+    public ResponseEntity<?> verifyOtp(@RequestBody VerifyOtpRequest request) {
+        try {
+            String verificationToken = AuthService.verifyOtp(request.email(), request.otp());
+
+            Map<String, String> body = new HashMap<>();
+            body.put("message", "OTP verified successfully");
+            body.put("verificationToken", verificationToken);
+
+            return ResponseEntity.ok(body);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ErrorResponse(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@RequestBody ResetPasswordRequest request) {
+        try {
+            AuthService.resetPassword(
+                    request.email(),
+                    request.newPassword(),
+                    request.verificationToken()
+            );
+
+            java.util.Map<String, String> body = new java.util.HashMap<>();
+            body.put("message", "Password reset successfully");
+
+            return ResponseEntity.ok(body);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(new ErrorResponse(e.getMessage()));
         }
     }
