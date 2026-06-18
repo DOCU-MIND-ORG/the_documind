@@ -16,8 +16,12 @@ import com.accenture.intern.docmind.repository.OtpRepository;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.UUID;
-import org.springframework.mail.SimpleMailMessage;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.internet.MimeMessage;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 
 @Service
 @RequiredArgsConstructor
@@ -29,6 +33,9 @@ public class AuthService {
     private final JwtService jwtService;
     private final RefreshTokenService refreshTokenService;
     private final JavaMailSender mailSender;
+
+    @Value("${spring.mail.username}")
+    private String mailUsername;
 
     private final SecureRandom secureRandom = new SecureRandom();
 
@@ -93,7 +100,7 @@ public class AuthService {
 
         otpRepository.save(otpEntity);
 
-        System.out.println("OTP for " + email + " is: " + otp);
+        //System.out.println("OTP for " + email + " is: " + otp);
         sendOtpEmail(user.getEmail(), otp);
     }
 
@@ -175,16 +182,72 @@ public class AuthService {
     }
 
     private void sendOtpEmail(String email, String otp) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setTo(email);
-        message.setSubject("DocuMind password reset OTP");
-        message.setText(
-                "Your DocuMind password reset OTP is: " + otp + "\n\n" +
-                        "This OTP will expire in 10 minutes.\n\n" +
-                        "If you did not request a password reset, please ignore this email."
-        );
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
-        mailSender.send(message);
+            helper.setFrom(new InternetAddress(mailUsername, "Documind"));
+            helper.setTo(email);
+            helper.setSubject("Documind password reset OTP");
+            helper.setText(buildOtpEmailHtml(otp), true);
+
+            mailSender.send(message);
+        } catch (MessagingException | java.io.UnsupportedEncodingException ex) {
+            throw new RuntimeException("Failed to send OTP email", ex);
+        }
+    }
+
+    private String buildOtpEmailHtml(String otp) {
+        return """
+                <!doctype html>
+                <html lang="en">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Documind OTP</title>
+                </head>
+                <body style="margin:0;padding:0;background:#f3f6fb;font-family:Arial,Helvetica,sans-serif;color:#172033;">
+                    <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="background:#f3f6fb;padding:32px 16px;">
+                        <tr>
+                            <td align="center">
+                                <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border-radius:18px;overflow:hidden;border:1px solid #e3e8f2;box-shadow:0 18px 45px rgba(23,32,51,0.08);">
+                                    <tr>
+                                        <td style="padding:28px 32px;background:#172033;">
+                                            <table role="presentation" cellspacing="0" cellpadding="0">
+                                                <tr>
+                                                    <td style="width:46px;height:46px;border-radius:14px;background:#2fd6a2;color:#172033;font-size:22px;font-weight:800;text-align:center;line-height:46px;">D</td>
+                                                    <td style="padding-left:14px;color:#ffffff;font-size:24px;font-weight:800;letter-spacing:0;">Documind</td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding:34px 32px 12px;">
+                                            <h1 style="margin:0 0 12px;font-size:24px;line-height:1.3;color:#172033;">Password reset verification</h1>
+                                            <p style="margin:0;color:#59667a;font-size:15px;line-height:1.7;">Use this one-time password to continue resetting your Documind account password.</p>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding:18px 32px 8px;">
+                                            <div style="background:#f7fafc;border:1px solid #dce5ef;border-radius:14px;padding:22px;text-align:center;">
+                                                <div style="font-size:12px;line-height:1;color:#728096;text-transform:uppercase;font-weight:700;letter-spacing:1.4px;margin-bottom:12px;">Your OTP</div>
+                                                <div style="font-size:36px;line-height:1;font-weight:800;color:#172033;letter-spacing:8px;">%s</div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding:18px 32px 34px;">
+                                            <p style="margin:0 0 12px;color:#59667a;font-size:14px;line-height:1.7;">This OTP expires in <strong style="color:#172033;">10 minutes</strong>.</p>
+                                            <p style="margin:0;color:#8a95a6;font-size:13px;line-height:1.6;">If you did not request a password reset, you can safely ignore this email.</p>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                    </table>
+                </body>
+                </html>
+                """.formatted(otp);
     }
 
     private LoginResponse generateAuthResponse(User user, String message) {
