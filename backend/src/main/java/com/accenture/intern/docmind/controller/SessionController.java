@@ -1,6 +1,7 @@
 package com.accenture.intern.docmind.controller;
 
 import com.accenture.intern.docmind.dto.session.CreateSessionRequest;
+import com.accenture.intern.docmind.dto.session.RenameSessionRequest;
 import com.accenture.intern.docmind.dto.session.SessionResponse;
 import com.accenture.intern.docmind.dto.session.MessageResponse;
 import com.accenture.intern.docmind.service.SessionService;
@@ -50,6 +51,17 @@ public class SessionController {
     ) {
         sessionService.deleteSession(principal.getName(),id);
         return ResponseEntity.noContent().build();
+    }
+
+    // PUT /api/sessions/{id}/rename
+    @PutMapping("/{id}/rename")
+    public ResponseEntity<SessionResponse> renameSession(
+            @PathVariable Long id,
+            @RequestBody RenameSessionRequest request,
+            Principal principal
+    ) {
+        SessionResponse response = sessionService.renameSession(principal.getName(), id, request.getTitle());
+        return ResponseEntity.ok(response);
     }
 
     // GET /api/sessions/{id}/messages

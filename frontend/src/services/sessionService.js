@@ -16,5 +16,11 @@ export const sessionService = {
       method: 'DELETE',
     }),
 
+  rename: (sessionId, title) =>
+    request(`/api/sessions/${sessionId}/rename`, {
+      method: 'PUT',
+      body: JSON.stringify({ title }),
+    }),
+
   getMessages: (sessionId) => request(`/api/sessions/${sessionId}/messages`),
 };

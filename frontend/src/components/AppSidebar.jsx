@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useSessions } from '../context/SessionsContext.jsx';
 import { sessionService } from '../services/sessionService.js';
 import { useToast } from '../context/ToastContext.jsx';
+import Modal from './Modal.jsx';
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
@@ -46,6 +47,22 @@ const PaperclipIcon = () => (
   </svg>
 );
 
+const ShareIcon = () => (
+  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+    <circle cx="18" cy="5" r="3" />
+    <circle cx="6" cy="12" r="3" />
+    <circle cx="18" cy="19" r="3" />
+    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+  </svg>
+);
+
+const RenameIcon = () => (
+  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.83 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
+  </svg>
+);
+
 const GearIcon = () => (
   <svg className="w-[14px] h-[14px] text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
     <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.43l-1.003.828c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.43l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.991l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
@@ -84,12 +101,14 @@ const LogoMark = () => (
  */
 export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobileOpen }) {
   const { user, logout } = useAuth();
-  const { sessions, loading, removeSession } = useSessions();
+  const { sessions, loading, removeSession, updateSession } = useSessions();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [openMenuId, setOpenMenuId]     = useState(null); // which session's ⋮ menu is open
+  const [renameSessionId, setRenameSessionId] = useState(null);
+  const [renameTitle, setRenameTitle]         = useState('');
 
   // Derive active session from URL
   const activeId = location.pathname.startsWith('/chat/')
@@ -123,6 +142,38 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
   const toggleMenu = (e, sessionId) => {
     e.stopPropagation();
     setOpenMenuId(prev => prev === sessionId ? null : sessionId);
+  };
+
+  const handleShare = async (e, sessionId) => {
+    e.stopPropagation();
+    setOpenMenuId(null);
+    const shareUrl = `${window.location.origin}/chat/${sessionId}`;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      showToast('Share link copied to clipboard!', 'success');
+    } catch (err) {
+      showToast('Failed to copy link', 'error');
+    }
+  };
+
+  const handleRenameClick = (e, sessionId, currentTitle) => {
+    e.stopPropagation();
+    setOpenMenuId(null);
+    setRenameSessionId(sessionId);
+    setRenameTitle(currentTitle || '');
+  };
+
+  const handleRenameSubmit = async (e) => {
+    if (e) e.preventDefault();
+    if (!renameTitle.trim()) return;
+    try {
+      await sessionService.rename(renameSessionId, renameTitle.trim());
+      updateSession(renameSessionId, { title: renameTitle.trim() });
+      showToast('Session renamed successfully', 'success');
+      setRenameSessionId(null);
+    } catch (err) {
+      showToast(err.message || 'Failed to rename session', 'error');
+    }
   };
 
   // ── Shared session list ────────────────────────────────────────────────────
@@ -196,6 +247,22 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
                         >
                           <TrashIcon />
                           Delete session
+                        </button>
+                        <div className="h-px bg-white/[0.05] mx-2 my-0.5" />
+                        <button
+                          onClick={(e) => handleShare(e, s.sessionId)}
+                          className="flex items-center gap-2.5 w-full text-left px-3 py-2 text-[12px] text-slate-300 hover:text-white hover:bg-white/[0.05] transition-colors"
+                        >
+                          <ShareIcon />
+                          Share
+                        </button>
+                        <div className="h-px bg-white/[0.05] mx-2 my-0.5" />
+                        <button
+                          onClick={(e) => handleRenameClick(e, s.sessionId, s.title)}
+                          className="flex items-center gap-2.5 w-full text-left px-3 py-2 text-[12px] text-slate-300 hover:text-white hover:bg-white/[0.05] transition-colors"
+                        >
+                          <RenameIcon />
+                          Rename
                         </button>
                       </div>
                     )}
@@ -332,6 +399,43 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
         <SessionList />
         <UserFooter show={expanded} />
       </aside>
+
+      <Modal
+        isOpen={renameSessionId !== null}
+        title="Rename Session"
+        onClose={() => setRenameSessionId(null)}
+        footer={
+          <>
+            <button
+              onClick={() => setRenameSessionId(null)}
+              className="px-4 py-2.5 text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/[0.03] active:bg-white/[0.06] rounded-xl transition-all cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleRenameSubmit}
+              disabled={!renameTitle.trim()}
+              className="px-4 py-2.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 active:scale-95 disabled:scale-100 disabled:opacity-40 rounded-xl shadow-lg shadow-blue-500/20 transition-all cursor-pointer"
+            >
+              Rename
+            </button>
+          </>
+        }
+      >
+        <form onSubmit={handleRenameSubmit} className="flex flex-col gap-2.5">
+          <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider pl-1">
+            Session Title
+          </label>
+          <input
+            type="text"
+            value={renameTitle}
+            onChange={(e) => setRenameTitle(e.target.value)}
+            className="w-full bg-white/[0.05] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-[13px] text-slate-100 outline-none focus:border-blue-500/40 focus:ring-1 focus:ring-blue-500/40 transition-all placeholder:text-slate-600"
+            placeholder="Enter new title..."
+            autoFocus
+          />
+        </form>
+      </Modal>
     </>
   );
 }

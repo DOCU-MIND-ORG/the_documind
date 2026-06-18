@@ -93,6 +93,25 @@ public class SessionService {
         sessionRepository.delete(session);
     }
 
+    public SessionResponse renameSession(String userEmail, Long sessionId, String newTitle) {
+        User user = userRepository.findByEmail(userEmail);
+        if (user == null) {
+            throw new RuntimeException("User Not Found 🚫");
+        }
+
+        Session session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new RuntimeException("No Session found 🚫"));
+
+        if (!session.getUser().getId().equals(user.getId())) {
+            throw new RuntimeException("Access Denied !! You seems to be 👽");
+        }
+
+        session.setTitle(newTitle);
+        session.setUpdatedAt(LocalDateTime.now());
+        Session savedSession = sessionRepository.save(session);
+        return mapToResponse(savedSession);
+    }
+
     public List<MessageResponse> getSessionMessages(String userEmail, Long sessionId) {
         User user = userRepository.findByEmail(userEmail);
         if(user == null) throw new RuntimeException("User Not Found 🚫");
