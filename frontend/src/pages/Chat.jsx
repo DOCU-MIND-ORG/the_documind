@@ -1,4 +1,4 @@
-import React, { useReducer, useRef, useEffect, useCallback, useState } from 'react';
+import { useReducer, useRef, useEffect, useCallback, useState } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useSessions } from '../context/SessionsContext.jsx';
@@ -9,7 +9,7 @@ import { useToast } from '../context/ToastContext.jsx';
 import Streaming from '../components/streaming.jsx';
 import { chatReducer, initialChatState } from '../state/chatReducer.js';
 
-// ─── Icons (unchanged) ────────────────────────────────────────────────────
+// ─── Icons ───────────────────────────────────────────────────────────────────
 
 const SendIcon = () => (
   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -40,25 +40,16 @@ const BotAvatar = () => (
   </div>
 );
 
-/** Format bytes to human readable string */
 const formatBytes = (bytes) => {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 };
 
-// ─── Component ───────────────────────────────────────────────────────────
-//
-// This single component renders BOTH the "new chat" landing state and an
-// active conversation. There is no separate Dashboard.jsx for composing the
-// first message — that split is exactly what caused the lost-message bug,
-// because it required smuggling the typed text across a navigation via
-// location.state. Here, the textarea/send handler never change identity
-// across the "no session yet" -> "session exists" transition, so there's
-// nothing to lose.
+// ─── Chat ────────────────────────────────────────────────────────────────────
 
 export default function Chat() {
-  const { sessionId: routeSessionId } = useParams(); // undefined on "/"
+  const { sessionId: routeSessionId } = useParams();
   const navigate                      = useNavigate();
   const { user }                      = useAuth();
   const { sessions, addSession }      = useSessions();
@@ -70,25 +61,24 @@ export default function Chat() {
     sessionId: routeSessionId ?? null,
   });
 
-  const [input, setInput] = useState('');
-  const [isDragging, setIsDragging]     = useState(false);
-  const [pendingFiles, setPendingFiles] = useState([]); // { file, status: 'pending'|'uploading'|'done'|'error', name }
-  const bottomRef   = useRef(null);
-  const textareaRef = useRef(null);
+  const [input, setInput]             = useState('');
+  const [isDragging, setIsDragging]   = useState(false);
+  const [pendingFiles, setPendingFiles] = useState([]);
+  const bottomRef    = useRef(null);
+  const textareaRef  = useRef(null);
   const fileInputRef = useRef(null);
-  const dragCounterRef = useRef(0); // track nested dragenter/dragleave
+  const dragCounterRef = useRef(0);
 
   const [greetingIndex] = useState(() => Math.floor(Math.random() * 12));
-
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
-  const [selectedModel, setSelectedModel] = useState(() => {
-    return localStorage.getItem('selectedModel') || '3.1 Pro';
-  });
+  const [selectedModel, setSelectedModel] = useState(
+    () => localStorage.getItem('selectedModel') || '3.1 Pro'
+  );
 
   const models = [
-    { name: '3.1 Flash-Lite', description: 'Fastest answers', isNew: true },
-    { name: '3.5 Flash', description: 'All-around help', isNew: true },
-    { name: '3.1 Pro', description: 'Advanced maths and code', isNew: false }
+    { name: '3.1 Flash-Lite', description: 'Fastest answers',            isNew: true  },
+    { name: '3.5 Flash',      description: 'All-around help',            isNew: true  },
+    { name: '3.1 Pro',        description: 'Advanced maths and code',    isNew: false },
   ];
 
   const handleModelSelect = (name) => {
@@ -99,107 +89,61 @@ export default function Chat() {
 
   const session = sessions.find(s => String(s.sessionId) === String(state.sessionId));
 
-  // ── Sync reducer's sessionId when the URL param changes (back/forward,
-  //    sidebar click) — this is a ONE-WAY sync: URL -> state. Sending a
-  //    message never relies on this running first; see handleSend below. ──
   useEffect(() => {
     dispatch({ type: 'SYNC_ROUTE_SESSION', payload: { sessionId: routeSessionId ?? null } });
   }, [routeSessionId]);
 
-  // ── Load message history whenever we land on an existing session ──
   useEffect(() => {
-    if (!state.sessionId) return; // new-chat screen, nothing to load
-    
-    // Prevent fetching if we just created the session and populated it optimistically
+    if (!state.sessionId) return;
     if (state.messages.length > 0) return;
-
     let cancelled = false;
     dispatch({ type: 'MESSAGES_LOADING', sessionId: state.sessionId });
-
     sessionService.getMessages(state.sessionId)
-      .then(msgs => {
-        if (cancelled) return;
-        dispatch({ type: 'MESSAGES_LOADED', sessionId: state.sessionId, payload: { messages: msgs } });
-      })
-      .catch(err => {
-        if (cancelled) return;
-        dispatch({ type: 'MESSAGES_LOAD_FAILED', sessionId: state.sessionId });
-        showToast(err.message || 'Failed to load messages', 'error');
-      });
-
+      .then(msgs => { if (!cancelled) dispatch({ type: 'MESSAGES_LOADED', sessionId: state.sessionId, payload: { messages: msgs } }); })
+      .catch(err  => { if (!cancelled) { dispatch({ type: 'MESSAGES_LOAD_FAILED', sessionId: state.sessionId }); showToast(err.message || 'Failed to load messages', 'error'); } });
     return () => { cancelled = true; };
   }, [state.sessionId]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [state.messages]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [state.messages]);
 
-  // ── Drag and drop handlers ────────────────────────────────────────────────
-  const onDragEnter = useCallback((e) => {
-    e.preventDefault();
-    dragCounterRef.current += 1;
-    if (dragCounterRef.current === 1) setIsDragging(true);
-  }, []);
-
-  const onDragLeave = useCallback((e) => {
-    e.preventDefault();
-    dragCounterRef.current -= 1;
-    if (dragCounterRef.current === 0) setIsDragging(false);
-  }, []);
-
-  const onDragOver = useCallback((e) => { e.preventDefault(); }, []);
-
-  const onDrop = useCallback((e) => {
-    e.preventDefault();
-    dragCounterRef.current = 0;
-    setIsDragging(false);
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) addFiles(files);
-  }, []);
+  const onDragEnter = useCallback((e) => { e.preventDefault(); dragCounterRef.current += 1; if (dragCounterRef.current === 1) setIsDragging(true); }, []);
+  const onDragLeave = useCallback((e) => { e.preventDefault(); dragCounterRef.current -= 1; if (dragCounterRef.current === 0) setIsDragging(false); }, []);
+  const onDragOver  = useCallback((e) => { e.preventDefault(); }, []);
+  const onDrop      = useCallback((e) => { e.preventDefault(); dragCounterRef.current = 0; setIsDragging(false); const files = Array.from(e.dataTransfer.files); if (files.length > 0) addFiles(files); }, []);
 
   const addFiles = useCallback((files) => {
-    const newEntries = files.map(f => ({ file: f, name: f.name, status: 'pending' }));
-    setPendingFiles(prev => [...prev, ...newEntries]);
+    setPendingFiles(prev => [...prev, ...files.map(f => ({ file: f, name: f.name, status: 'pending' }))]);
   }, []);
 
   const removePendingFile = useCallback((index) => {
     setPendingFiles(prev => prev.filter((_, i) => i !== index));
   }, []);
 
-  // Upload all pending files; requires a valid sessionId
   const uploadPendingFiles = useCallback(async (sessionId) => {
     const toUpload = pendingFiles.filter(f => f.status === 'pending');
     if (toUpload.length === 0) return;
-
     for (let i = 0; i < pendingFiles.length; i++) {
       if (pendingFiles[i].status !== 'pending') continue;
       setPendingFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: 'uploading' } : f));
       try {
         await attachmentService.upload(sessionId, pendingFiles[i].file);
         setPendingFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: 'done' } : f));
-      } catch (err) {
+      } catch {
         setPendingFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: 'error' } : f));
         showToast(`Failed to upload ${pendingFiles[i].name}`, 'error');
       }
     }
-    // Clear done files after a short delay
     setTimeout(() => setPendingFiles(prev => prev.filter(f => f.status !== 'done')), 2000);
   }, [pendingFiles, showToast]);
 
-  // ── The single send path, used identically whether or not a session
-  //    exists yet. This is the fix for the original bug. ──
   const handleSend = useCallback(async (e) => {
     if (e) e.preventDefault();
     const query = input.trim();
     const hasPendingFiles = pendingFiles.some(f => f.status === 'pending');
     if (!query && !hasPendingFiles) return;
     if (state.isStreaming) return;
-
     setInput('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
-
-    // 1. Resolve a session id FIRST, synchronously in this same handler —
-    //    no navigation round-trip, no location.state, nothing to lose.
     let activeSessionId = state.sessionId;
     if (!activeSessionId) {
       try {
@@ -209,61 +153,19 @@ export default function Chat() {
         addSession(created);
         dispatch({ type: 'SET_SESSION', payload: { sessionId: activeSessionId } });
         navigate(`/chat/${activeSessionId}`, { replace: true });
-      } catch (err) {
-        showToast(err.message || 'Failed to create session', 'error');
-        setInput(query);
-        return;
-      }
+      } catch (err) { showToast(err.message || 'Failed to create session', 'error'); setInput(query); return; }
     }
-
-    // 1b. Upload any pending files immediately after we have a session id
-    if (hasPendingFiles) {
-      await uploadPendingFiles(activeSessionId);
-    }
-
-    // If there's no text query, we're done (files-only upload)
+    if (hasPendingFiles) await uploadPendingFiles(activeSessionId);
     if (!query) return;
-
-    // 2. Optimistic insert — message renders NOW, independent of the
-    //    network call below succeeding or failing.
-    const userMessage = {
-      id: crypto.randomUUID(),
-      role: 'USER',
-      text: query,
-      createdAt: new Date().toISOString(),
-      status: 'complete',
-    };
-    const assistantPlaceholder = {
-      id: crypto.randomUUID(),
-      role: 'ASSISTANT',
-      text: '',
-      createdAt: new Date().toISOString(),
-      status: 'streaming',
-    };
-
-    dispatch({
-      type: 'SEND_MESSAGE_OPTIMISTIC',
-      sessionId: activeSessionId,
-      payload: { userMessage, assistantPlaceholder },
-    });
-
-    // 3. Stream the response. Every dispatch is tagged with activeSessionId,
-    //    so if the user navigates away mid-stream, the reducer guard at the
-    //    top of chatReducer silently drops these — no cross-session bleed.
+    const userMessage = { id: crypto.randomUUID(), role: 'USER', text: query, createdAt: new Date().toISOString(), status: 'complete' };
+    const assistantPlaceholder = { id: crypto.randomUUID(), role: 'ASSISTANT', text: '', createdAt: new Date().toISOString(), status: 'streaming' };
+    dispatch({ type: 'SEND_MESSAGE_OPTIMISTIC', sessionId: activeSessionId, payload: { userMessage, assistantPlaceholder } });
     try {
       await chatService.streamMessage(
-        activeSessionId,
-        query,
-        (chunk) => dispatch({
-          type: 'APPEND_STREAM_CHUNK',
-          sessionId: activeSessionId,
-          payload: { messageId: assistantPlaceholder.id, chunk },
-        }),
-        (err) => {
-          dispatch({ type: 'STREAM_ERROR', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } });
-          showToast(err.message || 'Stream error', 'error');
-        },
-        () => dispatch({ type: 'STREAM_DONE', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } }),
+        activeSessionId, query,
+        (chunk) => dispatch({ type: 'APPEND_STREAM_CHUNK', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id, chunk } }),
+        (err)   => { dispatch({ type: 'STREAM_ERROR', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } }); showToast(err.message || 'Stream error', 'error'); },
+        ()      => dispatch({ type: 'STREAM_DONE', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } }),
       );
     } catch (err) {
       dispatch({ type: 'STREAM_ERROR', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } });
@@ -271,16 +173,8 @@ export default function Chat() {
     }
   }, [input, pendingFiles, state.sessionId, state.isStreaming, navigate, addSession, showToast, uploadPendingFiles]);
 
-  const onKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); }
-  };
-
-  const onInputChange = (e) => {
-    setInput(e.target.value);
-    const ta = e.target;
-    ta.style.height = 'auto';
-    ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
-  };
+  const onKeyDown     = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); } };
+  const onInputChange = (e) => { setInput(e.target.value); const ta = e.target; ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 160) + 'px'; };
 
   const firstName = user?.name?.split(' ')[0] || 'there';
   const isNewChat = !state.sessionId;
@@ -303,21 +197,24 @@ export default function Chat() {
   return (
     <div
       className="flex-1 flex flex-col h-full overflow-hidden relative"
+      style={{ backgroundColor: 'var(--color-bg-base)' }}
       onDragEnter={onDragEnter}
       onDragLeave={onDragLeave}
       onDragOver={onDragOver}
       onDrop={onDrop}
     >
-      {/* Drag overlay */}
+      {/* ── Drag-over overlay ── */}
       {isDragging && (
-        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#0f1115]/80 backdrop-blur-sm border-2 border-dashed border-blue-500/60 rounded-none pointer-events-none">
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center backdrop-blur-sm border-2 border-dashed border-blue-500/60 pointer-events-none"
+          style={{ backgroundColor: 'color-mix(in srgb, var(--color-bg-base) 85%, transparent)' }}>
           <svg className="w-12 h-12 text-blue-400 mb-3 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
           </svg>
-          <p className="text-blue-300 text-base font-semibold">Drop files to upload</p>
-          <p className="text-slate-500 text-xs mt-1">PDF, images, text, markdown…</p>
+          <p className="text-blue-500 text-base font-semibold">Drop files to upload</p>
+          <p className="text-secondary text-xs mt-1">PDF, images, text, markdown…</p>
         </div>
       )}
+
       {/* Hidden file input */}
       <input
         ref={fileInputRef}
@@ -326,9 +223,12 @@ export default function Chat() {
         className="hidden"
         onChange={(e) => { if (e.target.files.length) addFiles(Array.from(e.target.files)); e.target.value = ''; }}
       />
-      <header className="flex items-center gap-3 h-14 px-4 border-b border-white/[0.05] shrink-0 z-30 relative">
+
+      {/* ── Header ── */}
+      <header className="flex items-center gap-3 h-14 px-4 shrink-0 z-30 relative divider-vert"
+        style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-surface)' }}>
         <button
-          className="md:hidden p-2 -ml-1 text-slate-400 hover:text-white rounded-xl hover:bg-white/[0.05] transition-all"
+          className="md:hidden p-2 -ml-1 text-secondary rounded-xl interactive"
           onClick={openMobileSidebar}
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -341,10 +241,10 @@ export default function Chat() {
             <button
               type="button"
               onClick={() => setModelMenuOpen(prev => !prev)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[15px] font-semibold text-slate-300 hover:text-white hover:bg-white/[0.05] rounded-xl transition-all cursor-pointer select-none"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[15px] font-semibold text-primary rounded-xl interactive cursor-pointer select-none"
             >
-              DocuMind <span className="text-slate-500 font-medium">{selectedModel}</span>
-              <svg className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${modelMenuOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+              DocuMind <span className="text-tertiary font-medium">{selectedModel}</span>
+              <svg className={`w-3.5 h-3.5 text-tertiary transition-transform duration-200 ${modelMenuOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
               </svg>
             </button>
@@ -352,7 +252,7 @@ export default function Chat() {
             {modelMenuOpen && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setModelMenuOpen(false)} />
-                <div className="absolute left-0 mt-2 z-50 w-[280px] bg-[#1c2028] border border-white/[0.08] rounded-2xl shadow-2xl py-1.5 animate-fade-in-up">
+                <div className="absolute left-0 mt-2 z-50 w-[280px] menu-popup py-1.5 animate-fade-in-up">
                   {models.map(m => {
                     const isSelected = m.name === selectedModel;
                     return (
@@ -360,29 +260,25 @@ export default function Chat() {
                         key={m.name}
                         type="button"
                         onClick={() => handleModelSelect(m.name)}
-                        className="flex items-start w-full text-left px-4 py-2.5 hover:bg-white/[0.04] transition-all group cursor-pointer"
+                        className="flex items-start w-full text-left px-4 py-2.5 interactive group cursor-pointer"
                       >
                         <div className="w-5 shrink-0 pt-0.5">
                           {isSelected && (
-                            <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                            <svg className="w-3.5 h-3.5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                             </svg>
                           )}
                         </div>
                         <div className="flex-1 min-w-0 pr-2">
                           <div className="flex items-center justify-between gap-2">
-                            <span className="text-[13px] font-semibold text-slate-100 group-hover:text-blue-400 transition-colors">
+                            <span className="text-[13px] font-semibold text-primary group-hover:text-blue-500 transition-colors">
                               {m.name}
                             </span>
                             {m.isNew && (
-                              <span className="px-2 py-0.5 text-[9px] font-medium bg-white/[0.08] text-white/90 rounded-full shrink-0">
-                                New
-                              </span>
+                              <span className="px-2 py-0.5 text-[9px] font-medium bg-blue-500/10 text-blue-500 rounded-full shrink-0">New</span>
                             )}
                           </div>
-                          <p className="text-[11px] text-slate-400 mt-0.5 leading-normal">
-                            {m.description}
-                          </p>
+                          <p className="text-[11px] text-secondary mt-0.5 leading-normal">{m.description}</p>
                         </div>
                       </button>
                     );
@@ -392,26 +288,27 @@ export default function Chat() {
             )}
           </div>
         ) : (
-          <h1 className="flex-1 text-[13px] font-medium text-slate-300 truncate">
+          <h1 className="flex-1 text-[13px] font-medium text-secondary truncate">
             {session?.title || 'Loading…'}
           </h1>
         )}
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6">
+      {/* ── Messages / Landing ── */}
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6" style={{ backgroundColor: 'var(--color-bg-base)' }}>
         {isNewChat ? (
           <div className="h-full flex flex-col items-center justify-center text-center px-4">
             <BotAvatar />
-            <h2 className="mt-4 text-2xl font-bold text-white max-w-lg leading-tight">
+            <h2 className="mt-4 text-2xl font-bold text-primary max-w-lg leading-tight">
               {greetings[greetingIndex]}
             </h2>
-            <p className="mt-2 text-[13px] text-slate-500 max-w-xs leading-relaxed">
+            <p className="mt-2 text-[13px] text-tertiary max-w-xs leading-relaxed">
               Your AI-powered document assistant. Type a message below to get started.
             </p>
           </div>
         ) : state.messagesLoading ? (
           <div className="h-full flex items-center justify-center">
-            <div className="flex flex-col items-center gap-3 text-slate-600">
+            <div className="flex flex-col items-center gap-3 text-secondary">
               <div className="w-5 h-5 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
               <span className="text-xs">Loading messages…</span>
             </div>
@@ -422,12 +319,18 @@ export default function Chat() {
               const isBot = msg.role === 'ASSISTANT';
               return (
                 <div key={msg.id} className={`flex items-start gap-2.5 ${isBot ? '' : 'flex-row-reverse'}`}>
+                  {isBot && <BotAvatar />}
                   <div className={`flex flex-col gap-1 max-w-[85%] ${isBot ? '' : 'items-end'}`}>
-                    <div className={`px-4 py-3 rounded-2xl text-[13px] leading-relaxed shadow-sm ${
+                    <div className={`px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${
                       isBot
-                        ? 'bg-[#1a1e26] border border-white/[0.06] text-slate-200 rounded-tl-sm'
+                        ? 'bg-surface border-t rounded-tl-sm text-primary'
                         : 'bg-blue-600 text-white rounded-tr-sm'
-                    } ${msg.status === 'error' ? 'border border-red-500/40' : ''}`}>
+                    } ${msg.status === 'error' ? 'border-red-500/40' : ''}`}
+                    style={isBot ? {
+                      backgroundColor: 'var(--color-bg-surface)',
+                      border: `1px solid var(--color-border)`,
+                      boxShadow: 'var(--shadow-sm)',
+                    } : {}}>
                       {isBot
                         ? <Streaming text={msg.text} isStreaming={msg.id === state.streamingMessageId} />
                         : <p className="whitespace-pre-wrap">{msg.text}</p>
@@ -445,7 +348,9 @@ export default function Chat() {
         )}
       </div>
 
-      <div className="shrink-0 px-4 sm:px-6 pb-5 pt-2 border-t border-white/[0.05] bg-[#0f1115]">
+      {/* ── Input bar ── */}
+      <div className="shrink-0 px-4 sm:px-6 pb-5 pt-3"
+        style={{ borderTop: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-surface)' }}>
         <form onSubmit={handleSend} className="max-w-2xl mx-auto">
 
           {/* Pending file pills */}
@@ -455,18 +360,19 @@ export default function Chat() {
                 <div
                   key={i}
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${
-                    f.status === 'uploading' ? 'bg-blue-500/10 border-blue-500/30 text-blue-300' :
-                    f.status === 'done'      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' :
-                    f.status === 'error'     ? 'bg-red-500/10 border-red-500/30 text-red-300' :
-                                              'bg-white/[0.05] border-white/[0.1] text-slate-300'
+                    f.status === 'uploading' ? 'bg-blue-500/10 border-blue-500/30 text-blue-500' :
+                    f.status === 'done'      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600' :
+                    f.status === 'error'     ? 'bg-red-500/10 border-red-500/30 text-red-500' :
+                                              'bg-subtle border-t text-secondary'
                   }`}
+                  style={['pending'].includes(f.status) ? { backgroundColor: 'var(--color-bg-subtle)', borderColor: 'var(--color-border)' } : {}}
                 >
-                  {f.status === 'uploading' && <div className="w-2.5 h-2.5 border border-blue-300/50 border-t-blue-300 rounded-full animate-spin" />}
+                  {f.status === 'uploading' && <div className="w-2.5 h-2.5 border border-blue-400/50 border-t-blue-400 rounded-full animate-spin" />}
                   {f.status === 'done'      && <span>✓</span>}
                   {f.status === 'error'     && <span>✗</span>}
                   <span className="max-w-[120px] truncate">{f.name}</span>
                   {(f.status === 'pending' || f.status === 'error') && (
-                    <button type="button" onClick={() => removePendingFile(i)} className="text-slate-500 hover:text-slate-200 transition-colors ml-0.5">
+                    <button type="button" onClick={() => removePendingFile(i)} className="text-tertiary hover:text-secondary transition-colors ml-0.5">
                       <XIcon />
                     </button>
                   )}
@@ -475,12 +381,21 @@ export default function Chat() {
             </div>
           )}
 
-          <div className="flex items-end gap-2.5 bg-[#1a1e26] border border-white/[0.08] rounded-2xl px-4 py-3 transition-all focus-within:border-blue-500/40 focus-within:shadow-[0_0_0_1px_rgba(59,130,246,0.15)]">
-            {/* Paperclip button */}
+          {/* Input field */}
+          <div
+            className="flex items-end gap-2.5 rounded-2xl px-4 py-3 transition-all"
+            style={{
+              backgroundColor: 'var(--color-bg-input)',
+              border: '1px solid var(--color-border)',
+            }}
+            onFocus={(e) => e.currentTarget.style.borderColor = 'var(--color-accent)'}
+            onBlur={(e) => e.currentTarget.style.borderColor  = 'var(--color-border)'}
+          >
+            {/* Paperclip */}
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="p-1.5 text-slate-500 hover:text-slate-200 rounded-lg hover:bg-white/[0.05] transition-all shrink-0"
+              className="p-1.5 text-tertiary hover:text-secondary rounded-lg interactive shrink-0"
               title="Attach file"
             >
               <PaperclipIcon />
@@ -495,9 +410,10 @@ export default function Chat() {
               rows={1}
               disabled={state.isStreaming || state.messagesLoading}
               autoFocus
-              className="flex-1 bg-transparent border-0 text-[13px] text-slate-100 outline-none placeholder-slate-600 resize-none max-h-40 min-h-[22px] py-0.5 leading-relaxed disabled:opacity-50"
-              style={{ height: '22px' }}
+              className="flex-1 bg-transparent border-0 text-[13px] text-primary outline-none resize-none max-h-40 min-h-[22px] py-0.5 leading-relaxed disabled:opacity-50"
+              style={{ height: '22px', color: 'var(--color-text-primary)', caretColor: 'var(--color-accent)' }}
             />
+
             <button
               type="submit"
               disabled={(!input.trim() && !pendingFiles.some(f => f.status === 'pending')) || state.isStreaming || state.messagesLoading}
@@ -509,7 +425,8 @@ export default function Chat() {
               }
             </button>
           </div>
-          <p className="text-center text-[11px] text-slate-700 mt-2 select-none">
+
+          <p className="text-center text-[11px] text-tertiary mt-2 select-none">
             Enter to send &nbsp;·&nbsp; Shift+Enter for new line &nbsp;·&nbsp; Drop files anywhere
           </p>
         </form>

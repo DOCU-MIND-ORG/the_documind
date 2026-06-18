@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { attachmentService } from '../services/attachmentService.js';
 import { useSessions } from '../context/SessionsContext.jsx';
@@ -93,31 +93,30 @@ export default function Attachments() {
   }, {});
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden">
+    <div className="flex-1 flex flex-col h-full overflow-hidden" style={{ backgroundColor: 'var(--color-bg-base)' }}>
       {/* Header */}
-      <header className="flex items-center gap-3 h-14 px-4 border-b border-white/[0.05] shrink-0">
+      <header className="flex items-center gap-3 h-14 px-4 shrink-0"
+        style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-surface)' }}>
         <button
-          className="md:hidden p-2 -ml-1 text-slate-400 hover:text-white rounded-xl hover:bg-white/[0.05] transition-all"
+          className="md:hidden p-2 -ml-1 text-secondary rounded-xl interactive"
           onClick={openMobileSidebar}
         >
           <MenuIcon />
         </button>
         <button
           onClick={() => navigate(`/chat/${sessionId}`)}
-          className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-white/[0.05] transition-all"
+          className="p-1.5 text-secondary rounded-xl interactive"
           title="Back to chat"
         >
           <ArrowLeftIcon />
         </button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-[13px] font-medium text-slate-200 truncate">
-            Attachments
-          </h1>
+          <h1 className="text-[13px] font-medium text-primary truncate">Attachments</h1>
           {session?.title && (
-            <p className="text-[11px] text-slate-600 truncate">{session.title}</p>
+            <p className="text-[11px] text-tertiary truncate">{session.title}</p>
           )}
         </div>
-        <span className="text-[11px] text-slate-600 shrink-0">{attachments.length} file{attachments.length !== 1 ? 's' : ''}</span>
+        <span className="text-[11px] text-tertiary shrink-0">{attachments.length} file{attachments.length !== 1 ? 's' : ''}</span>
       </header>
 
       {/* Body */}
@@ -140,14 +139,14 @@ export default function Attachments() {
                         ? type === 'ALL'
                           ? 'bg-blue-600 border-blue-600 text-white'
                           : `${colors.bg} ${colors.border} ${colors.text}`
-                        : 'bg-transparent border-white/[0.08] text-slate-500 hover:text-slate-300 hover:border-white/[0.15]'
+                        : 'border-t text-tertiary interactive'
                     }`}
                   >
                     {type !== 'ALL' && (
-                      <span className={`w-1.5 h-1.5 rounded-full ${filter === type ? colors.dot : 'bg-slate-600'}`} />
+                      <span className={`w-1.5 h-1.5 rounded-full ${filter === type ? colors.dot : 'bg-slate-400/30'}`} />
                     )}
                     {type === 'ALL' ? 'All' : type.charAt(0) + type.slice(1).toLowerCase()}
-                    <span className={`${filter === type && type !== 'ALL' ? colors.text : 'text-slate-600'}`}>
+                    <span className={filter === type && type !== 'ALL' ? colors.text : 'text-tertiary'}>
                       {count}
                     </span>
                   </button>
@@ -158,7 +157,7 @@ export default function Attachments() {
 
           {/* States */}
           {loading && (
-            <div className="flex flex-col items-center justify-center py-24 gap-3 text-slate-600">
+            <div className="flex flex-col items-center justify-center py-24 gap-3 text-secondary">
               <div className="w-6 h-6 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
               <span className="text-sm">Loading attachments…</span>
             </div>
@@ -174,15 +173,15 @@ export default function Attachments() {
           )}
 
           {!loading && !error && attachments.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-24 gap-4 text-slate-600">
-              <div className="w-16 h-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center">
-                <svg className="w-7 h-7 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+            <div className="flex flex-col items-center justify-center py-24 gap-4 text-secondary">
+              <div className="w-16 h-16 rounded-2xl bg-subtle border-t flex items-center justify-center">
+                <svg className="w-7 h-7 text-tertiary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
                 </svg>
               </div>
               <div className="text-center">
-                <p className="text-sm font-medium text-slate-500">No attachments yet</p>
-                <p className="text-xs text-slate-700 mt-1">Upload files in the chat to see them here.</p>
+                <p className="text-sm font-medium text-secondary">No attachments yet</p>
+                <p className="text-xs text-tertiary mt-1">Upload files in the chat to see them here.</p>
               </div>
               <button
                 onClick={() => navigate(`/chat/${sessionId}`)}
@@ -198,7 +197,7 @@ export default function Attachments() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {displayed.map(att => {
                 const colors  = TYPE_COLORS[att.type] || TYPE_COLORS.OTHER;
-                const icon    = FILE_ICONS[att.type]  || FILE_ICONS.OTHER;                
+                const icon    = FILE_ICONS[att.type]  || FILE_ICONS.OTHER;
                 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
                 const fileUrl = att.url ? (att.url.startsWith('http') ? att.url : `${API_URL}${att.url}`) : null;
                 const Tag     = fileUrl ? 'a' : 'div';
@@ -209,23 +208,23 @@ export default function Attachments() {
                   <Tag
                     key={att.attachmentId}
                     {...tagProps}
-                    className={`group flex items-start gap-3.5 p-4 rounded-2xl border ${colors.border} ${colors.bg} transition-all ${
+                    className={`group flex items-start gap-3.5 p-4 rounded-2xl border transition-all ${
                       fileUrl
-                        ? 'hover:border-opacity-80 hover:scale-[1.015] cursor-pointer hover:shadow-lg hover:shadow-black/20'
+                        ? 'hover:scale-[1.015] cursor-pointer'
                         : 'cursor-default'
-                    }`}
+                    } ${colors.bg} ${colors.border}`}
                   >
                     {/* Icon */}
-                    <div className={`shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${colors.text} bg-white/[0.04] border ${colors.border}`}>
+                    <div className={`shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${colors.text} bg-subtle border-t`}>
                       {icon}
                     </div>
 
                     {/* Info */}
                     <div className="flex-1 min-w-0">
-                      <p className="text-[13px] font-medium text-slate-100 truncate" title={att.fileName}>
+                      <p className="text-[13px] font-medium text-primary truncate" title={att.fileName}>
                         {att.fileName || 'Unnamed file'}
                       </p>
-                      <p className="text-[11px] text-slate-600 mt-0.5 truncate" title={att.storagePath}>
+                      <p className="text-[11px] text-tertiary mt-0.5 truncate" title={att.storagePath}>
                         {att.storagePath}
                       </p>
                       <div className="flex items-center gap-3 mt-2">
@@ -233,14 +232,14 @@ export default function Attachments() {
                           <span className={`w-1.5 h-1.5 rounded-full ${colors.dot}`} />
                           {att.type}
                         </span>
-                        <span className="text-[11px] text-slate-600">{formatBytes(att.fileSizeBytes)}</span>
+                        <span className="text-[11px] text-tertiary">{formatBytes(att.fileSizeBytes)}</span>
                       </div>
                     </div>
 
                     {/* Date */}
                     <div className="shrink-0 text-right">
-                      <p className="text-[10px] text-slate-700 leading-tight">{formatDate(att.uploadedAt).split(',')[0]}</p>
-                      <p className="text-[10px] text-slate-700 leading-tight">{formatDate(att.uploadedAt).split(',')[1]?.trim()}</p>
+                      <p className="text-[10px] text-tertiary leading-tight">{formatDate(att.uploadedAt).split(',')[0]}</p>
+                      <p className="text-[10px] text-tertiary leading-tight">{formatDate(att.uploadedAt).split(',')[1]?.trim()}</p>
                     </div>
                   </Tag>
                 );
@@ -250,9 +249,9 @@ export default function Attachments() {
 
           {/* Empty filter state */}
           {!loading && !error && attachments.length > 0 && displayed.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-600">
+            <div className="flex flex-col items-center justify-center py-20 gap-3 text-secondary">
               <p className="text-sm">No {filter.toLowerCase()} files in this session.</p>
-              <button onClick={() => setFilter('ALL')} className="text-xs text-blue-400 hover:text-blue-300">
+              <button onClick={() => setFilter('ALL')} className="text-xs text-blue-500 hover:text-blue-400">
                 Clear filter
               </button>
             </div>

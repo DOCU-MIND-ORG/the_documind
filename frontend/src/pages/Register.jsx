@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 
-
 export default function Register() {
   const endpoint = import.meta.env.VITE_API_URL || '';
   const navigate = useNavigate();
@@ -34,17 +33,11 @@ export default function Register() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          name: form.name,
-          email: form.email,
-          password: form.password,
-        }),
+        body: JSON.stringify({ name: form.name, email: form.email, password: form.password }),
       });
 
       let data;
-      try {
-        data = await res.json();
-      } catch {
+      try { data = await res.json(); } catch {
         showToast('Server returned an unexpected response. Please try again.', 'error');
         return;
       }
@@ -54,12 +47,10 @@ export default function Register() {
         return;
       }
 
-      if (data.user) {
-        login(data.user, data.accessToken);
-      }
+      if (data.user) login(data.user, data.accessToken);
       showToast(`Account created successfully! Welcome aboard, ${form.name}! 🎉`, 'success');
       navigate('/dashboard', { replace: true });
-    } catch (err) {
+    } catch {
       showToast('Unable to reach the server. Please try again later.', 'error');
     } finally {
       setLoading(false);
@@ -67,85 +58,75 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0f1115] bg-[radial-gradient(circle_at_15%_50%,rgba(59,130,246,0.12),transparent_25%),radial-gradient(circle_at_85%_30%,rgba(147,51,234,0.12),transparent_25%)] p-4 sm:p-8">
-      <div className="w-full max-w-[450px] bg-[#16181d]/60 backdrop-blur-xl border border-white/5 rounded-2xl flex flex-col px-6 py-8 sm:px-10 sm:py-12 shadow-2xl animate-fade-in-up">
+    <div className="min-h-screen flex items-center justify-center t-bg-main p-4 sm:p-8">
+      {/* Subtle gradient orbs */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden">
+        <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-blue-500/10 blur-[120px]" />
+        <div className="absolute bottom-[-20%] right-[-10%] w-[400px] h-[400px] rounded-full bg-purple-500/10 blur-[120px]" />
+      </div>
+
+      <div className="relative w-full max-w-[450px] panel-card flex flex-col px-6 py-8 sm:px-10 sm:py-12 animate-fade-in-up">
         <div className="text-center mb-8">
-          <div className="text-3xl mb-2 inline-block bg-gradient-to-r from-white to-[#94a3b8] bg-clip-text text-transparent font-bold tracking-tight">DocuMind</div>
-          <h1 className="text-xl text-white font-semibold mb-1">Create Account</h1>
-          <p className="text-[#94a3b8] text-sm">Join us to start querying</p>
+          <div className="text-3xl mb-2 font-bold tracking-tight t-text-main">DocuMind</div>
+          <h1 className="text-xl font-semibold t-text-main mb-1">Create Account</h1>
+          <p className="t-text-muted text-sm">Join us to start querying</p>
         </div>
 
         <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-2">
-            <label className="text-xs text-[#94a3b8] font-medium" htmlFor="name">Full Name</label>
+            <label className="text-xs t-text-muted font-medium" htmlFor="name">Full Name</label>
             <input
-              id="name"
-              type="text"
-              name="name"
-              className="bg-white/[0.03] border border-white/10 px-4 py-3 rounded-lg text-white text-sm transition-all focus:bg-white/[0.05] focus:border-white/20 focus:ring-4 focus:ring-white/[0.03] outline-none placeholder-white/20"
+              id="name" type="text" name="name"
+              className="input-bg px-4 py-3 rounded-lg text-sm outline-none"
               placeholder="Jane Doe"
-              value={form.name}
-              onChange={handleChange}
-              required
+              value={form.name} onChange={handleChange} required
             />
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-xs text-[#94a3b8] font-medium" htmlFor="email">Email Address</label>
+            <label className="text-xs t-text-muted font-medium" htmlFor="email">Email Address</label>
             <input
-              id="email"
-              type="email"
-              name="email"
-              className="bg-white/[0.03] border border-white/10 px-4 py-3 rounded-lg text-white text-sm transition-all focus:bg-white/[0.05] focus:border-white/20 focus:ring-4 focus:ring-white/[0.03] outline-none placeholder-white/20"
+              id="email" type="email" name="email"
+              className="input-bg px-4 py-3 rounded-lg text-sm outline-none"
               placeholder="you@example.com"
-              value={form.email}
-              onChange={handleChange}
-              required
+              value={form.email} onChange={handleChange} required
             />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
-              <label className="text-xs text-[#94a3b8] font-medium" htmlFor="password">Password</label>
+              <label className="text-xs t-text-muted font-medium" htmlFor="password">Password</label>
               <input
-                id="password"
-                type="password"
-                name="password"
-                className="bg-white/[0.03] border border-white/10 px-4 py-3 rounded-lg text-white text-sm transition-all focus:bg-white/[0.05] focus:border-white/20 focus:ring-4 focus:ring-white/[0.03] outline-none placeholder-white/20"
+                id="password" type="password" name="password"
+                className="input-bg px-4 py-3 rounded-lg text-sm outline-none"
                 placeholder="Min 8 chars"
-                value={form.password}
-                onChange={handleChange}
-                required
+                value={form.password} onChange={handleChange} required
               />
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-xs text-[#94a3b8] font-medium" htmlFor="confirm">Confirm</label>
+              <label className="text-xs t-text-muted font-medium" htmlFor="confirm">Confirm</label>
               <input
-                id="confirm"
-                type="password"
-                name="confirm"
-                className="bg-white/[0.03] border border-white/10 px-4 py-3 rounded-lg text-white text-sm transition-all focus:bg-white/[0.05] focus:border-white/20 focus:ring-4 focus:ring-white/[0.03] outline-none placeholder-white/20"
+                id="confirm" type="password" name="confirm"
+                className="input-bg px-4 py-3 rounded-lg text-sm outline-none"
                 placeholder="Re-enter"
-                value={form.confirm}
-                onChange={handleChange}
-                required
+                value={form.confirm} onChange={handleChange} required
               />
             </div>
           </div>
 
           <button
             type="submit"
-            className="bg-white text-black py-3 rounded-lg font-semibold text-sm cursor-pointer transition-all hover:bg-slate-100 hover:-translate-y-[1px] active:translate-y-0 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none mt-2 flex items-center justify-center gap-2"
+            className="bg-blue-600 text-white py-3 rounded-lg font-semibold text-sm cursor-pointer transition-all hover:bg-blue-500 hover:-translate-y-[1px] active:translate-y-0 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none mt-2 flex items-center justify-center gap-2"
             disabled={loading}
           >
             {loading ? (
-              <><span className="w-4 h-4 border-2 border-black/10 border-t-black rounded-full animate-spin" /> Creating account...</>
+              <><span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> Creating account...</>
             ) : 'Create Account'}
           </button>
         </form>
 
-        <div className="text-center mt-8 text-sm text-[#94a3b8]">
-          Already have an account? <Link to="/login" className="text-white font-medium ml-1 hover:underline">Sign in</Link>
+        <div className="text-center mt-8 text-sm t-text-muted">
+          Already have an account? <Link to="/login" className="text-blue-500 font-medium ml-1 hover:underline">Sign in</Link>
         </div>
       </div>
     </div>

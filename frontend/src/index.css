@@ -1,62 +1,253 @@
 @import "tailwindcss";
 
+/* ══════════════════════════════════════════════════════════════════════════
+   Configure Tailwind dark mode to use the "class" strategy
+   This means <html class="dark"> enables dark:* variants
+   ══════════════════════════════════════════════════════════════════════════ */
+@variant dark (&:is(.dark *));
+
 @layer base {
   body {
-    @apply bg-[#0f1115] text-[#e2e8f0] antialiased;
+    @apply antialiased;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
 }
 
-/* Custom scrollbar styles */
-::-webkit-scrollbar { 
-  width: 8px; 
-  height: 8px; 
-}
-::-webkit-scrollbar-track { 
-  background: transparent; 
-}
-::-webkit-scrollbar-thumb { 
-  background: rgba(255, 255, 255, 0.1); 
-  border-radius: 4px; 
-}
-::-webkit-scrollbar-thumb:hover { 
-  background: rgba(255, 255, 255, 0.2); 
+/* ══════════════════════════════════════════════════════════════════════════
+   SEMANTIC DESIGN TOKENS  (CSS custom properties)
+   Light = default. Dark overrides applied when <html class="dark">
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Backgrounds ─────────────────────────── */
+  --color-bg-base:      #f8fafc;   /* page background          */
+  --color-bg-surface:   #ffffff;   /* cards, panels            */
+  --color-bg-sidebar:   #f1f5f9;   /* sidebar                  */
+  --color-bg-elevated:  #ffffff;   /* modals, popovers         */
+  --color-bg-input:     #f1f5f9;   /* text inputs              */
+  --color-bg-hover:     rgba(15,23,42,0.05);
+  --color-bg-active:    rgba(15,23,42,0.09);
+  --color-bg-subtle:    rgba(15,23,42,0.04);
+
+  /* ── Text ────────────────────────────────── */
+  --color-text-primary:   #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-tertiary:  #94a3b8;
+  --color-text-inverse:   #ffffff;
+
+  /* ── Borders ─────────────────────────────── */
+  --color-border:         rgba(15,23,42,0.08);
+  --color-border-strong:  rgba(15,23,42,0.14);
+
+  /* ── Accent ──────────────────────────────── */
+  --color-accent:         #2563eb;
+
+  /* ── Shadows ─────────────────────────────── */
+  --shadow-sm:  0 1px 3px rgba(15,23,42,0.08), 0 1px 2px rgba(15,23,42,0.06);
+  --shadow-md:  0 4px 12px rgba(15,23,42,0.10), 0 2px 4px rgba(15,23,42,0.06);
+  --shadow-lg:  0 8px 24px rgba(15,23,42,0.12), 0 4px 8px rgba(15,23,42,0.06);
+
+  /* ── Scrollbars ─────────────────────────── */
+  --scrollbar-thumb: rgba(15,23,42,0.15);
+  --scrollbar-hover: rgba(15,23,42,0.25);
 }
 
-/* Custom fade-in-up keyframe & utility */
+/* Dark theme overrides */
+html.dark {
+  --color-bg-base:      #0f1115;
+  --color-bg-surface:   #16181d;
+  --color-bg-sidebar:   #131519;
+  --color-bg-elevated:  #1c2028;
+  --color-bg-input:     rgba(255,255,255,0.04);
+  --color-bg-hover:     rgba(255,255,255,0.05);
+  --color-bg-active:    rgba(255,255,255,0.09);
+  --color-bg-subtle:    rgba(255,255,255,0.03);
+
+  --color-text-primary:   #e2e8f0;
+  --color-text-secondary: #94a3b8;
+  --color-text-tertiary:  #475569;
+  --color-text-inverse:   #0f172a;
+
+  --color-border:         rgba(255,255,255,0.06);
+  --color-border-strong:  rgba(255,255,255,0.10);
+
+  --color-accent:         #3b82f6;
+
+  --shadow-sm:  0 1px 3px rgba(0,0,0,0.30);
+  --shadow-md:  0 4px 12px rgba(0,0,0,0.35);
+  --shadow-lg:  0 8px 24px rgba(0,0,0,0.45);
+
+  --scrollbar-thumb: rgba(255,255,255,0.10);
+  --scrollbar-hover: rgba(255,255,255,0.20);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   BASE — apply tokens to html/body
+   ══════════════════════════════════════════════════════════════════════════ */
+
+html, body {
+  background-color: var(--color-bg-base);
+  color:            var(--color-text-primary);
+  transition:       background-color 0.2s ease, color 0.15s ease;
+  min-height:       100%;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SCROLLBARS
+   ══════════════════════════════════════════════════════════════════════════ */
+::-webkit-scrollbar            { width: 6px; height: 6px; }
+::-webkit-scrollbar-track      { background: transparent; }
+::-webkit-scrollbar-thumb      { background: var(--scrollbar-thumb); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover{ background: var(--scrollbar-hover); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   TOKEN-DRIVEN UTILITY CLASSES
+   Named after their role, not their color. These are what component authors use.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Backgrounds */
+.bg-base     { background-color: var(--color-bg-base);     }
+.bg-surface  { background-color: var(--color-bg-surface);  }
+.bg-sidebar  { background-color: var(--color-bg-sidebar);  }
+.bg-elevated { background-color: var(--color-bg-elevated); }
+.bg-input-t  { background-color: var(--color-bg-input);    }
+.bg-hover-t  { background-color: var(--color-bg-hover);    }
+.bg-active-t { background-color: var(--color-bg-active);   }
+.bg-subtle   { background-color: var(--color-bg-subtle);   }
+
+/* Interactive: adds hover transition */
+.interactive {
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+.interactive:hover { background-color: var(--color-bg-hover); }
+.interactive.active, .interactive[data-active="true"] {
+  background-color: var(--color-bg-active);
+}
+
+/* Text */
+.text-primary   { color: var(--color-text-primary);   }
+.text-secondary { color: var(--color-text-secondary); }
+.text-tertiary  { color: var(--color-text-tertiary);  }
+
+/* Borders */
+.border-t   { border-color: var(--color-border);        }
+.border-s   { border-color: var(--color-border-strong); }
+
+/* Dividers */
+.divider       { border-top: 1px solid var(--color-border); }
+.divider-vert  { border-right: 1px solid var(--color-border); }
+
+/* Cards */
+.card {
+  background-color: var(--color-bg-surface);
+  border:           1px solid var(--color-border);
+  border-radius:    0.75rem;
+  box-shadow:       var(--shadow-md);
+  transition:       background-color 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+.card-lg {
+  background-color: var(--color-bg-surface);
+  border:           1px solid var(--color-border);
+  border-radius:    1rem;
+  box-shadow:       var(--shadow-lg);
+  transition:       background-color 0.2s, border-color 0.2s;
+}
+
+/* Input fields */
+.input-field {
+  background-color: var(--color-bg-input);
+  color:            var(--color-text-primary);
+  border:           1px solid var(--color-border);
+  border-radius:    0.5rem;
+  transition:       background-color 0.15s, border-color 0.15s;
+}
+.input-field:focus {
+  outline:      none;
+  border-color: var(--color-accent);
+  box-shadow:   0 0 0 3px rgba(59,130,246,0.15);
+}
+.input-field::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+/* Popovers / Menus */
+.menu-popup {
+  background-color: var(--color-bg-elevated);
+  border:           1px solid var(--color-border-strong);
+  border-radius:    0.75rem;
+  box-shadow:       var(--shadow-lg);
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  color: var(--color-text-secondary);
+  border-radius: 0.5rem;
+  transition: background-color 0.1s, color 0.1s;
+  cursor: pointer;
+}
+.menu-item:hover {
+  background-color: var(--color-bg-hover);
+  color:            var(--color-text-primary);
+}
+
+/* Selects */
+select, .select-t {
+  background-color: var(--color-bg-input);
+  color:            var(--color-text-primary);
+  border:           1px solid var(--color-border);
+  border-radius:    0.5rem;
+  padding:          0.6rem 0.75rem;
+  transition:       background-color 0.15s, border-color 0.15s;
+}
+select:focus, .select-t:focus {
+  outline:      none;
+  border-color: var(--color-accent);
+  box-shadow:   0 0 0 3px rgba(59,130,246,0.15);
+}
+
+/* Legacy aliases — keep working for existing code */
+.panel         { background-color: var(--color-bg-surface);  color: var(--color-text-primary); }
+.panel-card    { background-color: var(--color-bg-surface);  border: 1px solid var(--color-border); border-radius: 1rem; box-shadow: var(--shadow-lg); color: var(--color-text-primary); }
+.panel-muted   { background-color: var(--color-bg-subtle);   color: var(--color-text-primary); }
+.panel-border  { border-right: 1px solid var(--color-border); }
+.input-bg      { background-color: var(--color-bg-input);    color: var(--color-text-primary); border: 1px solid var(--color-border); }
+.text-main     { color: var(--color-text-primary); }
+.text-muted    { color: var(--color-text-secondary); }
+.app-select    { background-color: var(--color-bg-input); color: var(--color-text-primary); border: 1px solid var(--color-border); padding: 0.6rem 0.75rem; border-radius: 0.5rem; }
+
+/* Legacy t-* aliases */
+.t-bg-main    { background-color: var(--color-bg-base);     }
+.t-bg-panel   { background-color: var(--color-bg-surface);  }
+.t-bg-sidebar { background-color: var(--color-bg-sidebar);  }
+.t-bg-input   { background-color: var(--color-bg-input);    }
+.t-bg-card    { background-color: var(--color-bg-surface);  }
+.t-bg-hover   { background-color: var(--color-bg-hover);    }
+.t-hover-bg:hover { background-color: var(--color-bg-hover); }
+.t-bg-active  { background-color: var(--color-bg-active);   }
+.t-bg-menu    { background-color: var(--color-bg-elevated); }
+.t-text-main  { color: var(--color-text-primary);   }
+.t-text-muted { color: var(--color-text-secondary); }
+.t-text-faint { color: var(--color-text-tertiary);  }
+.t-border     { border-color: var(--color-border);       }
+.t-border-soft{ border-color: var(--color-border-strong);}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ANIMATIONS
+   ══════════════════════════════════════════════════════════════════════════ */
 @keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-
 .animate-fade-in-up {
-  animation: fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* Chat response styling */
-
-.streaming-markdown p {
-  margin-bottom: 0.75rem;
-}
-.streaming-markdown p:last-child {
-  margin-bottom: 0;
-}
-.streaming-markdown ul {
-  list-style-type: disc;
-  padding-left: 1.25rem;
-  margin-bottom: 0.75rem;
-}
-.streaming-markdown ol {
-  list-style-type: decimal;
-  padding-left: 1.25rem;
-  margin-bottom: 0.75rem;
-}
-.streaming-markdown li {
-  margin-bottom: 0.25rem;
-}
+/* ══════════════════════════════════════════════════════════════════════════
+   STREAMING MARKDOWN
+   ══════════════════════════════════════════════════════════════════════════ */
+.streaming-markdown p            { margin-bottom: 0.75rem; }
+.streaming-markdown p:last-child { margin-bottom: 0; }
+.streaming-markdown ul { list-style-type: disc;    padding-left: 1.25rem; margin-bottom: 0.75rem; }
+.streaming-markdown ol { list-style-type: decimal; padding-left: 1.25rem; margin-bottom: 0.75rem; }
+.streaming-markdown li { margin-bottom: 0.25rem; }
