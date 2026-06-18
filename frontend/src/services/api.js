@@ -1,65 +1,49 @@
-/**
- * api.js — All real HTTP calls to the Spring Boot backend at localhost:8080.
- * No mock data. Uses credentials: 'include' so HttpOnly cookies are sent automatically.
- */
+const BASE_URL = import.meta.env.VITE_API_URL || '';
 
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080';
-
-/** Generic fetch wrapper — throws on non-OK, returns parsed JSON */
 async function request(path, options = {}) {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-    credentials: 'include',   // sends HttpOnly cookies automatically
+  const isFormData = options.body instanceof FormData;
+  const headers = isFormData
+    ? { ...options.headers }
+    : { 'Content-Type': 'application/json', ...options.headers };
+
+  const response = await fetch(`${BASE_URL}${path}`, {
+    credentials: 'include',
+    headers,
     ...options,
   });
 
-  // Try to parse JSON regardless of status (error responses have JSON bodies)
-  let data;
-  try { data = await res.json(); } catch { data = null; }
+  let data = null;
+  try {
+    data = await response.json();
+  } catch {
+    data = null;
+  }
 
-  if (!res.ok) {
-    if (res.status === 401 && path !== '/auth/login' && path !== '/auth/refresh') {
-      try {
-        const refreshRes = await fetch(`${BASE}/auth/refresh`, {
-          method: 'POST',
-          credentials: 'include'
-        });
-        
-        if (refreshRes.ok) {
-          // Retry original request
-          const retryRes = await fetch(`${BASE}${path}`, {
-            headers: { 'Content-Type': 'application/json', ...options.headers },
-            credentials: 'include',
-            ...options,
-          });
-          let retryData;
-          try { retryData = await retryRes.json(); } catch { retryData = null; }
-          
-          if (!retryRes.ok) {
-            throw new Error(retryData?.message || `Request failed: ${retryRes.status}`);
-          }
-          return retryData;
-        } else {
-          window.dispatchEvent(new Event('auth-expired'));
-        }
-      } catch (err) {
-        window.dispatchEvent(new Event('auth-expired'));
+  if (!response.ok) {
+    if (response.status === 401 && path !== '/auth/login' && path !== '/auth/refresh') {
+      const refreshed = await refreshAccessToken();
+
+      if (refreshed) {
+        return request(path, options);
       }
-    } else if (res.status === 401 && path === '/auth/refresh') {
+
       window.dispatchEvent(new Event('auth-expired'));
     }
-    const msg = data?.message || `Request failed: ${res.status}`;
-    throw new Error(msg);
+
+    throw new Error(data?.message || `Request failed: ${response.status}`);
   }
+
   return data;
 }
 
-// ─── Auth ─────────────────────────────────────────────────────────────────────
+async function refreshAccessToken() {
+  const response = await fetch(`${BASE_URL}/auth/refresh`, {
+    method: 'POST',
+    credentials: 'include',
+  });
 
-export const authApi = {
-  /** POST /auth/login — returns { user, accessToken, message } and sets HttpOnly cookies */
-  login: (email, password) =>
-    request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  return response.ok;
+}
 
   /** POST /auth/register — returns { user, accessToken, message } and sets HttpOnly cookies */
   register: (userData) =>
@@ -236,3 +220,4 @@ export const bookingApi = {
   cancel: (id) =>
     request(`/api/bookings/${id}`, { method: 'DELETE' }),
 };
+export { request };

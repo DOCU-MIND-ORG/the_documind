@@ -1,31 +1,31 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useState } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from './context/AuthContext.jsx';
+import { SessionsProvider } from './context/SessionsContext.jsx';
+import AppSidebar from './components/AppSidebar.jsx';
 
-// Auth Pages
-import Login from './pages/Login.jsx';
-import Register from './pages/Register.jsx';
+// Pages
+import Login       from './pages/Login.jsx';
+import Register    from './pages/Register.jsx';
+import Chat        from './pages/Chat.jsx';
+import Settings    from './pages/Settings.jsx';
+import Attachments from './pages/Attachments.jsx';
 
-// Main Pages
-import Dashboard from './pages/Dashboard.jsx';
-import Settings from './pages/Settings.jsx';
+// ── Loading spinner ───────────────────────────────────────────────────────────
 
-// Styles
-// (App.css removed)
-
-/** Show a full-page spinner while the /auth/me session check completes */
 function AuthLoading() {
   return (
-    <div className="flex items-center justify-center h-screen bg-[#0f172a]">
-      <div className="text-center text-[#94a3b8]">
-        <div className="w-12 h-12 border-3 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mx-auto mb-4" />
+    <div className="flex items-center justify-center h-screen bg-[#0f1115]">
+      <div className="flex flex-col items-center gap-4 text-slate-500">
+        <div className="w-8 h-8 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
         <p className="text-sm">Loading…</p>
       </div>
     </div>
   );
 }
 
-/** Redirect authenticated users away from login/register */
+// ── Guest route (redirect if already logged in) ────────────────────────────────
+
 function GuestRoute({ children }) {
   const { isAuthenticated, authReady } = useAuth();
   if (!authReady) return <AuthLoading />;
@@ -33,35 +33,71 @@ function GuestRoute({ children }) {
   return children;
 }
 
-/** Redirect unauthenticated users to login */
-function ProtectedRoute({ children }) {
+// ── Protected layout ──────────────────────────────────────────────────────────
+// Wraps all authenticated pages with the collapsible sidebar + sessions context.
+// Sidebar state lives here so it persists across page navigations.
+
+function ProtectedLayout() {
   const { isAuthenticated, authReady } = useAuth();
-  if (!authReady) return <AuthLoading />;
-  return isAuthenticated ? children : <Navigate to="/login" replace />;
+
+  const [expanded,     setExpanded]     = useState(true);
+  const [mobileOpen,   setMobileOpen]   = useState(false);
+
+  if (!authReady)      return <AuthLoading />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+
+  return (
+    <SessionsProvider>
+      <div
+        className="flex h-screen bg-[#0f1115] text-slate-200 overflow-hidden"
+        style={{ fontFamily: "'Inter', system-ui, sans-serif" }}
+        onClick={() => mobileOpen && setMobileOpen(false)}
+      >
+        {/* Persistent sidebar — never unmounts on route change */}
+        <AppSidebar
+          expanded={expanded}
+          setExpanded={setExpanded}
+          mobileOpen={mobileOpen}
+          setMobileOpen={setMobileOpen}
+        />
+
+        {/* Page content — rendered via Outlet */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <Outlet context={{ openMobileSidebar: () => setMobileOpen(true) }} />
+        </div>
+      </div>
+    </SessionsProvider>
+  );
 }
 
-/** Root "/" — redirect based on role */
+// ── Root redirect ─────────────────────────────────────────────────────────────
+
 function RootRedirect() {
   const { isAuthenticated, authReady } = useAuth();
   if (!authReady) return <AuthLoading />;
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
-  return <Navigate to="/dashboard" replace />;
+  return <Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />;
 }
 
-function App() {
+// ── App ───────────────────────────────────────────────────────────────────────
+
+export default function App() {
   return (
     <Router>
       <Routes>
-        {/* Root — redirect based on auth */}
+        {/* Root */}
         <Route path="/" element={<RootRedirect />} />
 
-        {/* Auth Routes — redirect to dashboard if already logged in */}
+        {/* Auth */}
         <Route path="/login"    element={<GuestRoute><Login /></GuestRoute>} />
         <Route path="/register" element={<GuestRoute><Register /></GuestRoute>} />
 
-        {/* Protected Dashboard Route */}
-        <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-        <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+        {/* Protected — all share the sidebar layout */}
+        <Route element={<ProtectedLayout />}>
+          <Route path="/dashboard"                          element={<Chat />} />
+          <Route path="/chat/:sessionId"                   element={<Chat />} />
+          <Route path="/chat/:sessionId/attachments"       element={<Attachments />} />
+          <Route path="/settings"                          element={<Settings />} />
+        </Route>
 
         {/* Fallback */}
         <Route path="*" element={<RootRedirect />} />
@@ -69,5 +105,3 @@ function App() {
     </Router>
   );
 }
-
-export default App;

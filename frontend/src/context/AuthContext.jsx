@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { authApi } from "../services/api.js";
+import { authService } from "../services/authService.js";
 
 const AuthContext = createContext();
 
@@ -8,11 +8,8 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken]     = useState(null);
   const [authReady, setAuthReady] = useState(false);  // true once session check is done
 
-  /**
-   * On mount, call GET /auth/me to restore the session from the HttpOnly cookie.
-   */
   useEffect(() => {
-    authApi.me()
+    authService.me()
       .then((data) => {
         if (data?.user) {
           setUser(data.user);
@@ -41,27 +38,18 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
-  /** Called after a successful login or register */
+
   const login = (userData, accessToken) => {
     setUser(userData);
     setToken(accessToken ?? null);
     setAuthReady(true);
   };
 
-  // Persist user to localStorage for frontend-only development convenience
-  useEffect(() => {
-    try {
-      if (user) localStorage.setItem('mock_user', JSON.stringify(user));
-      else localStorage.removeItem('mock_user');
-    } catch {}
-  }, [user]);
-
-  /** Called on logout — clears backend cookies then local state */
+  
   const logout = async () => {
     try {
-      await authApi.logout();
-    } catch {
-      // Ignore network errors — clear local state regardless
+      await authService.logout();
+    } catch {     
     }
     setUser(null);
     setToken(null);

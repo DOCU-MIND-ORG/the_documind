@@ -1,7 +1,7 @@
 package com.accenture.intern.docmind.service;
 
-import com.accenture.intern.docmind.entities.RefreshToken;
-import com.accenture.intern.docmind.entities.User;
+import com.accenture.intern.docmind.entity.RefreshToken;
+import com.accenture.intern.docmind.entity.User;
 import com.accenture.intern.docmind.repository.RefreshTokenRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

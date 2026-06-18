@@ -1,45 +1,10 @@
-import axios from 'axios';
-
-const API_URL = 'http://localhost:8080/chat';
+const BASE_URL = import.meta.env.VITE_API_URL || '';
 
 export const chatService = {
-  sendMessage: async (message) => {
+  streamMessage: async (sessionId, message, onChunk, onError, onComplete) => {
+    const streamUrl = `${BASE_URL}/api/chat/${sessionId}/stream`;
     try {
-      // Use the global request wrapper from api.js which handles auto-refresh
-      const response = await fetch(`${API_URL}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ message })
-      });
-      if (!response.ok) {
-        if (response.status === 401) {
-           const refreshRes = await fetch(`${API_URL.replace('/chat', '')}/auth/refresh`, { method: 'POST', credentials: 'include' });
-           if (refreshRes.ok) {
-              const retryRes = await fetch(`${API_URL}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ message })
-              });
-              if (!retryRes.ok) throw new Error("Retry failed");
-              return await retryRes.json();
-           } else {
-              window.dispatchEvent(new Event('auth-expired'));
-           }
-        }
-        throw new Error('Request failed');
-      }
-      return await response.json();
-    } catch (error) {
-      console.error('Error in chatService:', error);
-      throw error;
-    }
-  },
-
-  streamMessage: async (message, onChunk, onError, onComplete) => {
-    try {
-      const response = await fetch(`${API_URL}/stream`, {
+      const response = await fetch(streamUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -52,12 +17,12 @@ export const chatService = {
       let finalResponse = response;
       if (!finalResponse.ok) {
         if (finalResponse.status === 401) {
-          const refreshRes = await fetch(`${API_URL.replace('/chat', '')}/auth/refresh`, {
+          const refreshRes = await fetch(`${BASE_URL}/auth/refresh`, {
             method: 'POST',
             credentials: 'include'
           });
           if (refreshRes.ok) {
-            finalResponse = await fetch(`${API_URL}/stream`, {
+            finalResponse = await fetch(streamUrl, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
