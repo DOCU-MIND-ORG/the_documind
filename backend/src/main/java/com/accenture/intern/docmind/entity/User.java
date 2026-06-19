@@ -27,4 +27,10 @@ public class User {
 
     @Column(nullable = false)
     private Boolean isActive;
+
+    @Column(name = "profile_image_url")
+    private String profileImageUrl;
+
+    @Column(name = "profile_image_public_id")
+    private String profileImagePublicId;
 }

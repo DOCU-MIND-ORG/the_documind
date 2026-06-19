@@ -1,7 +1,7 @@
 const BASE_URL = import.meta.env.VITE_API_URL || '';
 
 export const chatService = {
-  streamMessage: async (sessionId, message, onChunk, onError, onComplete) => {
+  streamMessage: async (sessionId, message, onChunk, onCitations, onError, onComplete) => {
     const streamUrl = `${BASE_URL}/api/chat/${sessionId}/stream`;
     try {
       const response = await fetch(streamUrl, {
@@ -62,16 +62,28 @@ export const chatService = {
         
         for (const part of parts) {
           const lines = part.split('\n');
+          let eventType = 'message';
           let eventData = [];
           for (const line of lines) {
-            if (line.startsWith('data:')) {
+            if (line.startsWith('event:')) {
+              eventType = line.substring(6).trim();
+            } else if (line.startsWith('data:')) {
               const dataStr = line.substring(5);
               const text = dataStr.startsWith(' ') ? dataStr.substring(1) : dataStr;
               eventData.push(text);
             }
           }
           if (eventData.length > 0) {
-            onChunk(eventData.join('\n'));
+            if (eventType === 'citations') {
+              try {
+                const citations = JSON.parse(eventData.join('\n'));
+                if (onCitations) onCitations(citations);
+              } catch (e) {
+                console.error('Failed to parse citations', e);
+              }
+            } else {
+              onChunk(eventData.join('\n'));
+            }
           }
         }
       }
@@ -79,16 +91,28 @@ export const chatService = {
       // Flush any remaining data in buffer
       if (buffer.trim()) {
         const lines = buffer.split('\n');
+        let eventType = 'message';
         let eventData = [];
         for (const line of lines) {
-          if (line.startsWith('data:')) {
+          if (line.startsWith('event:')) {
+            eventType = line.substring(6).trim();
+          } else if (line.startsWith('data:')) {
             const dataStr = line.substring(5);
             const text = dataStr.startsWith(' ') ? dataStr.substring(1) : dataStr;
             eventData.push(text);
           }
         }
         if (eventData.length > 0) {
-          onChunk(eventData.join('\n'));
+          if (eventType === 'citations') {
+            try {
+              const citations = JSON.parse(eventData.join('\n'));
+              if (onCitations) onCitations(citations);
+            } catch (e) {
+              console.error('Failed to parse citations', e);
+            }
+          } else {
+            onChunk(eventData.join('\n'));
+          }
         }
       }
       

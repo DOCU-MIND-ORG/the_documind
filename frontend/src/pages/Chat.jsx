@@ -7,6 +7,7 @@ import { chatService } from '../services/chatService.js';
 import { attachmentService } from '../services/attachmentService.js';
 import { useToast } from '../context/ToastContext.jsx';
 import Streaming from '../components/streaming.jsx';
+import CitationDrawer from '../components/CitationDrawer.jsx';
 import { chatReducer, initialChatState } from '../state/chatReducer.js';
 
 // ─── Icons ───────────────────────────────────────────────────────────────────
@@ -18,8 +19,14 @@ const SendIcon = () => (
 );
 
 const PaperclipIcon = () => (
-  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
     <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+  </svg>
+);
+
+const LinkIcon = () => (
+  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
   </svg>
 );
 
@@ -64,6 +71,9 @@ export default function Chat() {
   const [input, setInput]             = useState('');
   const [isDragging, setIsDragging]   = useState(false);
   const [pendingFiles, setPendingFiles] = useState([]);
+  const [activeCitation, setActiveCitation] = useState(null);
+  const [showWikiInput, setShowWikiInput] = useState(false);
+  const [wikiUrl, setWikiUrl] = useState('');
   const bottomRef    = useRef(null);
   const textareaRef  = useRef(null);
   const fileInputRef = useRef(null);
@@ -155,23 +165,57 @@ export default function Chat() {
         navigate(`/chat/${activeSessionId}`, { replace: true });
       } catch (err) { showToast(err.message || 'Failed to create session', 'error'); setInput(query); return; }
     }
-    if (hasPendingFiles) await uploadPendingFiles(activeSessionId);
-    if (!query) return;
-    const userMessage = { id: crypto.randomUUID(), role: 'USER', text: query, createdAt: new Date().toISOString(), status: 'complete' };
-    const assistantPlaceholder = { id: crypto.randomUUID(), role: 'ASSISTANT', text: '', createdAt: new Date().toISOString(), status: 'streaming' };
-    dispatch({ type: 'SEND_MESSAGE_OPTIMISTIC', sessionId: activeSessionId, payload: { userMessage, assistantPlaceholder } });
-    try {
-      await chatService.streamMessage(
-        activeSessionId, query,
-        (chunk) => dispatch({ type: 'APPEND_STREAM_CHUNK', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id, chunk } }),
-        (err)   => { dispatch({ type: 'STREAM_ERROR', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } }); showToast(err.message || 'Stream error', 'error'); },
-        ()      => dispatch({ type: 'STREAM_DONE', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } }),
-      );
-    } catch (err) {
-      dispatch({ type: 'STREAM_ERROR', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } });
-      showToast(err.message || 'Failed to send', 'error');
+    if (query) {
+      const userMessage = { id: crypto.randomUUID(), role: 'USER', text: query, createdAt: new Date().toISOString(), status: 'complete' };
+      const assistantPlaceholder = { id: crypto.randomUUID(), role: 'ASSISTANT', text: '', createdAt: new Date().toISOString(), status: 'streaming' };
+      dispatch({ type: 'SEND_MESSAGE_OPTIMISTIC', sessionId: activeSessionId, payload: { userMessage, assistantPlaceholder } });
+      
+      try {
+        if (hasPendingFiles) await uploadPendingFiles(activeSessionId);
+        
+        await chatService.streamMessage(
+          activeSessionId, query,
+          (chunk) => dispatch({ type: 'APPEND_STREAM_CHUNK', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id, chunk } }),
+          (citations) => dispatch({ type: 'SET_CITATIONS', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id, citations } }),
+          (err)   => { dispatch({ type: 'STREAM_ERROR', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } }); showToast(err.message || 'Stream error', 'error'); },
+          ()      => dispatch({ type: 'STREAM_DONE', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } }),
+        );
+      } catch (err) {
+        dispatch({ type: 'STREAM_ERROR', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } });
+        showToast(err.message || 'Failed to send', 'error');
+      }
+    } else {
+      if (hasPendingFiles) await uploadPendingFiles(activeSessionId);
     }
   }, [input, pendingFiles, state.sessionId, state.isStreaming, navigate, addSession, showToast, uploadPendingFiles]);
+
+  const handleWikiSubmit = async (e) => {
+    if (e) e.preventDefault();
+    if (!wikiUrl.trim() || !state.sessionId) return;
+
+    const tempId = Date.now();
+    let url = wikiUrl.trim();
+    // basic format check
+    if (!url.startsWith('http')) {
+      url = 'https://en.wikipedia.org/wiki/' + url.replace(/ /g, '_');
+    }
+    
+    setPendingFiles(prev => [...prev, { name: decodeURIComponent(url.substring(url.lastIndexOf('/') + 1)), id: tempId, status: 'uploading' }]);
+    
+    setShowWikiInput(false);
+    setWikiUrl('');
+
+    try {
+      await attachmentService.uploadWikipedia(state.sessionId, url);
+      setPendingFiles(prev => prev.map(f => f.id === tempId ? { ...f, status: 'done' } : f));
+      setTimeout(() => {
+        setPendingFiles(prev => prev.filter(f => f.id !== tempId));
+      }, 2000);
+    } catch (err) {
+      setPendingFiles(prev => prev.map(f => f.id === tempId ? { ...f, status: 'error' } : f));
+      showToast(err.message, 'error');
+    }
+  };
 
   const onKeyDown     = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); } };
   const onInputChange = (e) => { setInput(e.target.value); const ta = e.target; ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 160) + 'px'; };
@@ -332,9 +376,52 @@ export default function Chat() {
                       boxShadow: 'var(--shadow-sm)',
                     } : {}}>
                       {isBot
-                        ? <Streaming text={msg.text} isStreaming={msg.id === state.streamingMessageId} />
+                        ? <Streaming 
+                            text={msg.text} 
+                            isStreaming={msg.id === state.streamingMessageId}
+                            citations={msg.citations}
+                            onCitationClick={setActiveCitation}
+                          />
                         : <p className="whitespace-pre-wrap">{msg.text}</p>
                       }
+                      {msg.citations && msg.citations.length > 0 && (() => {
+                        const grouped = msg.citations.reduce((acc, cite) => {
+                          const existing = acc.find(c => c.sourceName === cite.sourceName);
+                          if (existing) {
+                            existing.count = (existing.count || 1) + 1;
+                          } else {
+                            acc.push({ ...cite, count: 1 });
+                          }
+                          return acc;
+                        }, []);
+                        return (
+                          <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--color-border)' }}>
+                            <div className="flex flex-wrap gap-2">
+                              {grouped.map((group, idx) => (
+                                <button
+                                  key={idx}
+                                  onClick={() => setActiveCitation(group)}
+                                  title={group.excerpt}
+                                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border interactive cursor-pointer"
+                                  style={{ backgroundColor: 'var(--color-bg-subtle)', borderColor: 'var(--color-border)' }}
+                                >
+                                  <svg className="w-3.5 h-3.5 text-blue-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                  <span className="text-[12px] font-medium truncate max-w-[160px]" style={{ color: 'var(--color-text-primary)' }}>
+                                    {group.sourceName}
+                                  </span>
+                                  {group.count > 1 && (
+                                    <span className="ml-1 text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded-md">
+                                      ×{group.count}
+                                    </span>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                     {msg.status === 'error' && (
                       <span className="text-[11px] text-red-400">Failed to send</span>
@@ -381,6 +468,31 @@ export default function Chat() {
             </div>
           )}
 
+          {/* Wiki Input Popover */}
+          {showWikiInput && (
+            <div className="mb-2 p-3 rounded-2xl bg-surface border shadow-lg flex items-center gap-2 animate-fade-in-up" style={{ borderColor: 'var(--color-border)' }}>
+              <input
+                type="text"
+                value={wikiUrl}
+                onChange={(e) => setWikiUrl(e.target.value)}
+                placeholder="Paste Wikipedia URL or Title..."
+                className="flex-1 bg-transparent border-0 text-[13px] text-primary outline-none px-2"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleWikiSubmit(e);
+                  if (e.key === 'Escape') setShowWikiInput(false);
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleWikiSubmit}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+              >
+                Add
+              </button>
+            </div>
+          )}
+
           {/* Input field */}
           <div
             className="flex items-end gap-2.5 rounded-2xl px-4 py-3 transition-all"
@@ -392,14 +504,24 @@ export default function Chat() {
             onBlur={(e) => e.currentTarget.style.borderColor  = 'var(--color-border)'}
           >
             {/* Paperclip */}
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="p-1.5 text-tertiary hover:text-secondary rounded-lg interactive shrink-0"
-              title="Attach file"
-            >
-              <PaperclipIcon />
-            </button>
+            <div className="flex items-center">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="p-1.5 text-tertiary hover:text-secondary rounded-lg interactive shrink-0"
+                title="Attach file"
+              >
+                <PaperclipIcon />
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowWikiInput(!showWikiInput)}
+                className={`p-1.5 rounded-lg interactive shrink-0 transition-colors ${showWikiInput ? 'text-blue-500 bg-blue-500/10' : 'text-tertiary hover:text-secondary'}`}
+                title="Attach Wikipedia page"
+              >
+                <LinkIcon />
+              </button>
+            </div>
 
             <textarea
               ref={textareaRef}
@@ -431,6 +553,8 @@ export default function Chat() {
           </p>
         </form>
       </div>
+
+      <CitationDrawer citation={activeCitation} onClose={() => setActiveCitation(null)} />
     </div>
   );
 }

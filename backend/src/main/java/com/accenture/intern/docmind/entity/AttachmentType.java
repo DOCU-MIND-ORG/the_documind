@@ -4,5 +4,6 @@ public enum AttachmentType {
     PDF,
     IMAGE,
     TEXT,
+    WIKIPEDIA,
     OTHER
 }
