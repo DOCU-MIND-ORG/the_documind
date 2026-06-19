@@ -3,6 +3,9 @@ package com.accenture.intern.docmind.controller;
 import com.accenture.intern.docmind.dto.auth.LoginRequest;
 import com.accenture.intern.docmind.dto.auth.LoginResponse;
 import com.accenture.intern.docmind.dto.auth.SignupRequest;
+import com.accenture.intern.docmind.dto.auth.UserDto;
+import com.accenture.intern.docmind.dto.auth.UserUpdateDto;
+
 import com.accenture.intern.docmind.entity.User;
 import com.accenture.intern.docmind.repository.UserRepository;
 import com.accenture.intern.docmind.security.JwtService;
@@ -106,18 +109,39 @@ public class AuthController {
                     .body(new ErrorResponse("User not found"));
         }
 
-        com.accenture.intern.docmind.dto.auth.UserDto userDto =
-                com.accenture.intern.docmind.dto.auth.UserDto.builder()
-                .id(user.getId())
-                .name(user.getName())
-                .email(user.getEmail())                    
-                .build();
+        UserDto userDto = UserDto.fromEntity(user);
 
         java.util.Map<String, Object> body = new java.util.HashMap<>();
         body.put("user", userDto);
         body.put("message", "Session restored");
 
         return ResponseEntity.ok(body);
+    }
+
+    @PutMapping("/update")
+    public ResponseEntity<?> update(@RequestBody UserUpdateDto updateDto, ServerHttpRequest request) {
+        String token = extractCookieValue(request, "access_token");
+
+        if (token == null || !jwtService.isTokenValid(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ErrorResponse("No valid session found"));
+        }
+
+        String email = jwtService.extractEmail(token);
+        User user = userRepository.findByEmail(email);
+
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ErrorResponse("User not found"));
+        }
+
+        try {
+            LoginResponse response = AuthService.updateProfileAndGetResponse(user, updateDto);
+            return buildCookieResponse(response);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ErrorResponse(e.getMessage()));
+        }
     }
 
     

@@ -139,12 +139,30 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
   const handleShare = async (e, sessionId) => {
     e.stopPropagation();
     setOpenMenuId(null);
-    const shareUrl = `${window.location.origin}/chat/${sessionId}`;
     try {
+      const res = await sessionService.shareSession(sessionId);
+      if (!res?.id) {
+        throw new Error('Failed to generate shareable session ID.');
+      }
+
+      let origin = window.location.origin;
+      if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        try {
+          const ipRes = await fetch('https://api.ipify.org?format=json');
+          const ipData = await ipRes.json();
+          if (ipData.ip) {
+            origin = origin.replace('localhost', ipData.ip).replace('127.0.0.1', ipData.ip);
+          }
+        } catch (_) {
+          // ignore, fallback
+        }
+      }
+
+      const shareUrl = `${origin}/share/${res.id}`;
       await navigator.clipboard.writeText(shareUrl);
       showToast('Share link copied to clipboard!', 'success');
-    } catch {
-      showToast('Failed to copy link', 'error');
+    } catch (err) {
+      showToast(err.message || 'Failed to share session', 'error');
     }
   };
 

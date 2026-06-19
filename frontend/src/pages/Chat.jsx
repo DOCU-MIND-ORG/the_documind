@@ -136,6 +136,35 @@ export default function Chat() {
     setTimeout(() => setPendingFiles(prev => prev.filter(f => f.status !== 'done')), 2000);
   }, [pendingFiles, showToast]);
 
+  const handleShare = async () => {
+    if (!state.sessionId) return;
+    try {
+      const res = await sessionService.shareSession(state.sessionId);
+      if (!res?.id) {
+        throw new Error('Failed to generate shareable session ID.');
+      }
+
+      let origin = window.location.origin;
+      if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        try {
+          const ipRes = await fetch('https://api.ipify.org?format=json');
+          const ipData = await ipRes.json();
+          if (ipData.ip) {
+            origin = origin.replace('localhost', ipData.ip).replace('127.0.0.1', ipData.ip);
+          }
+        } catch (_) {
+          // ignore error, fallback to current origin
+        }
+      }
+
+      const shareUrl = `${origin}/share/${res.id}`;
+      await navigator.clipboard.writeText(shareUrl);
+      showToast('Share link copied to clipboard!', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to share session', 'error');
+    }
+  };
+
   const handleSend = useCallback(async (e) => {
     if (e) e.preventDefault();
     const query = input.trim();
@@ -288,9 +317,38 @@ export default function Chat() {
             )}
           </div>
         ) : (
-          <h1 className="flex-1 text-[13px] font-medium text-secondary truncate">
-            {session?.title || 'Loading…'}
-          </h1>
+          <div className="flex-1 flex items-center justify-between min-w-0">
+            <h1 className="text-[13px] font-medium text-secondary truncate">
+              {session?.title || 'Loading…'}
+            </h1>
+            <button
+              type="button"
+              onClick={handleShare}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer select-none ml-2 shrink-0"
+              style={{
+                backgroundColor: 'var(--color-bg-subtle)',
+                borderColor:     'var(--color-border)',
+                color:           'var(--color-text-secondary)',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.color = 'var(--color-text-primary)';
+                e.currentTarget.style.backgroundColor = 'var(--color-bg-active)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.color = 'var(--color-text-secondary)';
+                e.currentTarget.style.backgroundColor = 'var(--color-bg-subtle)';
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="18" cy="5" r="3" />
+                <circle cx="6" cy="12" r="3" />
+                <circle cx="18" cy="19" r="3" />
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+              </svg>
+              Share
+            </button>
+          </div>
         )}
       </header>
 

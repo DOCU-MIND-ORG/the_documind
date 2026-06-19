@@ -467,23 +467,6 @@ export default function Settings() {
                 </button>
               </div>
 
-              {/* Visual mode pills */}
-              <div className="flex items-center gap-2 max-w-lg">
-                {['light', 'dark'].map(t => (
-                  <button
-                    key={t}
-                    onClick={() => theme !== t && toggle()}
-                    className="flex-1 py-3 rounded-xl text-sm font-medium border transition-all"
-                    style={{
-                      backgroundColor: theme === t ? 'var(--color-bg-active)'   : 'var(--color-bg-subtle)',
-                      borderColor:     theme === t ? 'var(--color-accent)'       : 'var(--color-border)',
-                      color:           theme === t ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)',
-                    }}
-                  >
-                    {t === 'light' ? '☀️ Light' : '🌙 Dark'}
-                  </button>
-                ))}
-              </div>
             </Section>
 
             {/* Save */}

@@ -67,13 +67,7 @@ public class AuthService {
         RefreshToken refreshTokenEntity = refreshTokenService.createRefreshToken(user);
         String refreshToken = refreshTokenEntity.getToken();
 
-        UserDto userDto = UserDto.builder()
-                .id(user.getId())
-                .name(user.getName())
-                .email(user.getEmail())                
-                .build();
-
-        
+        UserDto userDto = UserDto.fromEntity(user);
 
         LoginResponse authResponse = new LoginResponse(
                 userDto,
@@ -81,8 +75,6 @@ public class AuthService {
                 refreshToken,
                 message
         );
-
-                
 
         return authResponse;
     }
@@ -93,11 +85,7 @@ public class AuthService {
                 .map(RefreshToken::getUser)
                 .map(user -> {
                     String accessToken = jwtService.generateAccessToken(user);
-                    UserDto userDto = UserDto.builder()
-                            .id(user.getId())
-                            .name(user.getName())
-                            .email(user.getEmail())                
-                            .build();
+                    UserDto userDto = UserDto.fromEntity(user);
                     return new LoginResponse(userDto, accessToken, refreshTokenStr, "Token refreshed successfully");
                 })
                 .orElseThrow(() -> new RuntimeException("Refresh token is not in database!"));
@@ -107,5 +95,54 @@ public class AuthService {
         if (refreshTokenStr != null) {
             refreshTokenService.deleteByToken(refreshTokenStr);
         }
+    }
+
+    public User updateProfile(User user, com.accenture.intern.docmind.dto.auth.UserUpdateDto updateDto) {
+        if (updateDto.getName() != null) {
+            user.setName(updateDto.getName());
+        }
+        if (updateDto.getEmail() != null && !updateDto.getEmail().trim().isEmpty() && !updateDto.getEmail().equalsIgnoreCase(user.getEmail())) {
+            if (userRepository.existsByEmail(updateDto.getEmail())) {
+                throw new RuntimeException("Email already exists");
+            }
+            user.setEmail(updateDto.getEmail());
+        }
+        if (updateDto.getPhoneNumber() != null) {
+            user.setPhoneNumber(updateDto.getPhoneNumber());
+        }
+        if (updateDto.getProfilePicture() != null) {
+            user.setProfilePicture(updateDto.getProfilePicture());
+        }
+        if (updateDto.getGender() != null) {
+            user.setGender(updateDto.getGender());
+        }
+        if (updateDto.getOccupation() != null) {
+            user.setOccupation(updateDto.getOccupation());
+        }
+        if (updateDto.getOrganization() != null) {
+            user.setOrganization(updateDto.getOrganization());
+        }
+        if (updateDto.getJobTitle() != null) {
+            user.setJobTitle(updateDto.getJobTitle());
+        }
+        if (updateDto.getEducation() != null) {
+            user.setEducation(updateDto.getEducation());
+        }
+        if (updateDto.getInterests() != null) {
+            user.setInterests(updateDto.getInterests());
+        }
+        if (updateDto.getIndustry() != null) {
+            user.setIndustry(updateDto.getIndustry());
+        }
+        if (updateDto.getBio() != null) {
+            user.setBio(updateDto.getBio());
+        }
+
+        return userRepository.save(user);
+    }
+
+    public LoginResponse updateProfileAndGetResponse(User user, com.accenture.intern.docmind.dto.auth.UserUpdateDto updateDto) {
+        User updatedUser = updateProfile(user, updateDto);
+        return generateAuthResponse(updatedUser, "Profile updated successfully");
     }
 }

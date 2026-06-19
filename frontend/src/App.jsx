@@ -10,6 +10,7 @@ import Register    from './pages/Register.jsx';
 import Chat        from './pages/Chat.jsx';
 import Settings    from './pages/Settings.jsx';
 import Attachments from './pages/Attachments.jsx';
+import SharedChatView from './pages/SharedChatView.jsx';
 
 // ── Loading spinner ───────────────────────────────────────────────────────────
 
@@ -98,6 +99,9 @@ export default function App() {
           <Route path="/chat/:sessionId/attachments"       element={<Attachments />} />
           <Route path="/settings"                          element={<Settings />} />
         </Route>
+
+        {/* Public Shared Link */}
+        <Route path="/share/:uuid" element={<SharedChatView />} />
 
         {/* Fallback */}
         <Route path="*" element={<RootRedirect />} />
