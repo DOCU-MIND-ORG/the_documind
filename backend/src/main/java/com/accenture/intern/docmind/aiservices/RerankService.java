@@ -108,7 +108,11 @@ public class RerankService {
                     // Update metadata with rerank score so frontend can display it
                     Map<String, Object> metadata = new HashMap<>(doc.getMetadata());
                     metadata.put("score", sigmoidScore);
-                    metadata.put("pinecone_score", doc.getMetadata().get("score")); // keep old one just in case
+                    
+                    Object pineconeScore = doc.getMetadata().get("score");
+                    if (pineconeScore != null) {
+                        metadata.put("pinecone_score", pineconeScore); // keep old one just in case
+                    }
                     
                     Document newDoc = new Document(doc.getId(), doc.getText(), metadata);
                     scoredDocs.add(new DocumentScore(newDoc, sigmoidScore));

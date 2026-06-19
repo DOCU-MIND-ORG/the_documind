@@ -1,7 +1,7 @@
 const BASE_URL = import.meta.env.VITE_API_URL || '';
 
 export const chatService = {
-  streamMessage: async (sessionId, message, onChunk, onCitations, onError, onComplete) => {
+  streamMessage: async (sessionId, message, model, onChunk, onCitations, onError, onComplete) => {
     const streamUrl = `${BASE_URL}/api/chat/${sessionId}/stream`;
     try {
       const response = await fetch(streamUrl, {
@@ -11,7 +11,7 @@ export const chatService = {
           'Accept': 'text/event-stream',
         },
         credentials: 'include',
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ message, model }),
       });
 
       let finalResponse = response;
@@ -29,7 +29,7 @@ export const chatService = {
                 'Accept': 'text/event-stream',
               },
               credentials: 'include',
-              body: JSON.stringify({ message }),
+              body: JSON.stringify({ message, model }),
             });
             if (!finalResponse.ok) {
               window.dispatchEvent(new Event('auth-expired'));

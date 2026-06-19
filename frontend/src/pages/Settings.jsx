@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { authService } from '../services/authService.js';
+import { preferenceService } from '../services/preferenceService.js';
 
 // ─── Reusable Field ────────────────────────────────────────────────────────────
 function Field({ label, hint, error, children }) {
@@ -55,9 +56,10 @@ export default function Settings() {
   const [savedMsg,     setSavedMsg]     = useState('');
 
   // Prefs state
-  const [model,         setModel]         = useState('3.1 Pro');
-  const [responseStyle, setResponseStyle] = useState('Balanced');
+  const [model,         setModel]         = useState('GEMINI_2_5_FLASH');
+  const [responseStyle, setResponseStyle] = useState('BALANCED');
   const [prefSaved,     setPrefSaved]     = useState(false);
+  const [availableModels, setAvailableModels] = useState([]);
 
   // Sync tab from URL hash
   useEffect(() => {
@@ -71,7 +73,7 @@ export default function Settings() {
     setEmail(user.email || '');
     const p = user.phoneNumber || '';
     setPhone(p && p.includes('@') ? '' : p);
-    setPicture(user.profilePicture || '');
+    setPicture(user.profileImageUrl || '');
     setGender(user.gender || '');
     setOccupation(user.occupation || '');
     setOrganization(user.organization || '');
@@ -84,12 +86,27 @@ export default function Settings() {
 
   // Load prefs
   useEffect(() => {
-    try {
-      const prefs = JSON.parse(localStorage.getItem('prefs') || '{}');
-      if (prefs.model)         setModel(prefs.model);
-      if (prefs.responseStyle) setResponseStyle(prefs.responseStyle);
-    } catch (_) { /* ignore */ }
-  }, []);
+    if (!user) return;
+    const fetchPrefs = async () => {
+      try {
+        const [prefsRes, modelsRes] = await Promise.all([
+          preferenceService.get(),
+          preferenceService.getModels()
+        ]);
+        if (modelsRes) setAvailableModels(modelsRes);
+        if (prefsRes) {
+          if (prefsRes.modelName) setModel(prefsRes.modelName);
+          if (prefsRes.responseStyle) setResponseStyle(prefsRes.responseStyle);
+          if (prefsRes.theme && prefsRes.theme !== theme) {
+            // Note: theme context should handle the actual visual toggle. We just sync the initial load if we had a dedicated state, but we rely on useTheme().
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load preferences", err);
+      }
+    };
+    fetchPrefs();
+  }, [user]);
 
   const validate = () => {
     const e = {};
@@ -103,13 +120,47 @@ export default function Settings() {
 
   useEffect(() => { validate(); }, [name, email, phone]); // eslint-disable-line
 
-  const onPickPicture = (file) => {
+  const onPickPicture = async (file) => {
     if (!file) return;
     setIsUploading(true);
-    const reader = new FileReader();
-    reader.onload  = () => { setPicture(reader.result); setIsUploading(false); };
-    reader.onerror = () => setIsUploading(false);
-    reader.readAsDataURL(file);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", "Documind");
+      formData.append("quality", "100");
+
+      const response = await fetch(
+        "https://api.cloudinary.com/v1_1/dinp3cp9p/image/upload",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      const result = await response.json();
+
+      if (!result.secure_url || !result.public_id) {
+        throw new Error("Upload to Cloudinary failed");
+      }
+
+      const res = await authService.updateProfileImage({
+        link: result.secure_url,
+        public_id: result.public_id,
+      });
+
+      if (res?.user) {
+        try { updateUser(res.user); } catch (_) { /* ignore */ }
+        setPicture(res.user.profileImageUrl || '');
+        window.dispatchEvent(new CustomEvent('profile-updated', { detail: res.user }));
+        setSavedMsg('Profile photo updated');
+        setTimeout(() => setSavedMsg(''), 3000);
+      }
+    } catch (err) {
+      console.error(err);
+      setErrors(prev => ({ ...prev, form: 'Failed to upload photo' }));
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const saveProfile = async () => {
@@ -119,7 +170,7 @@ export default function Settings() {
     try {
       const body = {
         name, email: email || user?.email || '',
-        phoneNumber: phone, profilePicture: picture,
+        phoneNumber: phone,
         gender, occupation, organization, jobTitle,
         education, interests, industry, bio,
       };
@@ -129,7 +180,7 @@ export default function Settings() {
         setName(res.user.name || '');
         setEmail(res.user.email || '');
         setPhone(res.user.phoneNumber || '');
-        setPicture(res.user.profilePicture || '');
+        setPicture(res.user.profileImageUrl || '');
         window.dispatchEvent(new CustomEvent('profile-updated', { detail: res.user }));
         setSavedMsg('Changes saved');
         setTimeout(() => setSavedMsg(''), 3000);
@@ -147,10 +198,19 @@ export default function Settings() {
     catch (err) { alert(err.message || 'Failed to delete account'); }
   };
 
-  const savePreferences = () => {
-    try { localStorage.setItem('prefs', JSON.stringify({ model, responseStyle })); } catch (_) { /* ignore */ }
-    setPrefSaved(true);
-    setTimeout(() => setPrefSaved(false), 3000);
+  const savePreferences = async () => {
+    try {
+      await preferenceService.updateModel({
+        modelName: model,
+        responseStyle: responseStyle,
+        theme: theme
+      });
+      setPrefSaved(true);
+      setTimeout(() => setPrefSaved(false), 3000);
+    } catch (err) {
+      console.error("Failed to save preferences", err);
+      alert("Failed to save preferences");
+    }
   };
 
   const hasErrors = Object.keys(errors).length > 0;
@@ -425,18 +485,24 @@ export default function Settings() {
                   <select value={model} onChange={e => setModel(e.target.value)} style={inputStyle}
                     onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
                     onBlur={e  => e.target.style.borderColor = 'var(--color-border)'}>
-                    <option>3.1 Flash-Lite</option>
-                    <option>3.5 Flash</option>
-                    <option>3.1 Pro</option>
+                    {availableModels.length > 0 ? (
+                      availableModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)
+                    ) : (
+                      <>
+                        <option value="GEMINI_2_5_FLASH">Gemini 2.5 Flash</option>
+                        <option value="GEMINI_2_5_PRO">Gemini 2.5 Pro</option>
+                      </>
+                    )}
                   </select>
                 </Field>
                 <Field label="Response Style" hint="How verbose the AI should be">
                   <select value={responseStyle} onChange={e => setResponseStyle(e.target.value)} style={inputStyle}
                     onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
                     onBlur={e  => e.target.style.borderColor = 'var(--color-border)'}>
-                    <option>Balanced</option>
-                    <option>Concise</option>
-                    <option>Detailed</option>
+                    <option value="BEGINNER">Beginner</option>
+                    <option value="BALANCED">Balanced</option>
+                    <option value="CONCISE">Concise</option>
+                    <option value="DETAILED">Detailed</option>
                   </select>
                 </Field>
               </div>
@@ -467,23 +533,6 @@ export default function Settings() {
                 </button>
               </div>
 
-              {/* Visual mode pills */}
-              <div className="flex items-center gap-2 max-w-lg">
-                {['light', 'dark'].map(t => (
-                  <button
-                    key={t}
-                    onClick={() => theme !== t && toggle()}
-                    className="flex-1 py-3 rounded-xl text-sm font-medium border transition-all"
-                    style={{
-                      backgroundColor: theme === t ? 'var(--color-bg-active)'   : 'var(--color-bg-subtle)',
-                      borderColor:     theme === t ? 'var(--color-accent)'       : 'var(--color-border)',
-                      color:           theme === t ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)',
-                    }}
-                  >
-                    {t === 'light' ? '☀️ Light' : '🌙 Dark'}
-                  </button>
-                ))}
-              </div>
             </Section>
 
             {/* Save */}

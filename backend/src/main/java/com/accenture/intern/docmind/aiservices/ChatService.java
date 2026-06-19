@@ -32,19 +32,22 @@ public class ChatService {
     private final ContextBuilderService contextBuilderService;
     private final CitationService citationService;
     private final ObjectMapper objectMapper;
+    private final ModelFactory modelFactory;
 
     public ChatService(ChatClient.Builder chatClientBuilder,
                        SessionRepository sessionRepository,
                        MessageRepository messageRepository,
                        ContextBuilderService contextBuilderService,
                        CitationService citationService,
-                       ObjectMapper objectMapper) {
+                       ObjectMapper objectMapper,
+                       ModelFactory modelFactory) {
         this.chatClient = chatClientBuilder.build();
         this.sessionRepository = sessionRepository;
         this.messageRepository = messageRepository;
         this.contextBuilderService = contextBuilderService;
         this.citationService = citationService;
         this.objectMapper = objectMapper;
+        this.modelFactory = modelFactory;
     }
 
     @Transactional
@@ -54,9 +57,13 @@ public class ChatService {
 
         ContextResult contextResult = contextBuilderService.buildContext(question, sessionId).block();
 
+        org.springframework.ai.google.genai.GoogleGenAiChatOptions options = modelFactory.getChatOptions(session.getUser(), null);
+        String finalSystemPrompt = modelFactory.injectResponseStyle(session.getUser(), contextResult.systemPrompt());
+
         String answer = chatClient.prompt()
-                .system(contextResult.systemPrompt())
+                .system(finalSystemPrompt)
                 .user(contextResult.prompt())
+                .options(options)
                 .call()
                 .content();
 
@@ -130,9 +137,13 @@ public class ChatService {
 
                     StringBuilder aiResponseBuilder = new StringBuilder();
 
+                    org.springframework.ai.google.genai.GoogleGenAiChatOptions options = modelFactory.getChatOptions(session.getUser(), request.getModel());
+                    String finalSystemPrompt = modelFactory.injectResponseStyle(session.getUser(), contextResult.systemPrompt());
+
                     Flux<ServerSentEvent<String>> tokenStream = chatClient.prompt()
-                            .system(contextResult.systemPrompt())
+                            .system(finalSystemPrompt)
                             .user(contextResult.prompt())
+                            .options(options)
                             .stream()
                             .content()
                             .doOnNext(token -> {

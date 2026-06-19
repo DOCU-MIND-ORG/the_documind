@@ -3,6 +3,7 @@ package com.accenture.intern.docmind.controller;
 import com.accenture.intern.docmind.dto.auth.LoginRequest;
 import com.accenture.intern.docmind.dto.auth.LoginResponse;
 import com.accenture.intern.docmind.dto.auth.SignupRequest;
+import com.accenture.intern.docmind.dto.auth.UserUpdateDto;
 import com.accenture.intern.docmind.entity.User;
 import com.accenture.intern.docmind.repository.UserRepository;
 import com.accenture.intern.docmind.security.JwtService;
@@ -11,6 +12,12 @@ import org.springframework.http.server.reactive.ServerHttpRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
+import com.accenture.intern.docmind.dto.auth.OtpRequest;
+import com.accenture.intern.docmind.dto.auth.VerifyOtpRequest;
+import com.accenture.intern.docmind.dto.auth.ResetPasswordRequest;
+
+import java.util.HashMap;
+import java.util.Map;
 
 
 @RestController
@@ -40,6 +47,56 @@ public class AuthController {
             return buildCookieResponse(response);
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ErrorResponse(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/request-otp")
+    public ResponseEntity<?> requestOtp(@RequestBody OtpRequest request){
+        try{
+            AuthService.requestOtp(request.email());
+
+            Map<String, String> body = new HashMap<>();
+            body.put("message", "OTP sent to your email");
+
+            return ResponseEntity.ok(body);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ErrorResponse(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/verify-otp")
+    public ResponseEntity<?> verifyOtp(@RequestBody VerifyOtpRequest request) {
+        try {
+            String verificationToken = AuthService.verifyOtp(request.email(), request.otp());
+
+            Map<String, String> body = new HashMap<>();
+            body.put("message", "OTP verified successfully");
+            body.put("verificationToken", verificationToken);
+
+            return ResponseEntity.ok(body);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ErrorResponse(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@RequestBody ResetPasswordRequest request) {
+        try {
+            AuthService.resetPassword(
+                    request.email(),
+                    request.newPassword(),
+                    request.verificationToken()
+            );
+
+            java.util.Map<String, String> body = new java.util.HashMap<>();
+            body.put("message", "Password reset successfully");
+
+            return ResponseEntity.ok(body);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(new ErrorResponse(e.getMessage()));
         }
     }
@@ -110,7 +167,17 @@ public class AuthController {
                 com.accenture.intern.docmind.dto.auth.UserDto.builder()
                 .id(user.getId())
                 .name(user.getName())
-                .email(user.getEmail())                    
+                .email(user.getEmail())
+                .phoneNumber(user.getPhoneNumber())
+                .profileImageUrl(user.getProfileImageUrl())
+                .gender(user.getGender())
+                .occupation(user.getOccupation())
+                .organization(user.getOrganization())
+                .jobTitle(user.getJobTitle())
+                .education(user.getEducation())
+                .interests(user.getInterests())
+                .industry(user.getIndustry())
+                .bio(user.getBio())
                 .build();
 
         java.util.Map<String, Object> body = new java.util.HashMap<>();
@@ -118,6 +185,59 @@ public class AuthController {
         body.put("message", "Session restored");
 
         return ResponseEntity.ok(body);
+    }
+
+
+    @PutMapping("/update")
+    public ResponseEntity<?> update(@RequestBody UserUpdateDto updateDto, ServerHttpRequest request) {
+        String token = extractCookieValue(request, "access_token");
+
+        if (token == null || !jwtService.isTokenValid(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ErrorResponse("No valid session found"));
+        }
+
+        String email = jwtService.extractEmail(token);
+        User user = userRepository.findByEmail(email);
+
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ErrorResponse("User not found"));
+        }
+
+        try {
+            LoginResponse response = AuthService.updateProfileAndGetResponse(user, updateDto);
+            return buildCookieResponse(response);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ErrorResponse(e.getMessage()));
+        }
+    }
+
+    @PutMapping("/update-profile-image")
+    public ResponseEntity<?> updateProfileImage(@RequestBody com.accenture.intern.docmind.dto.auth.ProfileImageUpdateDto updateDto, ServerHttpRequest request) {
+        String token = extractCookieValue(request, "access_token");
+
+        if (token == null || !jwtService.isTokenValid(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ErrorResponse("No valid session found"));
+        }
+
+        String email = jwtService.extractEmail(token);
+        User user = userRepository.findByEmail(email);
+
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ErrorResponse("User not found"));
+        }
+
+        try {
+            LoginResponse response = AuthService.updateProfileImageAndGetResponse(user, updateDto);
+            return buildCookieResponse(response);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ErrorResponse(e.getMessage()));
+        }
     }
 
     

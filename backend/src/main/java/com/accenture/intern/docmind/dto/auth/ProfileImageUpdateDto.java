@@ -1,4 +1,4 @@
-package com.accenture.intern.docmind.dto.user;
+package com.accenture.intern.docmind.dto.auth;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
