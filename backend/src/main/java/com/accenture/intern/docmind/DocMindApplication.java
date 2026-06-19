@@ -1,5 +1,7 @@
 package com.accenture.intern.docmind;
 
+package com.accenture.intern.docmind;
+
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 

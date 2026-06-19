@@ -23,4 +23,11 @@ export const sessionService = {
     }),
 
   getMessages: (sessionId) => request(`/api/sessions/${sessionId}/messages`),
+
+  shareSession: (sessionId) =>
+    request(`/api/shared-sessions/${sessionId}`, {
+      method: 'POST',
+    }),
+
+  getSharedSession: (uuid) => request(`/api/shared-sessions/public/${uuid}`),
 };

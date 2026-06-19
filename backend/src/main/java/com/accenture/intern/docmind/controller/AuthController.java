@@ -3,6 +3,9 @@ package com.accenture.intern.docmind.controller;
 import com.accenture.intern.docmind.dto.auth.LoginRequest;
 import com.accenture.intern.docmind.dto.auth.LoginResponse;
 import com.accenture.intern.docmind.dto.auth.SignupRequest;
+import com.accenture.intern.docmind.dto.auth.UserDto;
+import com.accenture.intern.docmind.dto.auth.UserUpdateDto;
+
 import com.accenture.intern.docmind.entity.User;
 import com.accenture.intern.docmind.repository.UserRepository;
 import com.accenture.intern.docmind.security.JwtService;
@@ -106,12 +109,7 @@ public class AuthController {
                     .body(new ErrorResponse("User not found"));
         }
 
-        com.accenture.intern.docmind.dto.auth.UserDto userDto =
-                com.accenture.intern.docmind.dto.auth.UserDto.builder()
-                .id(user.getId())
-                .name(user.getName())
-                .email(user.getEmail())                    
-                .build();
+        UserDto userDto = UserDto.fromEntity(user);
 
         java.util.Map<String, Object> body = new java.util.HashMap<>();
         body.put("user", userDto);
@@ -120,8 +118,8 @@ public class AuthController {
         return ResponseEntity.ok(body);
     }
 
-    @PostMapping("/me")
-    public ResponseEntity<?> updateProfile(ServerHttpRequest request, @RequestBody User update) {
+    @PutMapping("/update")
+    public ResponseEntity<?> update(@RequestBody UserUpdateDto updateDto, ServerHttpRequest request) {
         String token = extractCookieValue(request, "access_token");
 
         if (token == null || !jwtService.isTokenValid(token)) {
@@ -130,52 +128,19 @@ public class AuthController {
         }
 
         String email = jwtService.extractEmail(token);
-        try {
-            UserDto updated = AuthService.updateUser(email, update);
-            java.util.Map<String, Object> body = new java.util.HashMap<>();
-            body.put("user", updated);
-            body.put("message", "Profile updated");
-            return ResponseEntity.ok(body);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse(e.getMessage()));
-        }
-    }
+        User user = userRepository.findByEmail(email);
 
-    @DeleteMapping("/me")
-    public ResponseEntity<?> deleteProfile(ServerHttpRequest request) {
-        String token = extractCookieValue(request, "access_token");
-
-        if (token == null || !jwtService.isTokenValid(token)) {
+        if (user == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(new ErrorResponse("No valid session found"));
+                    .body(new ErrorResponse("User not found"));
         }
 
-        String email = jwtService.extractEmail(token);
         try {
-            AuthService.deleteUser(email);
-
-            ResponseCookie clearAccess = ResponseCookie.from("access_token", "")
-                    .httpOnly(true)
-                    .secure(false)
-                    .path("/")
-                    .maxAge(0)
-                    .sameSite("Strict")
-                    .build();
-
-            ResponseCookie clearRefresh = ResponseCookie.from("refresh_token", "")
-                    .httpOnly(true)
-                    .secure(false)
-                    .path("/")
-                    .maxAge(0)
-                    .sameSite("Strict")
-                    .build();
-
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.SET_COOKIE, clearAccess.toString())
-                    .header(HttpHeaders.SET_COOKIE, clearRefresh.toString())
-                    .body(new java.util.HashMap<String, String>() {{ put("message", "Account deleted"); }});
+            LoginResponse response = AuthService.updateProfileAndGetResponse(user, updateDto);
+            return buildCookieResponse(response);
         } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse(e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ErrorResponse(e.getMessage()));
         }
     }
 

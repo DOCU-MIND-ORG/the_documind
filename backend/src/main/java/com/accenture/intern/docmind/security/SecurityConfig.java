@@ -61,6 +61,9 @@ public class SecurityConfig {
                                 // Static file serving — storage/** exposed under /files/**
                                 "/files/**",
 
+                                // Public shared sessions snapshot endpoint
+                                "/api/shared-sessions/public/**",
+
                                 "/swagger-ui.html",
                                 "/swagger-ui/**",
                                 "/v3/api-docs/**",

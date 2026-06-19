@@ -64,7 +64,7 @@ const RenameIcon = () => (
 );
 
 const GearIcon = () => (
-  <svg className="w-[14px] h-[14px] text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+  <svg className="w-[14px] h-[14px] t-text-faint" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
     <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.43l-1.003.828c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.43l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.991l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
     <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
   </svg>
@@ -92,13 +92,6 @@ const LogoMark = () => (
 
 // ─── AppSidebar ───────────────────────────────────────────────────────────────
 
-/**
- * Props:
- *   expanded      boolean  – desktop collapsed/expanded state
- *   setExpanded   fn       – toggle desktop collapsed/expanded
- *   mobileOpen    boolean  – mobile drawer open/closed
- *   setMobileOpen fn       – toggle mobile drawer
- */
 export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobileOpen }) {
   const { user, logout } = useAuth();
   const { sessions, loading, removeSession, updateSession } = useSessions();
@@ -106,13 +99,12 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
   const navigate = useNavigate();
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [openMenuId, setOpenMenuId]     = useState(null); // which session's ⋮ menu is open
+  const [openMenuId, setOpenMenuId]     = useState(null);
   const [renameSessionId, setRenameSessionId] = useState(null);
   const [renameTitle, setRenameTitle]         = useState('');
 
-  // Derive active session from URL
   const activeId = location.pathname.startsWith('/chat/')
-    ? location.pathname.split('/')[2] // handles /chat/:id and /chat/:id/attachments
+    ? location.pathname.split('/')[2]
     : null;
 
   const goNewChat  = () => { navigate('/dashboard'); setMobileOpen(false); };
@@ -147,12 +139,30 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
   const handleShare = async (e, sessionId) => {
     e.stopPropagation();
     setOpenMenuId(null);
-    const shareUrl = `${window.location.origin}/chat/${sessionId}`;
     try {
+      const res = await sessionService.shareSession(sessionId);
+      if (!res?.id) {
+        throw new Error('Failed to generate shareable session ID.');
+      }
+
+      let origin = window.location.origin;
+      if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        try {
+          const ipRes = await fetch('https://api.ipify.org?format=json');
+          const ipData = await ipRes.json();
+          if (ipData.ip) {
+            origin = origin.replace('localhost', ipData.ip).replace('127.0.0.1', ipData.ip);
+          }
+        } catch (_) {
+          // ignore, fallback
+        }
+      }
+
+      const shareUrl = `${origin}/share/${res.id}`;
       await navigator.clipboard.writeText(shareUrl);
       showToast('Share link copied to clipboard!', 'success');
     } catch (err) {
-      showToast('Failed to copy link', 'error');
+      showToast(err.message || 'Failed to share session', 'error');
     }
   };
 
@@ -176,14 +186,14 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
     }
   };
 
-  // ── Shared session list ────────────────────────────────────────────────────
+  // ── Session list ────────────────────────────────────────────────────────────
 
   const SessionList = ({ alwaysExpanded = false }) => {
     const show = alwaysExpanded || expanded;
     return (
       <div className="flex-1 overflow-y-auto mt-3 px-2 min-h-0" onClick={() => setOpenMenuId(null)}>
         {show && (
-          <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-[0.12em] px-2 pb-2 select-none">
+          <p className="text-[10px] font-semibold t-text-faint uppercase tracking-[0.12em] px-2 pb-2 select-none">
             Recent
           </p>
         )}
@@ -194,7 +204,7 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
           </div>
         ) : sessions.length === 0 ? (
           show && (
-            <p className="text-xs text-slate-600 text-center py-8 px-3 leading-relaxed">
+            <p className="text-xs t-text-faint text-center py-8 px-3 leading-relaxed">
               No sessions yet.<br />Start a new chat!
             </p>
           )
@@ -209,8 +219,8 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
                 title={!show ? s.title : undefined}
                 className={`group relative flex items-center gap-2.5 px-2.5 py-[9px] rounded-xl cursor-pointer transition-all duration-150 select-none mb-[2px] ${
                   isActive
-                    ? 'bg-white/[0.07] text-white'
-                    : 'text-slate-400 hover:text-slate-100 hover:bg-white/[0.04]'
+                    ? 't-bg-active t-text-main'
+                    : 't-text-muted hover:t-text-main t-hover-bg'
                 } ${!show ? 'justify-center' : ''}`}
               >
                 <ChatIcon />
@@ -218,29 +228,30 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
                   <>
                     <span className="flex-1 truncate text-[13px]">{s.title}</span>
 
-                    {/* ⋮ Three-dot menu button */}
+                    {/* ⋮ Three-dot menu */}
                     <button
                       onClick={(e) => toggleMenu(e, s.sessionId)}
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-white/[0.06] transition-all shrink-0"
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded-lg t-text-faint hover:t-text-main t-hover-bg transition-all shrink-0"
                       title="More options"
                     >
                       <DotsIcon />
                     </button>
 
-                    {/* Dropdown menu */}
+                    {/* Dropdown */}
                     {menuOpen && (
                       <div
-                        className="absolute right-1 top-8 z-50 bg-[#1c2028] border border-white/[0.08] rounded-xl shadow-2xl py-1 min-w-[160px]"
+                        className="absolute right-1 top-8 z-50 t-bg-menu t-border-soft border rounded-xl shadow-2xl py-1 min-w-[160px]"
+                        style={{ boxShadow: 'var(--shadow-elev)' }}
                         onClick={e => e.stopPropagation()}
                       >
                         <button
                           onClick={(e) => handleViewAttachments(e, s.sessionId)}
-                          className="flex items-center gap-2.5 w-full text-left px-3 py-2 text-[12px] text-slate-300 hover:text-white hover:bg-white/[0.05] transition-colors"
+                          className="flex items-center gap-2.5 w-full text-left px-3 py-2 text-[12px] t-text-muted hover:t-text-main t-hover-bg transition-colors"
                         >
                           <PaperclipIcon />
                           View Attachments
                         </button>
-                        <div className="h-px bg-white/[0.05] mx-2 my-0.5" />
+                        <div className="h-px t-border mx-2 my-0.5" />
                         <button
                           onClick={(e) => handleDelete(e, s.sessionId)}
                           className="flex items-center gap-2.5 w-full text-left px-3 py-2 text-[12px] text-red-400 hover:text-red-300 hover:bg-red-500/[0.07] transition-colors"
@@ -248,18 +259,18 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
                           <TrashIcon />
                           Delete session
                         </button>
-                        <div className="h-px bg-white/[0.05] mx-2 my-0.5" />
+                        <div className="h-px t-border mx-2 my-0.5" />
                         <button
                           onClick={(e) => handleShare(e, s.sessionId)}
-                          className="flex items-center gap-2.5 w-full text-left px-3 py-2 text-[12px] text-slate-300 hover:text-white hover:bg-white/[0.05] transition-colors"
+                          className="flex items-center gap-2.5 w-full text-left px-3 py-2 text-[12px] t-text-muted hover:t-text-main t-hover-bg transition-colors"
                         >
                           <ShareIcon />
                           Share
                         </button>
-                        <div className="h-px bg-white/[0.05] mx-2 my-0.5" />
+                        <div className="h-px t-border mx-2 my-0.5" />
                         <button
                           onClick={(e) => handleRenameClick(e, s.sessionId, s.title)}
-                          className="flex items-center gap-2.5 w-full text-left px-3 py-2 text-[12px] text-slate-300 hover:text-white hover:bg-white/[0.05] transition-colors"
+                          className="flex items-center gap-2.5 w-full text-left px-3 py-2 text-[12px] t-text-muted hover:t-text-main t-hover-bg transition-colors"
                         >
                           <RenameIcon />
                           Rename
@@ -276,24 +287,25 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
     );
   };
 
-  // ── User footer ────────────────────────────────────────────────────────────
+  // ── User footer ──────────────────────────────────────────────────────────────
 
   const UserFooter = ({ show }) => (
-    <div className="shrink-0 border-t border-white/[0.05] p-2 relative">
+    <div className="shrink-0 border-t t-border p-2 relative">
       {settingsOpen && show && (
         <div
-          className="absolute bottom-[68px] left-2 right-2 bg-[#1c2028] border border-white/[0.08] rounded-2xl py-1.5 shadow-2xl z-50"
+          className="absolute bottom-[68px] left-2 right-2 t-bg-menu t-border-soft border rounded-2xl py-1.5 shadow-2xl z-50"
+          style={{ boxShadow: 'var(--shadow-elev)' }}
           onClick={e => e.stopPropagation()}
         >
           <button
             onClick={() => { setSettingsOpen(false); navigate('/settings'); }}
-            className="w-full text-left px-4 py-2.5 text-[13px] text-slate-300 hover:text-white hover:bg-white/[0.05] transition-colors rounded-xl"
+            className="w-full text-left px-4 py-2.5 text-[13px] t-text-muted hover:t-text-main t-hover-bg transition-colors rounded-xl"
           >
             Settings
           </button>
-          <div className="h-px bg-white/[0.05] mx-3 my-1" />
+          <div className="h-px t-border mx-3 my-1" />
           <button
-            onClick={() => { setSettingsOpen(false); logout(); }}
+            onClick={() => { setSettingsOpen(false); logout(); navigate('/login'); }}
             className="w-full text-left px-4 py-2.5 text-[13px] text-red-400 hover:text-red-300 hover:bg-red-500/[0.07] transition-colors rounded-xl font-medium"
           >
             Sign out
@@ -303,14 +315,14 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
       <button
         onClick={(e) => { e.stopPropagation(); setSettingsOpen(v => !v); }}
         title={!show ? (user?.name || 'User') : undefined}
-        className={`flex items-center gap-3 w-full p-2 rounded-xl hover:bg-white/[0.05] transition-all cursor-pointer ${!show ? 'justify-center' : ''}`}
+        className={`flex items-center gap-3 w-full p-2 rounded-xl t-hover-bg transition-all cursor-pointer ${!show ? 'justify-center' : ''}`}
       >
         <UserAvatar name={user?.name} />
         {show && (
           <>
             <div className="flex-1 min-w-0 text-left">
-              <p className="text-[13px] font-medium text-white truncate leading-tight">{user?.name || 'User'}</p>
-              <p className="text-[11px] text-slate-500 truncate leading-tight">{user?.email || ''}</p>
+              <p className="text-[13px] font-medium t-text-main truncate leading-tight">{user?.name || 'User'}</p>
+              <p className="text-[11px] t-text-faint truncate leading-tight">{user?.email || ''}</p>
             </div>
             <GearIcon />
           </>
@@ -319,7 +331,7 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
     </div>
   );
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────────
 
   return (
     <>
@@ -333,7 +345,7 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
 
       {/* ── Mobile drawer ── */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-72 flex flex-col bg-[#131519] border-r border-white/[0.05] md:hidden transition-transform duration-300 ease-out ${
+        className={`fixed inset-y-0 left-0 z-40 w-72 flex flex-col t-bg-sidebar border-r t-border md:hidden transition-transform duration-300 ease-out ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
         onClick={() => settingsOpen && setSettingsOpen(false)}
@@ -341,16 +353,16 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
         <div className="flex items-center justify-between h-14 px-4 shrink-0">
           <div className="flex items-center gap-2.5">
             <LogoMark />
-            <span className="text-[15px] font-semibold text-white tracking-tight">DocuMind</span>
+            <span className="text-[15px] font-semibold t-text-main tracking-tight">DocuMind</span>
           </div>
-          <button onClick={() => setMobileOpen(false)} className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
+          <button onClick={() => setMobileOpen(false)} className="p-1.5 rounded-xl t-text-muted hover:t-text-main t-hover-bg transition-all">
             <CloseIcon />
           </button>
         </div>
         <div className="px-2 mt-1 shrink-0">
           <button
             onClick={goNewChat}
-            className="flex items-center gap-3 w-full px-3 py-2.5 text-[13px] font-medium text-slate-200 bg-white/[0.06] hover:bg-white/[0.1] rounded-xl border border-white/[0.06] transition-all cursor-pointer"
+            className="flex items-center gap-3 w-full px-3 py-2.5 text-[13px] font-medium t-text-main t-bg-hover hover:t-bg-active rounded-xl border t-border transition-all cursor-pointer"
           >
             <PlusIcon />
             New chat
@@ -362,7 +374,7 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
 
       {/* ── Desktop sidebar (collapsible) ── */}
       <aside
-        className={`hidden md:flex flex-col h-full bg-[#131519] border-r border-white/[0.05] shrink-0 transition-all duration-300 ease-in-out overflow-hidden ${
+        className={`hidden md:flex flex-col h-full t-bg-sidebar border-r t-border shrink-0 transition-all duration-300 ease-in-out overflow-hidden ${
           expanded ? 'w-[248px]' : 'w-[62px]'
         }`}
         onClick={() => settingsOpen && setSettingsOpen(false)}
@@ -372,12 +384,12 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
           {expanded && (
             <div className="flex items-center gap-2.5 pl-1">
               <LogoMark />
-              <span className="text-[15px] font-semibold text-white tracking-tight whitespace-nowrap">DocuMind</span>
+              <span className="text-[15px] font-semibold t-text-main tracking-tight whitespace-nowrap">DocuMind</span>
             </div>
           )}
           <button
             onClick={() => setExpanded(v => !v)}
-            className="p-2 rounded-xl text-slate-500 hover:text-white hover:bg-white/[0.06] transition-all"
+            className="p-2 rounded-xl t-text-faint hover:t-text-main t-hover-bg transition-all"
             title={expanded ? 'Collapse' : 'Expand'}
           >
             <PanelIcon />
@@ -389,7 +401,7 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
           <button
             onClick={goNewChat}
             title={!expanded ? 'New chat' : undefined}
-            className={`flex items-center gap-3 w-full px-2.5 py-[10px] text-[13px] font-medium text-slate-200 bg-white/[0.06] hover:bg-white/[0.1] rounded-xl border border-white/[0.06] hover:border-white/[0.1] transition-all active:scale-[0.97] cursor-pointer ${!expanded ? 'justify-center' : ''}`}
+            className={`flex items-center gap-3 w-full px-2.5 py-[10px] text-[13px] font-medium t-text-main t-bg-hover hover:t-bg-active rounded-xl border t-border transition-all active:scale-[0.97] cursor-pointer ${!expanded ? 'justify-center' : ''}`}
           >
             <PlusIcon />
             {expanded && <span className="whitespace-nowrap">New chat</span>}
@@ -408,7 +420,7 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
           <>
             <button
               onClick={() => setRenameSessionId(null)}
-              className="px-4 py-2.5 text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/[0.03] active:bg-white/[0.06] rounded-xl transition-all cursor-pointer"
+              className="px-4 py-2.5 text-xs font-semibold t-text-muted hover:t-text-main t-hover-bg rounded-xl transition-all cursor-pointer"
             >
               Cancel
             </button>
@@ -423,14 +435,14 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
         }
       >
         <form onSubmit={handleRenameSubmit} className="flex flex-col gap-2.5">
-          <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider pl-1">
+          <label className="text-[10px] font-semibold t-text-faint uppercase tracking-wider pl-1">
             Session Title
           </label>
           <input
             type="text"
             value={renameTitle}
             onChange={(e) => setRenameTitle(e.target.value)}
-            className="w-full bg-white/[0.05] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-[13px] text-slate-100 outline-none focus:border-blue-500/40 focus:ring-1 focus:ring-blue-500/40 transition-all placeholder:text-slate-600"
+            className="w-full input-bg rounded-xl px-3.5 py-2.5 text-[13px] outline-none focus:border-blue-500/40 transition-all placeholder:t-text-faint"
             placeholder="Enter new title..."
             autoFocus
           />

@@ -27,4 +27,34 @@ public class User {
 
     @Column(nullable = false)
     private Boolean isActive;
+
+    @Column
+    private String phoneNumber;
+
+    @Column(columnDefinition = "TEXT")
+    private String profilePicture;
+
+    @Column
+    private String gender;
+
+    @Column
+    private String occupation;
+
+    @Column
+    private String organization;
+
+    @Column
+    private String jobTitle;
+
+    @Column
+    private String education;
+
+    @Column
+    private String interests;
+
+    @Column
+    private String industry;
+
+    @Column(columnDefinition = "TEXT")
+    private String bio;
 }

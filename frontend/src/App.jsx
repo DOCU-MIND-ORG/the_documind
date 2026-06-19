@@ -10,13 +10,14 @@ import Register    from './pages/Register.jsx';
 import Chat        from './pages/Chat.jsx';
 import Settings    from './pages/Settings.jsx';
 import Attachments from './pages/Attachments.jsx';
+import SharedChatView from './pages/SharedChatView.jsx';
 
 // ── Loading spinner ───────────────────────────────────────────────────────────
 
 function AuthLoading() {
   return (
-    <div className="flex items-center justify-center h-screen bg-[#0f1115]">
-      <div className="flex flex-col items-center gap-4 text-slate-500">
+    <div className="flex items-center justify-center h-screen t-bg-main">
+      <div className="flex flex-col items-center gap-4 t-text-muted">
         <div className="w-8 h-8 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
         <p className="text-sm">Loading…</p>
       </div>
@@ -49,7 +50,7 @@ function ProtectedLayout() {
   return (
     <SessionsProvider>
       <div
-        className="flex h-screen bg-[#0f1115] text-slate-200 overflow-hidden"
+        className="flex h-screen t-bg-main t-text-main overflow-hidden"
         style={{ fontFamily: "'Inter', system-ui, sans-serif" }}
         onClick={() => mobileOpen && setMobileOpen(false)}
       >
@@ -98,6 +99,9 @@ export default function App() {
           <Route path="/chat/:sessionId/attachments"       element={<Attachments />} />
           <Route path="/settings"                          element={<Settings />} />
         </Route>
+
+        {/* Public Shared Link */}
+        <Route path="/share/:uuid" element={<SharedChatView />} />
 
         {/* Fallback */}
         <Route path="*" element={<RootRedirect />} />

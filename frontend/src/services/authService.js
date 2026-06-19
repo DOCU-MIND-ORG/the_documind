@@ -19,4 +19,15 @@ export const authService = {
     }),
 
   me: () => request('/auth/me'),
+
+  update: (userData) =>
+    request('/auth/update', {
+      method: 'PUT',
+      body: JSON.stringify(userData),
+    }),
+
+  deleteMe: () =>
+    request('/auth/me', {
+      method: 'DELETE',
+    }),
 };

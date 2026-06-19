@@ -1,370 +1,492 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { authApi } from '../services/api.js';
 import { useTheme } from '../context/ThemeContext.jsx';
+import { authService } from '../services/authService.js';
 
+// ─── Reusable Field ────────────────────────────────────────────────────────────
+function Field({ label, hint, error, children }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-tertiary)' }}>
+        {label}
+      </label>
+      {children}
+      {hint && !error && <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>{hint}</span>}
+      {error && <span className="text-[11px] text-red-500">{error}</span>}
+    </div>
+  );
+}
+
+// ─── Section wrapper ──────────────────────────────────────────────────────────
+function Section({ title, children }) {
+  return (
+    <div className="py-8" style={{ borderBottom: '1px solid var(--color-border)' }}>
+      <h3 className="text-sm font-semibold mb-5" style={{ color: 'var(--color-text-secondary)' }}>{title}</h3>
+      <div className="flex flex-col gap-5">{children}</div>
+    </div>
+  );
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
 export default function Settings() {
   const { user, logout, updateUser } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('profile');
-  const [collapsed, setCollapsed] = useState(false);
-  const { theme, toggle, setTheme } = useTheme();
+  const { theme, toggle } = useTheme();
 
-  // Profile form state
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [picture, setPicture] = useState('');
-  const [gender, setGender] = useState('');
-  const [occupation, setOccupation] = useState('');
+  // Profile state
+  const [name,         setName]         = useState('');
+  const [email,        setEmail]        = useState('');
+  const [phone,        setPhone]        = useState('');
+  const [picture,      setPicture]      = useState('');
+  const [gender,       setGender]       = useState('');
+  const [occupation,   setOccupation]   = useState('');
   const [organization, setOrganization] = useState('');
-  const [jobTitle, setJobTitle] = useState('');
-  const [education, setEducation] = useState('');
-  const [interests, setInterests] = useState('');
-  const [industry, setIndustry] = useState('');
-  const [bio, setBio] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
+  const [jobTitle,     setJobTitle]     = useState('');
+  const [education,    setEducation]    = useState('');
+  const [interests,    setInterests]    = useState('');
+  const [industry,     setIndustry]     = useState('');
+  const [bio,          setBio]          = useState('');
+  const [isSaving,     setIsSaving]     = useState(false);
+  const [isUploading,  setIsUploading]  = useState(false);
+  const [errors,       setErrors]       = useState({});
+  const [savedMsg,     setSavedMsg]     = useState('');
 
+  // Prefs state
+  const [model,         setModel]         = useState('3.1 Pro');
+  const [responseStyle, setResponseStyle] = useState('Balanced');
+  const [prefSaved,     setPrefSaved]     = useState(false);
+
+  // Sync tab from URL hash
   useEffect(() => {
-    if (location.hash === '#preferences') {
-      setActiveTab('preferences');
-    } else {
-      setActiveTab('profile');
-    }
+    setActiveTab(location.hash === '#preferences' ? 'preferences' : 'profile');
   }, [location]);
 
+  // Populate form from user
   useEffect(() => {
-    if (user) {
-      setName(user.name || '');
-      setEmail(user.email || '');
-      // guard against malformed phone storing email accidentally
-      const phoneVal = user.phoneNumber || '';
-      if (phoneVal && phoneVal.includes('@') && (!user.email || user.email === '')) {
-        // if phone looks like an email and email missing, move it to email
-        setEmail(phoneVal);
-        setPhone('');
-      } else if (phoneVal && phoneVal.includes('@')) {
-        // phone contains an email — ignore it to avoid showing email in phone input
-        setPhone('');
-      } else {
-        setPhone(phoneVal);
-      }
-      setPicture(user.profilePicture || '');
-      setGender(user.gender || '');
-      setOccupation(user.occupation || '');
-      setOrganization(user.organization || '');
-      setJobTitle(user.jobTitle || '');
-      setEducation(user.education || '');
-      setInterests(user.interests || '');
-      setIndustry(user.industry || '');
-      setBio(user.bio || '');
-    }
+    if (!user) return;
+    setName(user.name || '');
+    setEmail(user.email || '');
+    const p = user.phoneNumber || '';
+    setPhone(p && p.includes('@') ? '' : p);
+    setPicture(user.profilePicture || '');
+    setGender(user.gender || '');
+    setOccupation(user.occupation || '');
+    setOrganization(user.organization || '');
+    setJobTitle(user.jobTitle || '');
+    setEducation(user.education || '');
+    setInterests(user.interests || '');
+    setIndustry(user.industry || '');
+    setBio(user.bio || '');
   }, [user]);
 
-  // Validation state
-  const [errors, setErrors] = useState({});
-  const [savedMessage, setSavedMessage] = useState('');
+  // Load prefs
+  useEffect(() => {
+    try {
+      const prefs = JSON.parse(localStorage.getItem('prefs') || '{}');
+      if (prefs.model)         setModel(prefs.model);
+      if (prefs.responseStyle) setResponseStyle(prefs.responseStyle);
+    } catch (_) { /* ignore */ }
+  }, []);
+
   const validate = () => {
     const e = {};
-    if (!name || name.trim().length < 2) e.name = 'Enter your full name';
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = 'Invalid email';
-    if (phone && phone.includes('@')) e.phone = 'Phone cannot contain an email address';
-    else if (phone && !/^\+?[0-9\- ]{7,20}$/.test(phone)) e.phone = 'Invalid phone';
+    if (!name || name.trim().length < 2) e.name = 'Enter your full name (at least 2 characters)';
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = 'Enter a valid email address';
+    if (phone && phone.includes('@')) e.phone = 'Phone number cannot contain an email address';
+    else if (phone && !/^\+?[0-9\- ]{7,20}$/.test(phone)) e.phone = 'Enter a valid phone number';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
-  useEffect(()=>{ validate(); }, [name, email, phone]);
+  useEffect(() => { validate(); }, [name, email, phone]); // eslint-disable-line
 
-  // Preferences state (persisted locally)
-  const [model, setModel] = useState('Aizen Pro');
-  const [responseStyle, setResponseStyle] = useState('Balanced');
-
-  useEffect(() => {
-    try {
-      const prefs = JSON.parse(localStorage.getItem('prefs') || '{}');
-      if (prefs.model) setModel(prefs.model);
-      if (prefs.responseStyle) setResponseStyle(prefs.responseStyle);
-    } catch {}
-  }, []);
-
-  const savePreferences = () => {
-    const prefs = { model, responseStyle };
-    try { localStorage.setItem('prefs', JSON.stringify(prefs)); } catch {}
-    alert('Preferences saved');
-  };
-
-  const onPickPicture = async (file) => {
+  const onPickPicture = (file) => {
     if (!file) return;
-    const reader = new FileReader();
     setIsUploading(true);
-    reader.onload = () => {
-      setPicture(reader.result);
-      setIsUploading(false);
-    };
+    const reader = new FileReader();
+    reader.onload  = () => { setPicture(reader.result); setIsUploading(false); };
     reader.onerror = () => setIsUploading(false);
     reader.readAsDataURL(file);
   };
 
   const saveProfile = async () => {
     if (!validate()) return;
+    if (phone && phone.includes('@')) return;
     setIsSaving(true);
     try {
-      // avoid clearing existing email on save; send fallback to current user.email
-      const body = { name, email: (email || user?.email || ''), phoneNumber: phone, profilePicture: picture };
-        // include extended profile fields
-        body.gender = gender;
-        body.occupation = occupation;
-        body.organization = organization;
-        body.jobTitle = jobTitle;
-        body.education = education;
-        body.interests = interests;
-        body.industry = industry;
-        body.bio = bio;
-      // final sanity: block phone that contains '@'
-      if (phone && phone.includes('@')) {
-        setErrors(prev => ({ ...prev, phone: 'Phone cannot contain an email address' }));
-        setIsSaving(false);
-        return;
-      }
-
-      const res = await authApi.update(body);
+      const body = {
+        name, email: email || user?.email || '',
+        phoneNumber: phone, profilePicture: picture,
+        gender, occupation, organization, jobTitle,
+        education, interests, industry, bio,
+      };
+      const res = await authService.update(body);
       if (res?.user) {
-        // Update auth context directly so localStorage persists the change
-        try { updateUser(res.user); } catch {}
-        // sync local form state with returned values to avoid desync
+        try { updateUser(res.user); } catch (_) { /* ignore */ }
         setName(res.user.name || '');
         setEmail(res.user.email || '');
         setPhone(res.user.phoneNumber || '');
         setPicture(res.user.profilePicture || '');
         window.dispatchEvent(new CustomEvent('profile-updated', { detail: res.user }));
-        // small inline confirmation
-        setSavedMessage('Profile saved');
-        setTimeout(() => setSavedMessage(''), 2500);
+        setSavedMsg('Changes saved');
+        setTimeout(() => setSavedMsg(''), 3000);
       }
     } catch (err) {
       setErrors(prev => ({ ...prev, form: err.message || 'Failed to update profile' }));
-    } finally { setIsSaving(false); }
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const deleteAccount = async () => {
     if (!confirm('Delete your account? This cannot be undone.')) return;
-    try {
-      await authApi.deleteMe();
-      logout();
-      navigate('/register');
-    } catch (err) {
-      alert(err.message || 'Failed to delete account');
-    }
+    try { await authService.deleteMe(); logout(); navigate('/register'); }
+    catch (err) { alert(err.message || 'Failed to delete account'); }
   };
 
+  const savePreferences = () => {
+    try { localStorage.setItem('prefs', JSON.stringify({ model, responseStyle })); } catch (_) { /* ignore */ }
+    setPrefSaved(true);
+    setTimeout(() => setPrefSaved(false), 3000);
+  };
+
+  const hasErrors = Object.keys(errors).length > 0;
+
+  const inputStyle = {
+    backgroundColor: 'var(--color-bg-input)',
+    color:           'var(--color-text-primary)',
+    border:          '1px solid var(--color-border)',
+    borderRadius:    '0.5rem',
+    padding:         '0.625rem 0.875rem',
+    fontSize:        '0.875rem',
+    outline:         'none',
+    width:           '100%',
+    transition:      'border-color 0.15s',
+  };
+
+  const tabs = [
+    { id: 'profile',     label: 'Profile' },
+    { id: 'preferences', label: 'Preferences' },
+  ];
+
   return (
-    <div className="flex h-screen">
-      {/* Settings Sidebar (collapsible) */}
-      <aside className={`transition-all duration-300 ${collapsed ? 'w-20' : 'w-64'} panel panel-border p-4 flex flex-col gap-6`}> 
-        <div className="flex items-center justify-between">
-          <button onClick={() => navigate('/dashboard')} className="flex items-center gap-2 text-muted hover:text-main p-2 rounded">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="19" y1="12" x2="5" y2="12"></line>
-              <polyline points="12 19 5 12 12 5"></polyline>
+    <div className="flex-1 h-full overflow-y-auto" style={{ backgroundColor: 'var(--color-bg-base)' }}>
+      {/* ── Top bar ── */}
+      <div
+        className="sticky top-0 z-10"
+        style={{ backgroundColor: 'var(--color-bg-surface)', borderBottom: '1px solid var(--color-border)' }}
+      >
+        <div className="max-w-2xl mx-auto px-6 flex items-center gap-4 h-14">
+          {/* Back button */}
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="flex items-center gap-1.5 text-sm font-medium mr-2 transition-colors"
+            style={{ color: 'var(--color-text-secondary)' }}
+            onMouseEnter={e => e.currentTarget.style.color = 'var(--color-text-primary)'}
+            onMouseLeave={e => e.currentTarget.style.color = 'var(--color-text-secondary)'}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6" />
             </svg>
-            {!collapsed && <span className="text-sm font-medium">Back</span>}
+            Back
           </button>
 
-          <div className="flex items-center gap-2">
-            <button onClick={() => setCollapsed(c => !c)} className="p-2 rounded hover:bg-white/5">
-              {collapsed ? (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
-              ) : (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
-              )}
-            </button>
+          {/* Tab bar */}
+          <div className="flex items-center gap-1">
+            {tabs.map(t => (
+              <button
+                key={t.id}
+                onClick={() => setActiveTab(t.id)}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
+                style={{
+                  backgroundColor: activeTab === t.id ? 'var(--color-bg-active)' : 'transparent',
+                  color:           activeTab === t.id ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                }}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
         </div>
+      </div>
 
-        <nav className="flex flex-col gap-2 mt-2">
-          <button onClick={() => setActiveTab('profile')} className={`flex items-center gap-3 p-2 rounded ${activeTab==='profile' ? 'bg-white/10 text-main' : 'text-muted'}`}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="3"/><path d="M6 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/></svg>
-            {!collapsed && <span className="text-sm">Profile</span>}
-          </button>
-          <button onClick={() => setActiveTab('preferences')} className={`flex items-center gap-3 p-2 rounded ${activeTab==='preferences' ? 'bg-white/10 text-main' : 'text-muted'}`}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33"/></svg>
-            {!collapsed && <span className="text-sm">Preferences</span>}
-          </button>
-        </nav>
+      {/* ── Content ── */}
+      <div className="max-w-2xl mx-auto px-6 pb-20">
 
-        <div className="mt-auto flex flex-col gap-3">
-          {!collapsed && <div className="text-xs text-muted">Tip: collapse the sidebar to save space.</div>}
-        </div>
-      </aside>
+        {/* ════ PROFILE TAB ════ */}
+        {activeTab === 'profile' && (
+          <div className="animate-fade-in-up">
+            {/* Page title */}
+            <div className="pt-10 pb-6">
+              <h1 className="text-2xl font-bold" style={{ color: 'var(--color-text-primary)' }}>Profile</h1>
+              <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                Manage your personal information and how others see you.
+              </p>
+            </div>
 
-      {/* Settings Content */}
-      <div className="flex-1 p-16 overflow-y-auto" style={{background: 'radial-gradient(circle at 50% 0%, rgba(59,130,246,0.02), transparent 50%)'}}>
-        <div className="max-w-[800px] mx-auto mb-10">
-          <h1 className="text-3xl font-bold text-main mb-2">{activeTab === 'profile' ? 'Profile' : 'Preferences'}</h1>
-          <p className="text-muted text-sm sm:text-base">
-            {activeTab === 'profile' 
-              ? 'Manage your personal information and account security.' 
-              : 'Customize your AI experience and interface.'}
-          </p>
-        </div>
+            {/* Avatar section */}
+            <Section title="Photo">
+              <div className="flex items-center gap-5">
+                {/* Avatar circle */}
+                <div
+                  className="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center shrink-0 text-2xl font-bold"
+                  style={{ backgroundColor: 'var(--color-bg-active)', color: 'var(--color-text-primary)', border: '2px solid var(--color-border)' }}
+                >
+                  {picture
+                    ? <img src={picture} alt="avatar" className="w-full h-full object-cover" />
+                    : (user?.name || 'U').charAt(0).toUpperCase()
+                  }
+                </div>
 
-          {activeTab === 'profile' && (
-          <div className="max-w-[900px] mx-auto panel-card p-8 shadow-2xl animate-fade-in-up">
-            <div className="flex gap-8 flex-col md:flex-row">
-              <div className="w-full md:w-1/3 flex flex-col items-center gap-4">
-                <div className="w-36 h-36 rounded-full overflow-hidden panel-muted border panel-border flex items-center justify-center">
-                  {picture ? (
-                    <img src={picture} alt="avatar" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="text-3xl font-bold text-main">{(user?.name||'T').charAt(0).toUpperCase()}</div>
+                <div className="flex flex-col gap-2">
+                  <label
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors"
+                    style={{
+                      backgroundColor: 'var(--color-bg-active)',
+                      color:           'var(--color-text-primary)',
+                      border:          '1px solid var(--color-border)',
+                    }}
+                  >
+                    {isUploading ? 'Uploading…' : 'Upload photo'}
+                    <input type="file" accept="image/*" className="hidden" onChange={e => onPickPicture(e.target.files?.[0])} />
+                  </label>
+                  {picture && (
+                    <button
+                      onClick={() => setPicture('')}
+                      className="text-sm text-red-500 hover:text-red-400 text-left transition-colors"
+                    >
+                      Remove photo
+                    </button>
                   )}
                 </div>
-                <label className="bg-white/5 px-4 py-2 rounded text-sm cursor-pointer">
-                  Upload Photo
-                  <input type="file" accept="image/*" className="hidden" onChange={(e) => onPickPicture(e.target.files?.[0])} />
-                </label>
-                <button className="text-sm text-red-400" onClick={() => setPicture('')}>Remove Photo</button>
+              </div>
+            </Section>
+
+            {/* Basic info */}
+            <Section title="Basic information">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <Field label="Full Name" error={errors.name}>
+                  <input
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                    placeholder="Jane Doe"
+                    style={inputStyle}
+                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                    onBlur={e  => e.target.style.borderColor = 'var(--color-border)'}
+                  />
+                </Field>
+                <Field label="Email Address" error={errors.email}>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    style={inputStyle}
+                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                    onBlur={e  => e.target.style.borderColor = 'var(--color-border)'}
+                  />
+                </Field>
+                <Field label="Phone Number" error={errors.phone}>
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={e => setPhone(e.target.value)}
+                    placeholder="+91 98765 43210"
+                    style={inputStyle}
+                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                    onBlur={e  => e.target.style.borderColor = 'var(--color-border)'}
+                  />
+                </Field>
+                <Field label="Gender">
+                  <select
+                    value={gender}
+                    onChange={e => setGender(e.target.value)}
+                    style={inputStyle}
+                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                    onBlur={e  => e.target.style.borderColor = 'var(--color-border)'}
+                  >
+                    <option value="">Prefer not to say</option>
+                    <option>Female</option>
+                    <option>Male</option>
+                    <option>Non-binary</option>
+                    <option>Other</option>
+                  </select>
+                </Field>
+              </div>
+            </Section>
+
+            {/* Professional info */}
+            <Section title="Professional">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <Field label="Occupation">
+                  <input value={occupation} onChange={e => setOccupation(e.target.value)} placeholder="e.g. Software Engineer" style={inputStyle}
+                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                    onBlur={e  => e.target.style.borderColor = 'var(--color-border)'} />
+                </Field>
+                <Field label="Job Title">
+                  <input value={jobTitle} onChange={e => setJobTitle(e.target.value)} placeholder="e.g. Senior Developer" style={inputStyle}
+                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                    onBlur={e  => e.target.style.borderColor = 'var(--color-border)'} />
+                </Field>
+                <Field label="Organization">
+                  <input value={organization} onChange={e => setOrganization(e.target.value)} placeholder="e.g. Accenture" style={inputStyle}
+                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                    onBlur={e  => e.target.style.borderColor = 'var(--color-border)'} />
+                </Field>
+                <Field label="Industry">
+                  <input value={industry} onChange={e => setIndustry(e.target.value)} placeholder="e.g. Technology" style={inputStyle}
+                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                    onBlur={e  => e.target.style.borderColor = 'var(--color-border)'} />
+                </Field>
+                <Field label="Education">
+                  <input value={education} onChange={e => setEducation(e.target.value)} placeholder="e.g. B.Tech Computer Science" style={inputStyle}
+                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                    onBlur={e  => e.target.style.borderColor = 'var(--color-border)'} />
+                </Field>
+                <Field label="Interests" hint="Comma-separated">
+                  <input value={interests} onChange={e => setInterests(e.target.value)} placeholder="e.g. AI, Machine Learning, Chess" style={inputStyle}
+                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                    onBlur={e  => e.target.style.borderColor = 'var(--color-border)'} />
+                </Field>
+              </div>
+              <Field label="Short Bio">
+                <textarea
+                  value={bio}
+                  onChange={e => setBio(e.target.value)}
+                  rows={3}
+                  placeholder="Tell us a little about yourself…"
+                  style={{ ...inputStyle, resize: 'vertical' }}
+                  onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                  onBlur={e  => e.target.style.borderColor = 'var(--color-border)'}
+                />
+              </Field>
+            </Section>
+
+            {/* Action bar */}
+            <div className="pt-6 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={saveProfile}
+                  disabled={isSaving || isUploading || hasErrors}
+                  className="px-5 py-2 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isSaving ? 'Saving…' : 'Save changes'}
+                </button>
+
+                <button
+                  onClick={async () => { await logout(); navigate('/login'); }}
+                  className="px-5 py-2 rounded-lg text-sm font-medium transition-colors"
+                  style={{
+                    backgroundColor: 'var(--color-bg-active)',
+                    color:           'var(--color-text-primary)',
+                    border:          '1px solid var(--color-border)',
+                  }}
+                >
+                  Sign out
+                </button>
+
+                {savedMsg && (
+                  <span className="text-sm text-emerald-500 flex items-center gap-1.5">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+                    {savedMsg}
+                  </span>
+                )}
+                {errors.form && <span className="text-sm text-red-500">{errors.form}</span>}
               </div>
 
-                <div className="flex-1">
-                <h3 className="text-lg font-semibold text-main mb-4">Personal Information</h3>
-                <div className="flex flex-col gap-4">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs text-muted font-medium">Full Name</label>
-                    <input value={name} onChange={(e) => setName(e.target.value)} className="input-bg px-4 py-3 rounded-lg outline-none" />
-                    {errors.name && <div className="text-sm text-red-400 mt-1">{errors.name}</div>}
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs text-muted font-medium">Email Address</label>
-                    <input value={email} onChange={(e) => setEmail(e.target.value)} className="input-bg px-4 py-3 rounded-lg outline-none" />
-                    {errors.email && <div className="text-sm text-red-400 mt-1">{errors.email}</div>}
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs text-muted font-medium">Phone Number</label>
-                    <input value={phone} onChange={(e) => setPhone(e.target.value)} className="input-bg px-4 py-3 rounded-lg outline-none" />
-                    {errors.phone && <div className="text-sm text-red-400 mt-1">{errors.phone}</div>}
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="flex flex-col gap-2">
-                      <label className="text-xs text-muted font-medium">Gender</label>
-                      <select value={gender} onChange={(e)=>setGender(e.target.value)} className="input-bg px-4 py-3 rounded-lg outline-none">
-                        <option value="">Prefer not to say</option>
-                        <option>Female</option>
-                        <option>Male</option>
-                        <option>Non-binary</option>
-                        <option>Other</option>
-                      </select>
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                      <label className="text-xs text-muted font-medium">Occupation</label>
-                      <input value={occupation} onChange={(e)=>setOccupation(e.target.value)} className="input-bg px-4 py-3 rounded-lg outline-none" />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-                    <div className="flex flex-col gap-2">
-                      <label className="text-xs text-muted font-medium">Organization</label>
-                      <input value={organization} onChange={(e)=>setOrganization(e.target.value)} className="input-bg px-4 py-3 rounded-lg outline-none" />
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                      <label className="text-xs text-muted font-medium">Job Title</label>
-                      <input value={jobTitle} onChange={(e)=>setJobTitle(e.target.value)} className="input-bg px-4 py-3 rounded-lg outline-none" />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-                    <div className="flex flex-col gap-2">
-                      <label className="text-xs text-muted font-medium">Education</label>
-                      <input value={education} onChange={(e)=>setEducation(e.target.value)} className="input-bg px-4 py-3 rounded-lg outline-none" />
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                      <label className="text-xs text-muted font-medium">Industry</label>
-                      <input value={industry} onChange={(e)=>setIndustry(e.target.value)} className="input-bg px-4 py-3 rounded-lg outline-none" />
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-2 mt-4">
-                    <label className="text-xs text-muted font-medium">Interests (comma separated)</label>
-                    <input value={interests} onChange={(e)=>setInterests(e.target.value)} className="input-bg px-4 py-3 rounded-lg outline-none" />
-                  </div>
-
-                  <div className="flex flex-col gap-2 mt-4">
-                    <label className="text-xs text-muted font-medium">Short Bio</label>
-                    <textarea value={bio} onChange={(e)=>setBio(e.target.value)} rows={4} className="input-bg px-4 py-3 rounded-lg outline-none" />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs text-muted font-medium">Password</label>
-                    <input type="password" placeholder="Leave blank to keep current" className="input-bg px-4 py-3 rounded-lg outline-none" onChange={() => {}} />
-                  </div>
-                </div>
-
-                <div className="mt-6 flex gap-3">
-                  <button onClick={saveProfile} disabled={isSaving || isUploading || Object.keys(errors).length>0} className="bg-white text-black px-6 py-2 rounded font-semibold">{isSaving ? 'Saving...' : 'Save'}</button>
-                  <button onClick={logout} className="bg-white/5 text-white px-6 py-2 rounded border border-white/10">Sign Out</button>
-                  <button onClick={deleteAccount} className="ml-auto bg-red-500/10 text-red-500 px-4 py-2 rounded border border-red-500/20">Delete Account</button>
-                </div>
-                {errors.form && <div className="text-sm text-red-400 mt-3">{errors.form}</div>}
-                {savedMessage && <div className="text-sm text-green-400 mt-3">{savedMessage}</div>}
-              </div>
+              <button
+                onClick={deleteAccount}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-red-500 hover:text-red-400 transition-colors"
+                style={{ border: '1px solid rgba(239,68,68,0.25)', backgroundColor: 'rgba(239,68,68,0.05)' }}
+              >
+                Delete account
+              </button>
             </div>
           </div>
         )}
 
-          {activeTab === 'preferences' && (
-          <div className="max-w-[800px] mx-auto panel-card p-10 shadow-2xl animate-fade-in-up">
-              <div className="settings-section">
-              <h3 className="text-lg font-semibold text-white mb-6">AI Configuration</h3>
-              <div className="flex flex-col gap-2 mb-6 max-w-[400px]">
-                <label className="text-xs text-muted font-medium">Default AI Model</label>
-                <select value={model} onChange={(e)=>setModel(e.target.value)} className="app-select text-sm">
-                  <option>Aizen Pro</option>
-                  <option>Aizen Lite</option>
-                  <option>Claude 3.5 Sonnet</option>
-                </select>
-                <span className="text-[11px] text-muted mt-1">The model used for new sessions.</span>
-              </div>
-              
-              <div className="flex flex-col gap-2 mb-6 max-w-[400px]">
-                <label className="text-xs text-muted font-medium">Response Style</label>
-                <select value={responseStyle} onChange={(e)=>setResponseStyle(e.target.value)} className="app-select text-sm">
-                  <option>Balanced</option>
-                  <option>Concise</option>
-                  <option>Detailed</option>
-                </select>
-                <span className="text-[11px] text-muted mt-1">How verbose the AI should be.</span>
-              </div>
+        {/* ════ PREFERENCES TAB ════ */}
+        {activeTab === 'preferences' && (
+          <div className="animate-fade-in-up">
+            <div className="pt-10 pb-6">
+              <h1 className="text-2xl font-bold" style={{ color: 'var(--color-text-primary)' }}>Preferences</h1>
+              <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                Customize your AI experience and interface.
+              </p>
             </div>
 
-            <div className="h-px bg-white/5 my-10"></div>
+            {/* AI Config */}
+            <Section title="AI Configuration">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 max-w-lg">
+                <Field label="Default AI Model" hint="Used for new chat sessions">
+                  <select value={model} onChange={e => setModel(e.target.value)} style={inputStyle}
+                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                    onBlur={e  => e.target.style.borderColor = 'var(--color-border)'}>
+                    <option>3.1 Flash-Lite</option>
+                    <option>3.5 Flash</option>
+                    <option>3.1 Pro</option>
+                  </select>
+                </Field>
+                <Field label="Response Style" hint="How verbose the AI should be">
+                  <select value={responseStyle} onChange={e => setResponseStyle(e.target.value)} style={inputStyle}
+                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                    onBlur={e  => e.target.style.borderColor = 'var(--color-border)'}>
+                    <option>Balanced</option>
+                    <option>Concise</option>
+                    <option>Detailed</option>
+                  </select>
+                </Field>
+              </div>
+            </Section>
 
-            <div className="settings-section">
-              <h3 className="text-lg font-semibold text-white mb-6">Interface</h3>
-              <div className="flex flex-col gap-2 mb-6 max-w-[400px]">
-                <label className="text-xs text-muted font-medium">Theme</label>
-                <div className="flex items-center gap-3">
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" checked={theme === 'dark'} onChange={() => toggle()} className="sr-only" />
-                    <div className="w-14 h-8 bg-white/10 rounded-full shadow-inner flex items-center p-1 transition-colors" style={{background: theme==='dark' ? '#334155' : '#e2e8f0'}}>
-                      <div className="w-6 h-6 bg-white rounded-full transition-transform" style={{transform: theme==='dark' ? 'translateX(28px)' : 'translateX(0)'}} />
-                    </div>
-                    <span className="ml-3 text-sm text-muted">{theme === 'dark' ? 'Dark' : 'Light'}</span>
-                  </label>
+            {/* Appearance */}
+            <Section title="Appearance">
+              <div className="flex items-center justify-between max-w-lg">
+                <div>
+                  <p className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>Theme</p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
+                    Switch between dark and light appearance
+                  </p>
                 </div>
+
+                {/* iOS-style toggle */}
+                <button
+                  onClick={toggle}
+                  role="switch"
+                  aria-checked={theme === 'dark'}
+                  className="relative w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none shrink-0"
+                  style={{ backgroundColor: theme === 'dark' ? 'var(--color-accent)' : 'var(--color-bg-active)', border: '1px solid var(--color-border)' }}
+                >
+                  <span
+                    className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200"
+                    style={{ transform: theme === 'dark' ? 'translateX(24px)' : 'translateX(0)' }}
+                  />
+                </button>
               </div>
-            </div>
-            
-            <div className="mt-8 flex justify-end">
-              <button onClick={savePreferences} className="bg-white text-black px-8 py-3 rounded-lg font-semibold transition-colors hover:bg-slate-100 cursor-pointer">Save Preferences</button>
+
+            </Section>
+
+            {/* Save */}
+            <div className="pt-6 flex items-center gap-3">
+              <button
+                onClick={savePreferences}
+                className="px-5 py-2 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 transition-colors"
+              >
+                Save preferences
+              </button>
+              {prefSaved && (
+                <span className="text-sm text-emerald-500 flex items-center gap-1.5">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+                  Saved!
+                </span>
+              )}
             </div>
           </div>
         )}
+
       </div>
     </div>
   );
