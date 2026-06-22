@@ -1,7 +1,7 @@
 package com.accenture.intern.docmind.repository;
 
-import com.accenture.intern.docmind.entities.RefreshToken;
-import com.accenture.intern.docmind.entities.User;
+import com.accenture.intern.docmind.entity.RefreshToken;
+import com.accenture.intern.docmind.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;

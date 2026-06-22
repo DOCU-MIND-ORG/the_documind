@@ -1,31 +1,22 @@
-/**
- * AuthContext.jsx
- *
- * FIX: /auth/me in AuthController returns UserDto directly as JSON,
- * not { user: UserDto }. So data.user is always undefined.
- * Fixed to use data directly (or data.user as fallback).
- */
-import React, { createContext, useContext, useEffect, useState } from "react";
-import { authApi } from "../services/api.js";
+import { createContext, useContext, useEffect, useState } from "react";
+import { authService } from "../services/authService.js";
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser]           = useState(null);
-  const [token, setToken]         = useState(null);
-  const [authReady, setAuthReady] = useState(false);
+  const [user, setUser]       = useState(null);
+  const [token, setToken]     = useState(null);
+  const [authReady, setAuthReady] = useState(false);  
 
   useEffect(() => {
-    authApi.me()
+    authService.me()
       .then((data) => {
-        if (data) {
-          // FIX: backend returns UserDto directly, not { user: UserDto }
-          // Support both shapes in case backend changes
-          setUser(data.user ?? data);
+        if (data?.user) {
+          setUser(data.user);
         }
       })
       .catch(() => {
-        // 401 = no valid cookie — user is not logged in, that's fine
+        // 401 means user is not logged in
       })
       .finally(() => {
         setAuthReady(true);
@@ -37,33 +28,53 @@ export const AuthProvider = ({ children }) => {
     };
 
     window.addEventListener('auth-expired', handleAuthExpired);
-    return () => window.removeEventListener('auth-expired', handleAuthExpired);
+    const onProfileUpdated = (e) => { if (e?.detail) setUser((prev) => ({ ...prev, ...e.detail })); };
+    window.addEventListener('profile-updated', onProfileUpdated);
+
+    return () => {
+      window.removeEventListener('auth-expired', handleAuthExpired);
+      window.removeEventListener('profile-updated', onProfileUpdated);
+    };
   }, []);
 
-  /** Called after successful login or register */
+
   const login = (userData, accessToken) => {
-    // FIX: same — support both { user: ... } and flat UserDto
-    setUser(userData?.user ?? userData);
+    setUser(userData);
     setToken(accessToken ?? null);
     setAuthReady(true);
   };
 
-  /** Called on logout — clears backend cookies then local state */
+  useEffect(() => {
+    try {
+      if (user) localStorage.setItem('mock_user', JSON.stringify(user));
+      else localStorage.removeItem('mock_user');
+    } catch {}
+  }, [user]);
+
+  
   const logout = async () => {
     try {
-      await authApi.logout();
-    } catch {
-      // Ignore network errors — clear local state regardless
+      await authService.logout();
+    } catch {     
     }
     setUser(null);
     setToken(null);
     setAuthReady(true);
   };
 
-  /** Update user info locally (used by Settings/Profile page) */
   const updateUser = (updatedUser) => {
     setUser((prev) => ({ ...prev, ...updatedUser }));
   };
+
+  useEffect(() => {
+    if (!authReady) return;
+    if (!user) {
+      try {
+        const raw = localStorage.getItem('mock_user');
+        if (raw) setUser(JSON.parse(raw));
+      } catch {}
+    }
+  }, [authReady]);
 
   const isAuthenticated = !!user;
 

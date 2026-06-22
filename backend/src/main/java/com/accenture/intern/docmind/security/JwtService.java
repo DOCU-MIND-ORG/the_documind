@@ -1,6 +1,6 @@
 package com.accenture.intern.docmind.security;
 
-import com.accenture.intern.docmind.entities.User;
+import com.accenture.intern.docmind.entity.User;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
@@ -20,7 +20,7 @@ public class JwtService {
     @Value("${SECRET_KEY_BACKEND}")
     private String secretKey;
     
-    // 1s minutes for access token
+    // 1 minutes for access token (modified by user)
     private static final long ACCESS_TOKEN_EXPIRATION = 1000 * 60 * 15;
 
     public String generateAccessToken(User user) {
@@ -32,6 +32,7 @@ public class JwtService {
     }
 
 
+    // Extracting the email from a JWT token
     public String extractEmail(String token) {
         return Jwts.parserBuilder()
                 .setSigningKey(getSignInKey())
@@ -41,7 +42,7 @@ public class JwtService {
                 .getSubject();
     }
 
-
+    // Returns true if the token is well-formed, signed correctly, and not expired
     public boolean isTokenValid(String token) {
         try {
             Jwts.parserBuilder()

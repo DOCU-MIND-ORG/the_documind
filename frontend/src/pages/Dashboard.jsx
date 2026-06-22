@@ -1,459 +1,231 @@
-/**
- * Dashboard.jsx — Full rewrite to wire up RAG backend.
- *
- * CHANGES vs original:
- *  1. Sessions now have real UUIDs (crypto.randomUUID) passed to every API call
- *  2. handleFileUpload replaced with UploadPanel — calls real /ingest/* endpoints
- *  3. handleSend calls queryApi.ask() (RAG) not chatService.streamMessage
- *     → streaming still available via chatService.streamMessage for /chat/stream
- *  4. Bot messages now carry citations array → CitationCard renders source chips
- *  5. All 4 error states shown in chat as "system-error" messages
- *  6. Wikipedia URL input via UploadPanel's wikipedia tab
- *  7. Session switch correctly isolates documents per sessionId
- */
-
-import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useRef, useEffect } from 'react';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
-import { chatService } from '../services/chatService.js';
-import { queryApi } from '../services/api.js';
-import UploadPanel from '../components/UploadPanel.jsx';
-import CitationCard from '../components/CitationCard.jsx';
-import Streaming from '../components/streaming.jsx';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import './Dashboard.css';
-
-// ── Icons (kept from original) ───────────────────────────────────────────────
+import { useSessions } from '../context/SessionsContext.jsx';
+import { sessionService } from '../services/sessionService.js';
+import { preferenceService } from '../services/preferenceService.js';
+import { useToast } from '../context/ToastContext.jsx';
 
 const SendIcon = () => (
-  <svg className="icon" viewBox="0 0 24 24" style={{ transform: 'translateX(2px)' }}>
-    <line x1="22" y1="2" x2="11" y2="13" />
-    <polygon points="22 2 15 22 11 13 2 9 22 2" />
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
   </svg>
 );
-
-const PlusIcon = () => (
-  <svg className="icon" viewBox="0 0 24 24">
-    <line x1="12" y1="5" x2="12" y2="19" />
-    <line x1="5" y1="12" x2="19" y2="12" />
-  </svg>
-);
-
-const ChatIcon = () => (
-  <svg className="icon" viewBox="0 0 24 24">
-    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-  </svg>
-);
-
-const SettingsIcon = () => (
-  <svg className="icon" viewBox="0 0 24 24">
-    <circle cx="12" cy="12" r="3" />
-    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-  </svg>
-);
-
-const BotAvatar = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <rect x="5" y="8" width="14" height="14" rx="2" />
-    <line x1="9" y1="13" x2="9" y2="13.01" />
-    <line x1="15" y1="13" x2="15" y2="13.01" />
-  </svg>
-);
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function createSession(name) {
-  return { id: crypto.randomUUID(), name, messages: [], documents: [] };
-}
-
-function systemMsg(text, isError = false) {
-  return { id: crypto.randomUUID(), text, sender: isError ? 'system-error' : 'system' };
-}
-
-// ── Component ────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const { user, logout } = useAuth();
+  const { user, updateUser } = useAuth();
+  const { addSession } = useSessions();
+  const { showToast } = useToast();
   const navigate = useNavigate();
+  const { openMobileSidebar } = useOutletContext();
 
-  // Sessions — each has a UUID, its own message list and ingested doc list
-  const [sessions, setSessions]             = useState([createSession('New Chat')]);
-  const [activeSessionId, setActiveSessionId] = useState(sessions[0].id);
+  const [input, setInput] = useState('');
+  const [creating, setCreating] = useState(false);
+  const textareaRef = useRef(null);
 
-  const [input, setInput]                   = useState('');
-  const [isLoading, setIsLoading]           = useState(false);
-  const [streamingMsgId, setStreamingMsgId] = useState(null);
-  const [isUploadOpen, setIsUploadOpen]     = useState(false);
-  const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
-  const [newSessionName, setNewSessionName] = useState('');
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-
-  const messagesEndRef = useRef(null);
-
-  // Active session helpers
-  const activeSession = sessions.find(s => s.id === activeSessionId) || sessions[0];
-
-  function updateSession(id, updater) {
-    setSessions(prev => prev.map(s => s.id === id ? updater(s) : s));
-  }
-
-  function addMessage(sessionId, msg) {
-    updateSession(sessionId, s => ({ ...s, messages: [...s.messages, msg] }));
-  }
-
-  function updateLastBotMessage(sessionId, updater) {
-    updateSession(sessionId, s => {
-      const msgs = [...s.messages];
-      const lastBotIdx = [...msgs].reverse().findIndex(m => m.sender === 'bot');
-      if (lastBotIdx === -1) return s;
-      const realIdx = msgs.length - 1 - lastBotIdx;
-      msgs[realIdx] = updater(msgs[realIdx]);
-      return { ...s, messages: msgs };
-    });
-  }
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState(() => {
+    return localStorage.getItem('selectedModel') || 'GEMINI_2_5_PRO';
+  });
+  const [models, setModels] = useState([]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [activeSession.messages]);
+    const fetchModels = async () => {
+      try {
+        const availableModels = await preferenceService.getModels();
+        console.log(availableModels)
+        setModels(availableModels);
+      } catch (err) {
+        console.error("Failed to load models", err);
+      }
+    };
+    fetchModels();
+  }, []);
 
-  // ── Send message ─────────────────────────────────────────────────────────
+  const handleModelSelect = (id) => {
+    setSelectedModel(id);
+    localStorage.setItem('selectedModel', id);
+    setModelMenuOpen(false);
+  };
+
+  const selectedModelObj = models.find(m => m.id === selectedModel);
+  const displayModelName = selectedModelObj ? selectedModelObj.name : 'Loading...';
+
+  useEffect(() => {
+    const onUpdated = (e) => { if (e?.detail) updateUser(e.detail); };
+    window.addEventListener('profile-updated', onUpdated);
+    return () => window.removeEventListener('profile-updated', onUpdated);
+  }, [updateUser]);
 
   const handleSend = async (e) => {
     e.preventDefault();
-    const question = input.trim();
-    if (!question || isLoading) return;
+    const query = input.trim();
+    if (!query || creating) return;
 
-    const sessionId = activeSession.id;
-    setInput('');
-    setIsLoading(true);
-
-    // Check documents uploaded — Error state 4: no source loaded
-    // if (activeSession.documents.length === 0) {
-    //   addMessage(sessionId, systemMsg(
-    //     '⚠️ No documents have been uploaded to this session yet. ' +
-    //     'Please upload a file or add a Wikipedia URL first.', true
-    //   ));
-    //   setIsLoading(false);
-    //   return;
-    // }
-
-    addMessage(sessionId, { id: crypto.randomUUID(), text: question, sender: 'user' });
-
-    // Use RAG query endpoint — returns answer + citations
     try {
-      const result = await queryApi.ask(question, sessionId);
+      setCreating(true);
 
-      const botMsg = {
-        id: crypto.randomUUID(),
-        text: result.answer,
-        sender: 'bot',
-        citations: result.citations || [],
-        foundInDocuments: result.foundInDocuments,
-      };
-      addMessage(sessionId, botMsg);
+      const title = query.length <= 40 ? query : query.slice(0, 40) + '…';
+
+      const session = await sessionService.create(title);
+
+      addSession(session);
+
+      navigate(`/chat/${session.sessionId}`, {
+        state: { firstMessage: query },
+      });
     } catch (err) {
-      addMessage(sessionId, systemMsg(`❌ ${err.message}`, true));
-    } finally {
-      setIsLoading(false);
+      showToast(err.message || 'Failed to create session', 'error');
+      setCreating(false);
     }
   };
 
-  // ── Streaming send (optional — uses /chat/stream not RAG) ────────────────
-
-  const handleStreamSend = async (e) => {
-    e.preventDefault();
-    const question = input.trim();
-    if (!question || isLoading) return;
-
-    const sessionId = activeSession.id;
-    const botMsgId  = crypto.randomUUID();
-
-    setInput('');
-    setIsLoading(true);
-    addMessage(sessionId, { id: crypto.randomUUID(), text: question, sender: 'user' });
-    addMessage(sessionId, { id: botMsgId, text: '', sender: 'bot', citations: [] });
-    setStreamingMsgId(botMsgId);
-
-    await chatService.streamMessage(
-      question,
-      sessionId,
-      (chunk) => {
-        updateSession(sessionId, s => ({
-          ...s,
-          messages: s.messages.map(m =>
-            m.id === botMsgId ? { ...m, text: m.text + chunk } : m
-          ),
-        }));
-      },
-      (err) => addMessage(sessionId, systemMsg(`❌ Stream error: ${err.message}`, true)),
-      () => { setIsLoading(false); setStreamingMsgId(null); }
-    );
+  const onKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend(e);
+    }
   };
 
-  // ── Upload callbacks ─────────────────────────────────────────────────────
-
-  function onIngestSuccess(result) {
-    updateSession(activeSession.id, s => ({
-      ...s,
-      documents: [...s.documents, { id: result.documentId, name: result.fileName, type: result.sourceType }],
-    }));
-    addMessage(activeSession.id, systemMsg(
-      `✓ Uploaded "${result.fileName}" — ${result.chunksCreated} chunks indexed and ready.`
-    ));
-    setIsUploadOpen(false);
-  }
-
-  function onIngestError(message) {
-    addMessage(activeSession.id, systemMsg(`❌ ${message}`, true));
-    setIsUploadOpen(false);
-  }
-
-  // ── Session management ───────────────────────────────────────────────────
-
-  function createNewSession(e) {
-    e.preventDefault();
-    const name = newSessionName.trim() || 'New Chat';
-    const session = createSession(name);
-    setSessions(prev => [session, ...prev]);
-    setActiveSessionId(session.id);
-    setNewSessionName('');
-    setIsSessionModalOpen(false);
-  }
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); }
+  const onInputChange = (e) => {
+    setInput(e.target.value);
+    const ta = e.target;
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
   };
 
-  // ── Render ───────────────────────────────────────────────────────────────
+  const firstName = user?.name?.split(' ')[0] || 'there';
 
   return (
-    <div className="dashboard-layout">
+    <div className="flex-1 flex flex-col h-full overflow-hidden">
 
-      {/* Sidebar */}
-      <aside className="chat-sidebar">
-        <div className="sidebar-header">
-          <div className="brand-title">DocMind</div>
-        </div>
-
-        <button className="new-chat-btn" onClick={() => setIsSessionModalOpen(true)}>
-          <span>New Session</span>
-          <PlusIcon />
-        </button>
-
-        <div className="session-list">
-          <div className="sidebar-heading">Sessions</div>
-          {sessions.map(session => (
-            <div
-              key={session.id}
-              className={`session-item ${session.id === activeSessionId ? 'active' : ''}`}
-              onClick={() => setActiveSessionId(session.id)}
-            >
-              <ChatIcon />
-              <span className="session-name">{session.name}</span>
-              {/* Doc count badge */}
-              {session.documents.length > 0 && (
-                <span style={badgeStyle}>{session.documents.length}</span>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div className="sidebar-footer">
-          {isSettingsOpen && (
-            <div className="settings-popover">
-              <button className="settings-menu-item" onClick={() => { setIsSettingsOpen(false); navigate('/settings#profile'); }}>Profile</button>
-              <button className="settings-menu-item" onClick={() => { setIsSettingsOpen(false); navigate('/settings#preferences'); }}>Preferences</button>
-              <div className="settings-divider" />
-              <button className="settings-logout-btn" onClick={logout}>Sign Out</button>
-            </div>
-          )}
-          <div className="user-profile" onClick={() => setIsSettingsOpen(!isSettingsOpen)}>
-            <div className="user-info">
-              <div className="user-avatar">{user?.name ? user.name.charAt(0).toUpperCase() : '?'}</div>
-              <div className="user-name">{user?.name || 'User'}</div>
-            </div>
-            <button className="settings-btn"><SettingsIcon /></button>
-          </div>
-        </div>
-      </aside>
-
-      {/* Main chat area */}
-      <main className="chat-main" onClick={() => { if (isSettingsOpen) setIsSettingsOpen(false); }}>
-
-        {/* Upload panel (collapsible) */}
-        {isUploadOpen && (
-          <div style={uploadPanelStyle}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <span style={{ fontWeight: 600, fontSize: '14px' }}>Add source to this session</span>
-              <button onClick={() => setIsUploadOpen(false)} style={closeBtn}>✕</button>
-            </div>
-            <UploadPanel
-              sessionId={activeSession.id}
-              onSuccess={onIngestSuccess}
-              onError={onIngestError}
-            />
-            {activeSession.documents.length > 0 && (
-              <div style={{ marginTop: '10px' }}>
-                <div style={{ fontSize: '12px', fontWeight: 600, color: '#888', marginBottom: '4px' }}>Indexed in this session:</div>
-                {activeSession.documents.map(d => (
-                  <div key={d.id} style={{ fontSize: '12px', color: '#555' }}>
-                    {d.type === 'pdf' ? '📄' : d.type === 'image' ? '🖼️' : d.type === 'wikipedia' ? '🌐' : '📝'} {d.name}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Messages */}
-        <div className="messages-area">
-          {activeSession.messages.length === 0 && (
-            <div style={emptyState}>
-              <div style={{ fontSize: '32px', marginBottom: '8px' }}>📂</div>
-              <p style={{ margin: 0, color: '#888', fontSize: '14px' }}>
-                Upload a document or paste a Wikipedia link to get started.
-              </p>
-              <button style={uploadCta} onClick={() => setIsUploadOpen(true)}>
-                ⬆ Add a source
-              </button>
-            </div>
-          )}
-
-          {activeSession.messages.map(msg => (
-            <div key={msg.id} className={`message-wrapper ${msg.sender}`}>
-              {msg.sender !== 'system' && msg.sender !== 'system-error' && (
-                <div className="message-avatar">
-                  {msg.sender === 'bot' ? <BotAvatar /> : (user?.name?.charAt(0).toUpperCase() || '?')}
-                </div>
-              )}
-              <div className="message-content">
-                {msg.sender !== 'system' && msg.sender !== 'system-error' && (
-                  <div className="message-sender">
-                    {msg.sender === 'bot' ? 'DocMind' : (user?.name || 'You')}
-                  </div>
-                )}
-                <div className={`message-text ${msg.sender === 'system-error' ? 'error-msg' : ''}`}>
-                  {msg.sender === 'system' || msg.sender === 'system-error' ? (
-                    msg.text
-                  ) : msg.sender === 'user' ? (
-                    msg.text
-                  ) : (
-                    <>
-                      <Streaming text={msg.text} isStreaming={msg.id === streamingMsgId} />
-                      {/* Citations — only show when not streaming */}
-                      {msg.id !== streamingMsgId && (
-                        <CitationCard citations={msg.citations} />
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {isLoading && !streamingMsgId && (
-            <div className="message-wrapper bot">
-              <div className="message-avatar"><BotAvatar /></div>
-              <div className="message-content">
-                <div className="message-sender">DocMind</div>
-                <div className="message-text" style={{ color: '#888', fontStyle: 'italic' }}>Searching documents…</div>
-              </div>
-            </div>
-          )}
-
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input area */}
-        <div className="chat-input-container">
-          <form onSubmit={handleSend} className="chat-input-wrapper">
-            {/* Upload toggle button */}
+      <header className="flex items-center h-14 px-4 border-b t-border shrink-0 z-30 relative t-bg-panel">
+        <div className="flex items-center gap-1.5">
+          <button
+            className="md:hidden p-2 -ml-1 t-text-muted hover:t-text-main rounded-xl t-hover-bg transition-all"
+            onClick={openMobileSidebar}
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <div className="relative">
             <button
-              type="button"
-              className="file-upload-btn"
-              title="Upload document or add Wikipedia URL"
-              onClick={() => setIsUploadOpen(o => !o)}
-              style={isUploadOpen ? { color: 'var(--color-accent, #4f46e5)' } : {}}
+              onClick={() => setModelMenuOpen(prev => !prev)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[15px] font-semibold t-text-main t-hover-bg rounded-xl transition-all cursor-pointer select-none"
             >
-              <svg className="icon" viewBox="0 0 24 24">
-                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              DocuMind <span className="t-text-faint font-medium">{displayModelName}</span>
+              <svg className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${modelMenuOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
               </svg>
             </button>
 
-            <textarea
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={
-                activeSession.documents.length === 0
-                  ? 'Upload a document first…'
-                  : 'Ask anything about your documents…'
-              }
-              className="chat-text-input"
-              rows={1}
-              disabled={isLoading}
-            />
-
-            <button type="submit" className="chat-send-btn" disabled={!input.trim() || isLoading}>
-              <SendIcon />
-            </button>
-          </form>
-        </div>
-      </main>
-
-      {/* New Session Modal */}
-      {isSessionModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsSessionModalOpen(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <h2 className="modal-title">Create New Session</h2>
-            <form onSubmit={createNewSession}>
-              <input
-                type="text"
-                autoFocus
-                className="modal-input"
-                placeholder="E.g. Q3 Financial Analysis"
-                value={newSessionName}
-                onChange={e => setNewSessionName(e.target.value)}
-              />
-              <div className="modal-actions">
-                <button type="button" className="modal-btn-cancel" onClick={() => setIsSessionModalOpen(false)}>Cancel</button>
-                <button type="submit" className="modal-btn-create">Create</button>
-              </div>
-            </form>
+            {modelMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setModelMenuOpen(false)} />
+                <div className="absolute left-0 mt-2 z-50 w-[280px] t-bg-menu t-border-soft border rounded-2xl shadow-2xl py-1.5 animate-fade-in-up" style={{ boxShadow: 'var(--shadow-elev)' }}>
+                  {models.map(m => {
+                    const isSelected = m.id === selectedModel;
+                    return (
+                      <button
+                        key={m.id}
+                        onClick={() => handleModelSelect(m.id)}
+                        className="flex items-start w-full text-left px-4 py-2.5 t-hover-bg transition-all group cursor-pointer"
+                      >
+                        <div className="w-5 shrink-0 pt-0.5">
+                          {isSelected && (
+                            <svg className="w-3.5 h-3.5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                            </svg>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0 pr-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[13px] font-semibold t-text-main group-hover:text-blue-500 transition-colors">
+                              {m.name}
+                            </span>
+                            {m.isNew && (
+                              <span className="px-2 py-0.5 text-[9px] font-medium t-bg-hover t-text-muted rounded-full shrink-0">
+                                New
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] t-text-muted mt-0.5 leading-normal">
+                            {m.description}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </div>
         </div>
-      )}
+      </header>
+
+      <div className="flex-1 flex flex-col items-center justify-center px-6 overflow-y-auto">
+        <div className="text-center mb-10 select-none">
+          <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-blue-500/15 to-indigo-500/15 border border-blue-500/20 flex items-center justify-center mx-auto mb-6 shadow-[0_0_80px_rgba(59,130,246,0.07)]">
+            <svg className="w-8 h-8 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+            </svg>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-bold t-text-main mb-3 tracking-tight">
+            Hello, {firstName} 👋
+          </h1>
+          <p className="t-text-faint text-[13px] sm:text-sm max-w-xs mx-auto leading-relaxed">
+            Your AI-powered document assistant.<br />Type a message below to get started.
+          </p>
+        </div>
+        <form onSubmit={handleSend} className="w-full max-w-xl">
+          <div className="flex items-end gap-3 input-bg rounded-2xl px-4 py-3 transition-all focus-within:border-blue-500/40 focus-within:shadow-[0_0_0_2px_rgba(59,130,246,0.15)] shadow-xl">
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={onInputChange}
+              onKeyDown={onKeyDown}
+              placeholder="Ask anything…"
+              rows={1}
+              disabled={creating}
+              autoFocus
+              className="flex-1 bg-transparent border-0 text-[13px] t-text-main outline-none placeholder:t-text-faint resize-none max-h-40 min-h-[22px] py-0.5 leading-relaxed disabled:opacity-50"
+              style={{ height: '22px' }}
+            />
+            <button
+              type="submit"
+              disabled={!input.trim() || creating}
+              className="p-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-25 disabled:cursor-not-allowed text-white rounded-xl transition-all active:scale-95 hover:scale-105 disabled:scale-100 shrink-0 cursor-pointer"
+            >
+              {creating ? (
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <SendIcon />
+              )}
+            </button>
+          </div>
+          <p className="text-center text-[11px] t-text-faint mt-2.5 select-none">
+            Enter to send &nbsp;·&nbsp; Shift+Enter for new line
+          </p>
+        </form>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-8 w-full max-w-xl">
+          {[
+            { icon: '📄', label: 'Summarize a document', prompt: 'Can you summarize the key points of a document for me?' },
+            { icon: '💬', label: 'Ask questions about content', prompt: 'I have some content I want to ask questions about.' },
+            { icon: '✍️', label: 'Explain a concept', prompt: 'Can you explain a concept to me in simple terms?' },
+            { icon: '🔍', label: 'Analyze and compare', prompt: 'Help me analyze and compare some information.' },
+          ].map(({ icon, label, prompt }) => (
+            <button
+              key={label}
+              onClick={() => setInput(prompt)}
+              className="flex items-center gap-3 text-left px-4 py-3 t-bg-hover hover:t-bg-active t-border border rounded-xl text-[13px] t-text-muted hover:t-text-main transition-all cursor-pointer group"
+            >
+              <span className="text-base">{icon}</span>
+              <span className="group-hover:t-text-main transition-colors">{label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
-
-// ── Inline styles for new elements (reuse Dashboard.css for existing classes) ─
-
-const badgeStyle = {
-  marginLeft: 'auto', background: 'var(--color-accent, #4f46e5)',
-  color: '#fff', borderRadius: '999px', padding: '1px 7px', fontSize: '11px',
-};
-
-const uploadPanelStyle = {
-  margin: '12px 16px 0',
-  padding: '16px',
-  border: '1px solid var(--color-border-secondary, #e0e0e0)',
-  borderRadius: '12px',
-  background: 'var(--color-bg-primary, #fff)',
-};
-
-const closeBtn = {
-  background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', color: '#888',
-};
-
-const emptyState = {
-  display: 'flex', flexDirection: 'column', alignItems: 'center',
-  justifyContent: 'center', height: '100%', gap: '12px',
-};
-
-const uploadCta = {
-  marginTop: '8px', padding: '9px 20px', borderRadius: '8px', border: 'none',
-  background: 'var(--color-accent, #4f46e5)', color: '#fff',
-  fontWeight: 600, fontSize: '14px', cursor: 'pointer',
-};
