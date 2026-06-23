@@ -1,10 +1,14 @@
 package com.accenture.intern.docmind.service;
 
 import com.accenture.intern.docmind.dto.attachment.AttachmentResponse;
+import com.accenture.intern.docmind.dto.attachment.AttachmentUploadResult;
 import com.accenture.intern.docmind.entity.*;
 import com.accenture.intern.docmind.repository.AttachmentRepository;
 import com.accenture.intern.docmind.repository.MessageRepository;
 import com.accenture.intern.docmind.repository.SessionRepository;
+import lombok.extern.slf4j.Slf4j;
+import com.accenture.intern.docmind.aiservices.DocumentParserService;
+import com.accenture.intern.docmind.aiservices.EmbeddingService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.stereotype.Service;
@@ -21,6 +25,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @Transactional
 public class AttachmentService {
@@ -28,6 +33,8 @@ public class AttachmentService {
     private final AttachmentRepository attachmentRepository;
     private final MessageRepository messageRepository;
     private final SessionRepository sessionRepository;
+    private final DocumentParserService parserService;
+    private final EmbeddingService embeddingService;
 
     /** Root storage dir — always resolved to absolute path at startup */
     @Value("${app.storage.root:storage}")
@@ -37,10 +44,14 @@ public class AttachmentService {
 
     public AttachmentService(AttachmentRepository attachmentRepository,
                              MessageRepository messageRepository,
-                             SessionRepository sessionRepository) {
+                             SessionRepository sessionRepository,
+                             DocumentParserService parserService,
+                             EmbeddingService embeddingService) {
         this.attachmentRepository = attachmentRepository;
         this.messageRepository = messageRepository;
         this.sessionRepository = sessionRepository;
+        this.parserService = parserService;
+        this.embeddingService = embeddingService;
     }
 
     @jakarta.annotation.PostConstruct
@@ -57,7 +68,7 @@ public class AttachmentService {
      * Saves the file to the correct sub-folder under storageRoot,
      * then persists an Attachment row linked to a system Message in the given session.
      */
-    public Mono<AttachmentResponse> uploadFile(Long sessionId, String userEmail, FilePart filePart) {
+    public Mono<AttachmentUploadResult> uploadFile(Long sessionId, String userEmail, FilePart filePart) {
         return Mono.fromCallable(() -> {
             // 1. Verify session belongs to caller
             Session session = sessionRepository.findById(sessionId)
@@ -85,6 +96,24 @@ public class AttachmentService {
 
             // 4. Write file to disk (blocking, hence fromCallable + boundedElastic)
             filePart.transferTo(dest).block();
+
+            Mono<Void> ingestionMono = Mono.empty();
+            try {
+                String parsedText = null;
+                if (type == AttachmentType.PDF) {
+                    parsedText = parserService.parsePdf(dest);
+                } else if (type == AttachmentType.TEXT) {
+                    parsedText = parserService.parseTextFile(dest);
+                }
+
+                if (parsedText != null && !parsedText.isBlank()) {
+                    ingestionMono = embeddingService.processAndIngest(parsedText, type.name(), originalName, sessionId);
+                    log.info("Successfully processed '{}'", originalName);
+                }
+            } catch (Exception e) {
+                log.error("Failed to parse/ingest '{}': {}", originalName, e.getMessage());
+                // We proceed even if parsing fails so the attachment is still recorded
+            }
 
             long sizeBytes;
             try {
@@ -122,7 +151,64 @@ public class AttachmentService {
                     .build();
             attachmentRepository.save(attachment);
 
-            return toResponse(attachment);
+            return new AttachmentUploadResult(toResponse(attachment), ingestionMono);
+        }).subscribeOn(Schedulers.boundedElastic());
+    }
+
+    public Mono<AttachmentUploadResult> uploadWikipedia(Long sessionId, String userEmail, String url) {
+        return Mono.fromCallable(() -> {
+            // 1. Verify session belongs to caller
+            Session session = sessionRepository.findById(sessionId)
+                    .orElseThrow(() -> new RuntimeException("Session not found"));
+
+            if (!session.getUser().getEmail().equals(userEmail)) {
+                throw new RuntimeException("Access denied");
+            }
+
+            // Extract title from URL (e.g. https://en.wikipedia.org/wiki/Spider-Man -> Spider-Man)
+            String pageTitle = url.substring(url.lastIndexOf("/") + 1);
+            String originalName = java.net.URLDecoder.decode(pageTitle, java.nio.charset.StandardCharsets.UTF_8);
+
+            // Fetch the text from Wikipedia
+            String parsedText = null;
+            try {
+                parsedText = parserService.fetchWikipedia(originalName);
+            } catch (Exception e) {
+                log.error("Failed to fetch Wikipedia page '{}': {}", originalName, e.getMessage());
+            }
+
+            Mono<Void> ingestionMono = Mono.empty();
+            if (parsedText != null && !parsedText.isBlank()) {
+                ingestionMono = embeddingService.processAndIngest(parsedText, AttachmentType.WIKIPEDIA.name(), originalName, sessionId);
+                log.info("Successfully fetched and started ingestion for '{}'", originalName);
+            } else {
+                throw new RuntimeException("Could not extract text from Wikipedia page.");
+            }
+
+            // 5. Create a system Message to anchor the attachment
+            Message systemMsg = Message.builder()
+                    .session(session)
+                    .role(MessageRole.USER)
+                    .content("[wikipedia link: " + originalName + "]")
+                    .status(MessageStatus.COMPLETE)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            messageRepository.save(systemMsg);
+
+            // 6. Persist the Attachment record
+            Attachment attachment = Attachment.builder()
+                    .message(systemMsg)
+                    .type(AttachmentType.WIKIPEDIA)
+                    .fileName(originalName)
+                    .storagePath(url)
+                    .url(url)
+                    .mimeType("text/html")
+                    .fileSizeBytes((long) parsedText.length())
+                    .uploadedAt(LocalDateTime.now())
+                    .build();
+            attachmentRepository.save(attachment);
+
+            return new AttachmentUploadResult(toResponse(attachment), ingestionMono);
         }).subscribeOn(Schedulers.boundedElastic());
     }
 

@@ -1,6 +1,6 @@
 const BASE_URL = import.meta.env.VITE_API_URL || '';
 
-async function request(path, options = {}) {
+async function request(path, options = {}, isRetry = false) {
   const isFormData = options.body instanceof FormData;
   const headers = isFormData
     ? { ...options.headers }
@@ -20,11 +20,11 @@ async function request(path, options = {}) {
   }
 
   if (!response.ok) {
-    if (response.status === 401 && path !== '/auth/login' && path !== '/auth/refresh') {
+    if (response.status === 401 && path !== '/auth/login' && path !== '/auth/refresh' && !isRetry) {
       const refreshed = await refreshAccessToken();
 
       if (refreshed) {
-        return request(path, options);
+        return request(path, options, true);
       }
 
       window.dispatchEvent(new Event('auth-expired'));

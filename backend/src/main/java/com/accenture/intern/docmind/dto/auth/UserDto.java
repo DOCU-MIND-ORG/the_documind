@@ -18,6 +18,7 @@ public class UserDto {
     private String email;
     private String phoneNumber;
     private String profilePicture;
+    private String profileImageUrl;
     private String gender;
     private String occupation;
     private String organization;
@@ -36,6 +37,7 @@ public class UserDto {
                 .email(user.getEmail())
                 .phoneNumber(user.getPhoneNumber())
                 .profilePicture(user.getProfilePicture())
+                .profileImageUrl(user.getProfileImageUrl())
                 .gender(user.getGender())
                 .occupation(user.getOccupation())
                 .organization(user.getOrganization())

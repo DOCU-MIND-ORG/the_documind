@@ -10,6 +10,7 @@ import java.util.*;
 
 @Entity
 @Table(name = "attachments")
+@EntityListeners(AttachmentEntityListener.class)
 @Getter
 @Setter
 @NoArgsConstructor

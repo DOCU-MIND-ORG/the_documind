@@ -3,9 +3,11 @@ import { request } from './api.js';
 export const preferenceService = {
   get: () => request('/api/preferences'),
 
-  update: (preferences) =>
-    request('/api/preferences', {
-      method: 'PATCH',
+  getModels: () => request('/api/preferences/models'),
+
+  updateModel: (preferences) =>
+    request('/api/preferences/model', {
+      method: 'PUT',
       body: JSON.stringify(preferences),
     }),
 };

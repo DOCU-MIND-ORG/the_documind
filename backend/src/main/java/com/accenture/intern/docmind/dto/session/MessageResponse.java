@@ -18,4 +18,5 @@ public class MessageResponse {
     private MessageRole role;
     private String text;
     private LocalDateTime createdAt;
+    private Object citations;
 }

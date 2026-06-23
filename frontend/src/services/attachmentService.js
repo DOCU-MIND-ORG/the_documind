@@ -27,6 +27,27 @@ export const attachmentService = {
   },
 
   /**
+   * Submit a Wikipedia URL for ingestion.
+   */
+  uploadWikipedia: async (sessionId, url) => {
+    const response = await fetch(`${BASE_URL}/api/sessions/${sessionId}/attachments/wikipedia`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({ url }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+      throw new Error(data?.message || `Wikipedia ingestion failed: ${response.status}`);
+    }
+
+    return response.json();
+  },
+
+  /**
    * Get all attachments for a session.
    */
   getBySession: (sessionId) =>

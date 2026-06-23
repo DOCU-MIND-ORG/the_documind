@@ -78,6 +78,16 @@ export function chatReducer(state, action) {
         ),
       };
 
+    case 'SET_CITATIONS':
+      return {
+        ...state,
+        messages: state.messages.map(m =>
+          m.id === action.payload.messageId
+            ? { ...m, citations: action.payload.citations }
+            : m
+        ),
+      };
+
     case 'STREAM_DONE':
       return {
         ...state,

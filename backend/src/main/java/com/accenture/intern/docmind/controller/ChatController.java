@@ -1,7 +1,7 @@
 package com.accenture.intern.docmind.controller;
 
 import com.accenture.intern.docmind.dto.chat.ChatRequest;
-import com.accenture.intern.docmind.service.ChatService;
+import com.accenture.intern.docmind.aiservices.ChatService;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.codec.ServerSentEvent;

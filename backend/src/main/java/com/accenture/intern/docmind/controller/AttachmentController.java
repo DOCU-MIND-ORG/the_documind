@@ -39,7 +39,37 @@ public class AttachmentController {
     ) {
         return attachmentService
                 .uploadFile(sessionId, principal.getName(), filePart)
-                .map(ResponseEntity::ok);
+                .map(result -> {
+                    // Start async background ingestion
+                    result.ingestionMono().subscribe();
+                    return ResponseEntity.ok(result.response());
+                });
+    }
+
+    /**
+     * POST /api/sessions/{sessionId}/attachments/wikipedia
+     *
+     * Accepts a JSON payload with a "url" field containing a Wikipedia URL.
+     * Fetches the page content and stores it as an attachment.
+     */
+    @PostMapping(value = "/wikipedia", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public Mono<ResponseEntity<AttachmentResponse>> uploadWikipedia(
+            @PathVariable Long sessionId,
+            @RequestBody java.util.Map<String, String> payload,
+            Principal principal
+    ) {
+        String url = payload.get("url");
+        if (url == null || url.isBlank()) {
+            return Mono.just(ResponseEntity.badRequest().build());
+        }
+
+        return attachmentService
+                .uploadWikipedia(sessionId, principal.getName(), url)
+                .map(result -> {
+                    // Start async background ingestion
+                    result.ingestionMono().subscribe();
+                    return ResponseEntity.ok(result.response());
+                });
     }
 
     /**

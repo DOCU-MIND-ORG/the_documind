@@ -35,4 +35,11 @@ public class Message {
 
     
     private LocalDateTime createdAt;
+
+    @Column(columnDefinition = "TEXT")
+    private String citationsJson;
+
+    @OneToMany(mappedBy = "message", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<Attachment> attachments = new ArrayList<>();
 }

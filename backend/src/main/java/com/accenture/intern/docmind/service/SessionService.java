@@ -128,12 +128,22 @@ public class SessionService {
     private List<MessageResponse> getMessagesForSession(Session session) {
         List<Message> messages = messageRepository.findBySessionOrderByCreatedAtAsc(session);
         List<MessageResponse> messageResponses = new ArrayList<>();
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         for (Message m : messages) {
+            Object citations = null;
+            if (m.getCitationsJson() != null && !m.getCitationsJson().isEmpty()) {
+                try {
+                    citations = mapper.readValue(m.getCitationsJson(), Object.class);
+                } catch (Exception e) {
+                    // Ignore parsing error and leave as null
+                }
+            }
             messageResponses.add(MessageResponse.builder()
                     .id(String.valueOf(m.getMessageId()))
                     .role(m.getRole())
                     .text(m.getContent())
                     .createdAt(m.getCreatedAt())
+                    .citations(citations)
                     .build());
         }
         return messageResponses;

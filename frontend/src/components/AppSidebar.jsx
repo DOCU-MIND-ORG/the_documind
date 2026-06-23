@@ -76,9 +76,13 @@ const CloseIcon = () => (
   </svg>
 );
 
-const UserAvatar = ({ name }) => (
-  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center text-white font-bold shrink-0 text-xs shadow-md">
-    {name ? name.charAt(0).toUpperCase() : 'U'}
+const UserAvatar = ({ name, picture }) => (
+  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center text-white font-bold shrink-0 text-xs shadow-md overflow-hidden">
+    {picture ? (
+      <img src={picture} alt={name} className="w-full h-full object-cover" />
+    ) : (
+      name ? name.charAt(0).toUpperCase() : 'U'
+    )}
   </div>
 );
 
@@ -317,7 +321,7 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
         title={!show ? (user?.name || 'User') : undefined}
         className={`flex items-center gap-3 w-full p-2 rounded-xl t-hover-bg transition-all cursor-pointer ${!show ? 'justify-center' : ''}`}
       >
-        <UserAvatar name={user?.name} />
+        <UserAvatar name={user?.name} picture={user?.profileImageUrl} />
         {show && (
           <>
             <div className="flex-1 min-w-0 text-left">

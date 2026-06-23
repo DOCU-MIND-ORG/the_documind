@@ -57,6 +57,9 @@ public class SecurityConfig {
                                 "/auth/signup",
                                 "/auth/logout",
                                 "/auth/refresh",
+                                "/auth/request-otp",
+                                "/auth/verify-otp",
+                                "/auth/reset-password",
 
                                 // Static file serving — storage/** exposed under /files/**
                                 "/files/**",

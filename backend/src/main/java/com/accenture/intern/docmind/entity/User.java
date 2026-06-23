@@ -27,34 +27,39 @@ public class User {
 
     @Column(nullable = false)
     private Boolean isActive;
-
-    @Column
+    @Column(nullable = true)
     private String phoneNumber;
 
     @Column(columnDefinition = "TEXT")
     private String profilePicture;
 
-    @Column
+    @Column(nullable = true)
     private String gender;
 
-    @Column
+    @Column(nullable = true)
     private String occupation;
 
-    @Column
+    @Column(nullable = true)
     private String organization;
 
-    @Column
+    @Column(nullable = true)
     private String jobTitle;
 
-    @Column
+    @Column(nullable = true)
     private String education;
 
-    @Column
+    @Column(columnDefinition = "TEXT")
     private String interests;
 
-    @Column
+    @Column(nullable = true)
     private String industry;
 
     @Column(columnDefinition = "TEXT")
     private String bio;
+
+    @Column(name = "profile_image_url")
+    private String profileImageUrl;
+
+    @Column(name = "profile_image_public_id")
+    private String profileImagePublicId;
 }
