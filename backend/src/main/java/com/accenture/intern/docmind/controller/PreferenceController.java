@@ -38,7 +38,18 @@ public class PreferenceController {
         updateRequest.setModelName(request.getModelName());
         updateRequest.setTheme(request.getTheme());
         updateRequest.setResponseStyle(request.getResponseStyle());
+        updateRequest.setLanguage(request.getLanguage());
         PreferenceResponse response = preferenceService.updatePreferences(principal.getName(), updateRequest);
+        return ResponseEntity.ok(response);
+    }
+
+    // PUT /api/preferences
+    @PutMapping
+    public ResponseEntity<PreferenceResponse> updatePreferences(
+            @RequestBody UpdatePreferenceRequest request,
+            Principal principal
+    ) {
+        PreferenceResponse response = preferenceService.updatePreferences(principal.getName(), request);
         return ResponseEntity.ok(response);
     }
 

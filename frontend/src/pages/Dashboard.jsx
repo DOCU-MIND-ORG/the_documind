@@ -30,22 +30,33 @@ export default function Dashboard() {
   const [models, setModels] = useState([]);
 
   useEffect(() => {
-    const fetchModels = async () => {
+    const initData = async () => {
       try {
-        const availableModels = await preferenceService.getModels();
-        console.log(availableModels)
-        setModels(availableModels);
+        const [modelsRes, prefsRes] = await Promise.all([
+          preferenceService.getModels(),
+          preferenceService.get()
+        ]);
+        if (modelsRes) setModels(modelsRes);
+        if (prefsRes?.modelName) {
+          setSelectedModel(prefsRes.modelName);
+          localStorage.setItem('selectedModel', prefsRes.modelName);
+        }
       } catch (err) {
-        console.error("Failed to load models", err);
+        console.error("Failed to load models or preferences", err);
       }
     };
-    fetchModels();
+    initData();
   }, []);
 
-  const handleModelSelect = (id) => {
+  const handleModelSelect = async (id) => {
     setSelectedModel(id);
     localStorage.setItem('selectedModel', id);
     setModelMenuOpen(false);
+    try {
+      await preferenceService.updateModel({ modelName: id });
+    } catch (err) {
+      console.error("Failed to update model preference", err);
+    }
   };
 
   const selectedModelObj = models.find(m => m.id === selectedModel);

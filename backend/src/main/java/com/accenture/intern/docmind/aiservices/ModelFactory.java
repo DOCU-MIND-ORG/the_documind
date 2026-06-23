@@ -43,15 +43,31 @@ public class ModelFactory {
         UserPreference pref = userPreferenceRepository.findByUser(user)
                 .orElse(null);
 
-        if (pref != null && pref.getResponseStyle() != null) {
-            String styleInstruction = switch (pref.getResponseStyle()) {
-                case TECHNICAL -> "Provide a highly technical, precise, and professional response, using appropriate terminology.";
-                case CONCISE -> "Provide a brief, direct, and concise response without fluff or unnecessary details.";
-                case DETAILED -> "Provide an in-depth, thorough, and highly detailed response, exploring all relevant aspects.";
-                case BEGINNER -> "Explain the concepts simply, as if speaking to a beginner, avoiding overly complex jargon.";
-            };
-            return basePrompt + "\n\nCRITICAL INSTRUCTION: " + styleInstruction;
+        String prompt = basePrompt;
+        if (pref != null) {
+            if (pref.getResponseStyle() != null) {
+                String styleInstruction = switch (pref.getResponseStyle()) {
+                    case TECHNICAL -> "Provide a highly technical, precise, and professional response, using appropriate terminology.";
+                    case CONCISE -> "Provide a brief, direct, and concise response without fluff or unnecessary details.";
+                    case DETAILED -> "Provide an in-depth, thorough, and highly detailed response, exploring all relevant aspects.";
+                    case BEGINNER -> "Explain the concepts simply, as if speaking to a beginner, avoiding overly complex jargon.";
+                };
+                prompt = prompt + "\n\nCRITICAL INSTRUCTION: " + styleInstruction;
+            }
+            if (pref.getLanguage() != null && !pref.getLanguage().trim().isEmpty()) {
+                String lang = pref.getLanguage().toLowerCase().trim();
+                String languageName = switch (lang) {
+                    case "hi", "hindi" -> "Hindi (हिंदी)";
+                    case "es", "spanish" -> "Spanish (Español)";
+                    case "fr", "french" -> "French (Français)";
+                    case "de", "german" -> "German (Deutsch)";
+                    default -> "English";
+                };
+                if (!languageName.equals("English")) {
+                    prompt = prompt + "\n\nCRITICAL INSTRUCTION: You MUST respond entirely in " + languageName + ". Do not respond in English. Translate all context, output, and fallback/error messages (such as 'I couldn't find relevant information in the uploaded documents.') into " + languageName + " before outputting. Do not respond in any other language under any circumstances.";
+                }
+            }
         }
-        return basePrompt;
+        return prompt;
     }
 }

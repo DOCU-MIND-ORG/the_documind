@@ -57,7 +57,8 @@ export default function Settings() {
 
   // Prefs state
   const [model,         setModel]         = useState('GEMINI_2_5_FLASH');
-  const [responseStyle, setResponseStyle] = useState('BALANCED');
+  const [responseStyle, setResponseStyle] = useState('BEGINNER');
+  const [language,      setLanguage]      = useState('en');
   const [prefSaved,     setPrefSaved]     = useState(false);
   const [availableModels, setAvailableModels] = useState([]);
 
@@ -97,6 +98,7 @@ export default function Settings() {
         if (prefsRes) {
           if (prefsRes.modelName) setModel(prefsRes.modelName);
           if (prefsRes.responseStyle) setResponseStyle(prefsRes.responseStyle);
+          if (prefsRes.language) setLanguage(prefsRes.language);
           if (prefsRes.theme && prefsRes.theme !== theme) {
             // Note: theme context should handle the actual visual toggle. We just sync the initial load if we had a dedicated state, but we rely on useTheme().
           }
@@ -203,7 +205,8 @@ export default function Settings() {
       await preferenceService.updateModel({
         modelName: model,
         responseStyle: responseStyle,
-        theme: theme
+        theme: theme,
+        language: language
       });
       setPrefSaved(true);
       setTimeout(() => setPrefSaved(false), 3000);
@@ -481,28 +484,26 @@ export default function Settings() {
             {/* AI Config */}
             <Section title="AI Configuration">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 max-w-lg">
-                <Field label="Default AI Model" hint="Used for new chat sessions">
-                  <select value={model} onChange={e => setModel(e.target.value)} style={inputStyle}
-                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
-                    onBlur={e  => e.target.style.borderColor = 'var(--color-border)'}>
-                    {availableModels.length > 0 ? (
-                      availableModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)
-                    ) : (
-                      <>
-                        <option value="GEMINI_2_5_FLASH">Gemini 2.5 Flash</option>
-                        <option value="GEMINI_2_5_PRO">Gemini 2.5 Pro</option>
-                      </>
-                    )}
-                  </select>
-                </Field>
                 <Field label="Response Style" hint="How verbose the AI should be">
                   <select value={responseStyle} onChange={e => setResponseStyle(e.target.value)} style={inputStyle}
                     onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
                     onBlur={e  => e.target.style.borderColor = 'var(--color-border)'}>
                     <option value="BEGINNER">Beginner</option>
-                    <option value="BALANCED">Balanced</option>
                     <option value="CONCISE">Concise</option>
                     <option value="DETAILED">Detailed</option>
+                    <option value="TECHNICAL">Technical</option>
+                  </select>
+                </Field>
+
+                <Field label="System Language" hint="AI will respond in the selected language">
+                  <select value={language} onChange={e => setLanguage(e.target.value)} style={inputStyle}
+                    onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
+                    onBlur={e  => e.target.style.borderColor = 'var(--color-border)'}>
+                    <option value="en">English</option>
+                    <option value="hi">Hindi</option>
+                    <option value="es">Spanish</option>
+                    <option value="fr">French</option>
+                    <option value="de">German</option>
                   </select>
                 </Field>
               </div>
