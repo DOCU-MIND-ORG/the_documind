@@ -5,11 +5,12 @@ import { SessionsProvider } from './context/SessionsContext.jsx';
 import AppSidebar from './components/AppSidebar.jsx';
 
 // Pages
-import Login       from './pages/Login.jsx';
-import Register    from './pages/Register.jsx';
-import Chat        from './pages/Chat.jsx';
-import Settings    from './pages/Settings.jsx';
-import Attachments from './pages/Attachments.jsx';
+import Login          from './pages/Login.jsx';
+import Register       from './pages/Register.jsx';
+import ResetPassword  from './pages/ResetPassword.jsx';
+import Chat           from './pages/Chat.jsx';
+import Settings       from './pages/Settings.jsx';
+import Attachments    from './pages/Attachments.jsx';
 
 // ── Loading spinner ───────────────────────────────────────────────────────────
 
@@ -90,6 +91,7 @@ export default function App() {
         {/* Auth */}
         <Route path="/login"    element={<GuestRoute><Login /></GuestRoute>} />
         <Route path="/register" element={<GuestRoute><Register /></GuestRoute>} />
+        <Route path="/reset-password" element={<GuestRoute><ResetPassword /></GuestRoute>} />
 
         {/* Protected — all share the sidebar layout */}
         <Route element={<ProtectedLayout />}>
