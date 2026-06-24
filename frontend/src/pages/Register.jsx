@@ -72,28 +72,28 @@ export default function Register() {
 
       <div className="relative w-full max-w-[450px] panel-card flex flex-col px-6 py-8 sm:px-10 sm:py-12 animate-fade-in-up">
         <div className="text-center mb-8">
-  <div className="flex flex-col items-center mb-6">
-    <div className="mb-3">
-      <img
-        src={logo}
-        alt="DocuMind Logo"
-        className="w-32 h-32 mx-auto object-contain"
-      />
-    </div>
+          <div className="flex flex-col items-center mb-6">
+            <div className="mb-3">
+              <img
+                src={logo}
+                alt="DocuMind Logo"
+                className="w-32 h-32 mx-auto object-contain"
+              />
+            </div>
 
-    <h1 className="text-4xl font-bold text-white">
-      DocuMind
-    </h1>
-  </div>
+            <h1 className="text-4xl font-bold text-white">
+              DocuMind
+            </h1>
+          </div>
 
-  <h2 className="text-xl text-white font-semibold mb-1">
-    Create Account
-  </h2>
+          <h2 className="text-xl text-white font-semibold mb-1">
+            Create Account
+          </h2>
 
-  <p className="text-[#94a3b8] text-sm">
-    Join us to start querying
-  </p>
-</div>
+          <p className="text-[#94a3b8] text-sm">
+            Join us to start querying
+          </p>
+        </div>
 
         <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-2">

@@ -22,8 +22,8 @@ export default function Modal({ isOpen, title, onClose, children, footer, size =
         className={`w-full max-h-[90vh] flex flex-col overflow-hidden rounded-2xl ${sizeClasses[size] || sizeClasses.md}`}
         style={{
           backgroundColor: 'var(--color-bg-elevated)',
-          border:          '1px solid var(--color-border-strong)',
-          boxShadow:       'var(--shadow-lg)',
+          border: '1px solid var(--color-border-strong)',
+          boxShadow: 'var(--shadow-lg)',
         }}
         onClick={e => e.stopPropagation()}
       >

@@ -6,8 +6,6 @@ import { sessionService } from '../services/sessionService.js';
 import { useToast } from '../context/ToastContext.jsx';
 import Modal from './Modal.jsx';
 
-// ─── Icons ────────────────────────────────────────────────────────────────────
-
 const PanelIcon = () => (
   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
     <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
@@ -94,8 +92,6 @@ const LogoMark = () => (
   </div>
 );
 
-// ─── AppSidebar ───────────────────────────────────────────────────────────────
-
 export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobileOpen }) {
   const { user, logout } = useAuth();
   const { sessions, loading, removeSession, updateSession } = useSessions();
@@ -103,16 +99,16 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
   const navigate = useNavigate();
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [openMenuId, setOpenMenuId]     = useState(null);
+  const [openMenuId, setOpenMenuId] = useState(null);
   const [renameSessionId, setRenameSessionId] = useState(null);
-  const [renameTitle, setRenameTitle]         = useState('');
+  const [renameTitle, setRenameTitle] = useState('');
 
   const activeId = location.pathname.startsWith('/chat/')
     ? location.pathname.split('/')[2]
     : null;
 
-  const goNewChat  = () => { navigate('/dashboard'); setMobileOpen(false); };
-  const goSession  = (id) => { navigate(`/chat/${id}`); setMobileOpen(false); };
+  const goNewChat = () => { navigate('/dashboard'); setMobileOpen(false); };
+  const goSession = (id) => { navigate(`/chat/${id}`); setMobileOpen(false); };
 
   const handleDelete = async (e, sessionId) => {
     e.stopPropagation();
@@ -172,8 +168,6 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
     }
   };
 
-  // ── Session list ────────────────────────────────────────────────────────────
-
   const SessionList = ({ alwaysExpanded = false }) => {
     const show = alwaysExpanded || expanded;
     return (
@@ -214,7 +208,6 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
                   <>
                     <span className="flex-1 truncate text-[13px]">{s.title}</span>
 
-                    {/* ⋮ Three-dot menu */}
                     <button
                       onClick={(e) => toggleMenu(e, s.sessionId)}
                       className="opacity-0 group-hover:opacity-100 p-1 rounded-lg t-text-faint hover:t-text-main t-hover-bg transition-all shrink-0"
@@ -223,7 +216,6 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
                       <DotsIcon />
                     </button>
 
-                    {/* Dropdown */}
                     {menuOpen && (
                       <div
                         className="absolute right-1 top-8 z-50 t-bg-menu t-border-soft border rounded-xl shadow-2xl py-1 min-w-[160px]"
@@ -273,8 +265,6 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
     );
   };
 
-  // ── User footer ──────────────────────────────────────────────────────────────
-
   const UserFooter = ({ show }) => (
     <div className="shrink-0 border-t t-border p-2 relative">
       {settingsOpen && show && (
@@ -317,11 +307,8 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
     </div>
   );
 
-  // ─────────────────────────────────────────────────────────────────────────────
-
   return (
     <>
-      {/* ── Mobile overlay ── */}
       <div
         className={`fixed inset-0 bg-black/50 backdrop-blur-sm z-30 md:hidden transition-opacity duration-300 ${
           mobileOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
@@ -329,7 +316,6 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
         onClick={() => setMobileOpen(false)}
       />
 
-      {/* ── Mobile drawer ── */}
       <aside
         className={`fixed inset-y-0 left-0 z-40 w-72 flex flex-col t-bg-sidebar border-r t-border md:hidden transition-transform duration-300 ease-out ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
@@ -358,14 +344,12 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
         <UserFooter show />
       </aside>
 
-      {/* ── Desktop sidebar (collapsible) ── */}
       <aside
         className={`hidden md:flex flex-col h-full t-bg-sidebar border-r t-border shrink-0 transition-all duration-300 ease-in-out overflow-hidden ${
           expanded ? 'w-[248px]' : 'w-[62px]'
         }`}
         onClick={() => settingsOpen && setSettingsOpen(false)}
       >
-        {/* Header */}
         <div className={`flex items-center h-14 shrink-0 px-2.5 ${expanded ? 'justify-between' : 'justify-center'}`}>
           {expanded && (
             <div className="flex items-center gap-2.5 pl-1">
@@ -382,7 +366,6 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
           </button>
         </div>
 
-        {/* New chat */}
         <div className="px-2 mt-1 shrink-0">
           <button
             onClick={goNewChat}

@@ -18,10 +18,7 @@ export default function CitationDrawer({ citation, onClose }) {
 
   if (!citation) return null;
 
-  // citation.imageUrl comes back from the backend as a relative path like
-  // "/files/images/uuid_signature.jpg" (see CitationService on the backend),
-  // so it needs the API origin prepended — same pattern used for attachment
-  // previews in Attachments.jsx.
+  // imageUrl is a relative backend path, so it needs the API origin prepended
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
   const resolvedImageUrl = citation.imageUrl
     ? (citation.imageUrl.startsWith('http') ? citation.imageUrl : `${API_URL}${citation.imageUrl}`)
@@ -29,20 +26,20 @@ export default function CitationDrawer({ citation, onClose }) {
 
   return (
     <>
-      <div 
+      <div
         className="fixed inset-0 z-40 backdrop-blur-[2px] transition-opacity"
         style={{ backgroundColor: 'rgba(0, 0, 0, 0.2)' }}
         onClick={onClose}
       />
 
-      <div 
+      <div
         className="fixed inset-y-0 right-0 z-50 w-full sm:w-[420px] bg-white shadow-2xl flex flex-col drawer-slide-in"
-        style={{ 
-          backgroundColor: 'var(--color-bg-base)', 
+        style={{
+          backgroundColor: 'var(--color-bg-base)',
           borderLeft: '1px solid var(--color-border)',
         }}
       >
-        <div 
+        <div
           className="flex items-center justify-between px-5 py-4 shrink-0"
           style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-surface)' }}
         >
@@ -51,7 +48,7 @@ export default function CitationDrawer({ citation, onClose }) {
               {citation.sourceName}
             </h2>
             {citation.sourceType && (
-              <span 
+              <span
                 className="px-2 py-0.5 rounded text-[10px] font-medium tracking-wide uppercase shrink-0"
                 style={{ backgroundColor: 'var(--color-bg-subtle)', color: 'var(--color-text-tertiary)', border: '1px solid var(--color-border)' }}
               >
@@ -59,7 +56,7 @@ export default function CitationDrawer({ citation, onClose }) {
               </span>
             )}
           </div>
-          <button 
+          <button
             onClick={onClose}
             className="p-1.5 rounded-lg interactive shrink-0 ml-2"
             style={{ color: 'var(--color-text-tertiary)' }}
@@ -70,7 +67,7 @@ export default function CitationDrawer({ citation, onClose }) {
           </button>
         </div>
 
-        <div 
+        <div
           className="flex items-center gap-4 px-5 py-2.5 shrink-0 text-[12px] font-medium"
           style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-subtle)', color: 'var(--color-text-secondary)' }}
         >
@@ -106,13 +103,13 @@ export default function CitationDrawer({ citation, onClose }) {
             </div>
           )}
 
-          <p 
+          <p
             className="text-[11px] font-semibold mb-3 uppercase tracking-wider"
             style={{ color: 'var(--color-text-tertiary)' }}
           >
             {citation.isImage ? 'Image Description' : 'Source Excerpt'}
           </p>
-          <div 
+          <div
             className="text-[14px] leading-relaxed whitespace-pre-wrap font-serif"
             style={{ color: 'var(--color-text-primary)' }}
           >

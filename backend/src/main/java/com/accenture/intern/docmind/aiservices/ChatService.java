@@ -70,15 +70,6 @@ public class ChatService {
 
                     Session session = tuple.getT1();
                     ContextResult contextResult = tuple.getT2();
-                    List<Map<String, Object>> citations = citationService.extractCitations(contextResult.documents());
-                    
-                    String citationsJsonStr = null;
-                    try {
-                        citationsJsonStr = objectMapper.writeValueAsString(citations);
-                    } catch (Exception e) {
-                        log.error("Failed to serialize citations", e);
-                    }
-                    final String finalCitationsJson = citationsJsonStr;
 
                     reactor.core.publisher.Mono<Message> saveUserMsg = reactor.core.publisher.Mono.fromCallable(() ->
                             messageRepository.save(Message.builder()
@@ -93,6 +84,17 @@ public class ChatService {
 
                     StringBuilder aiResponseBuilder = new StringBuilder();
                     java.util.concurrent.atomic.AtomicBoolean firstTokenLogged = new java.util.concurrent.atomic.AtomicBoolean(false);
+
+                    // Computed once, lazily, the moment the full response text is known
+                    // (doOnComplete fires before citationsStream runs, since citationsStream
+                    // is sequenced after tokenStream by Flux.concat below) - never read
+                    // before that point. Citations can only be known once the LLM has
+                    // finished choosing which [CITE:n] tags to actually write, which is why
+                    // this can't be computed up front the way the old code did: extracting
+                    // from contextResult.documents() before generation captured every
+                    // retrieved chunk, not just the ones the model ended up citing.
+                    java.util.concurrent.atomic.AtomicReference<String> finalCitationsJsonRef =
+                            new java.util.concurrent.atomic.AtomicReference<>();
 
                     org.springframework.ai.google.genai.GoogleGenAiChatOptions options = modelFactory.getChatOptions(session.getUser(), request.getModel());
                     String finalSystemPrompt = modelFactory.injectResponseStyle(session.getUser(), contextResult.systemPrompt());
@@ -122,12 +124,15 @@ public class ChatService {
                                 if (token != null) aiResponseBuilder.append(token);
                             })
                             .doOnComplete(() -> {
+                                String citationsJson = computeCitationsJson(contextResult, aiResponseBuilder.toString());
+                                finalCitationsJsonRef.set(citationsJson);
+
                                 reactor.core.publisher.Mono.fromCallable(() -> messageRepository.save(Message.builder()
                                         .session(session)
                                         .role(MessageRole.ASSISTANT)
                                         .content(aiResponseBuilder.toString())
                                         .status(MessageStatus.COMPLETE)
-                                        .citationsJson(finalCitationsJson)
+                                        .citationsJson(citationsJson)
                                         .createdAt(LocalDateTime.now())
                                         .build()))
                                     .subscribeOn(Schedulers.boundedElastic())
@@ -142,12 +147,13 @@ public class ChatService {
                             })
                             .doOnError(e -> {
                                 log.error("Error during streaming", e);
+                                String citationsJson = computeCitationsJson(contextResult, aiResponseBuilder.toString());
                                 reactor.core.publisher.Mono.fromCallable(() -> messageRepository.save(Message.builder()
                                         .session(session)
                                         .role(MessageRole.ASSISTANT)
                                         .content(aiResponseBuilder.toString())
                                         .status(MessageStatus.ERROR)
-                                        .citationsJson(finalCitationsJson)
+                                        .citationsJson(citationsJson)
                                         .createdAt(LocalDateTime.now())
                                         .build()))
                                     .subscribeOn(Schedulers.boundedElastic())
@@ -156,9 +162,13 @@ public class ChatService {
                             .map(token -> ServerSentEvent.<String>builder(token)
                                     .event("message").build());
 
+                    // Sequenced after tokenStream by Flux.concat, so by the time this runs,
+                    // doOnComplete above has already populated finalCitationsJsonRef with the
+                    // citations that match what the model actually wrote.
                     Flux<ServerSentEvent<String>> citationsStream = Flux.defer(() -> {
-                        if (finalCitationsJson != null) {
-                            return Flux.just(ServerSentEvent.<String>builder(finalCitationsJson)
+                        String citationsJson = finalCitationsJsonRef.get();
+                        if (citationsJson != null) {
+                            return Flux.just(ServerSentEvent.<String>builder(citationsJson)
                                     .event("citations").build());
                         }
                         return Flux.empty();
@@ -166,5 +176,27 @@ public class ChatService {
 
                     return Flux.concat(tokenStream, citationsStream);
                 });
+    }
+
+    /**
+     * Filters contextResult's retrieved documents down to only the ones the
+     * model actually referenced via [CITE:n] in its final response text, then
+     * serializes that subset to JSON. Returns null (not "[]") on a serialization
+     * failure or when there's nothing to cite, matching the old behavior where
+     * citationsJson being null means "render no citations UI" rather than
+     * "render an empty citations list".
+     */
+    private String computeCitationsJson(ContextResult contextResult, String responseText) {
+        List<Map<String, Object>> citations =
+                citationService.extractCitedCitations(contextResult.documents(), responseText);
+        if (citations.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(citations);
+        } catch (Exception e) {
+            log.error("Failed to serialize citations", e);
+            return null;
+        }
     }
 }

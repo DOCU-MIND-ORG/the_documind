@@ -34,26 +34,26 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState('profile');
   const { theme, toggle } = useTheme();
 
-  const [name,         setName]         = useState('');
-  const [email,        setEmail]        = useState('');
-  const [phone,        setPhone]        = useState('');
-  const [picture,      setPicture]      = useState('');
-  const [gender,       setGender]       = useState('');
-  const [occupation,   setOccupation]   = useState('');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [picture, setPicture] = useState('');
+  const [gender, setGender] = useState('');
+  const [occupation, setOccupation] = useState('');
   const [organization, setOrganization] = useState('');
-  const [jobTitle,     setJobTitle]     = useState('');
-  const [education,    setEducation]    = useState('');
-  const [interests,    setInterests]    = useState('');
-  const [industry,     setIndustry]     = useState('');
-  const [bio,          setBio]          = useState('');
-  const [isSaving,     setIsSaving]     = useState(false);
-  const [isUploading,  setIsUploading]  = useState(false);
-  const [errors,       setErrors]       = useState({});
-  const [savedMsg,     setSavedMsg]     = useState('');
+  const [jobTitle, setJobTitle] = useState('');
+  const [education, setEducation] = useState('');
+  const [interests, setInterests] = useState('');
+  const [industry, setIndustry] = useState('');
+  const [bio, setBio] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [savedMsg, setSavedMsg] = useState('');
 
-  const [model,         setModel]         = useState('GEMINI_2_5_FLASH');
+  const [model, setModel] = useState('GEMINI_2_5_FLASH');
   const [responseStyle, setResponseStyle] = useState('BALANCED');
-  const [prefSaved,     setPrefSaved]     = useState(false);
+  const [prefSaved, setPrefSaved] = useState(false);
   const [availableModels, setAvailableModels] = useState([]);
 
   useEffect(() => {
@@ -89,9 +89,6 @@ export default function Settings() {
         if (prefsRes) {
           if (prefsRes.modelName) setModel(prefsRes.modelName);
           if (prefsRes.responseStyle) setResponseStyle(prefsRes.responseStyle);
-          if (prefsRes.theme && prefsRes.theme !== theme) {
-            // If different theme then toggle the current one
-          }
         }
       } catch (err) {
         console.error("Failed to load preferences", err);
@@ -209,18 +206,18 @@ export default function Settings() {
 
   const inputStyle = {
     backgroundColor: 'var(--color-bg-input)',
-    color:           'var(--color-text-primary)',
-    border:          '1px solid var(--color-border)',
-    borderRadius:    '0.5rem',
-    padding:         '0.625rem 0.875rem',
-    fontSize:        '0.875rem',
-    outline:         'none',
-    width:           '100%',
-    transition:      'border-color 0.15s',
+    color: 'var(--color-text-primary)',
+    border: '1px solid var(--color-border)',
+    borderRadius: '0.5rem',
+    padding: '0.625rem 0.875rem',
+    fontSize: '0.875rem',
+    outline: 'none',
+    width: '100%',
+    transition: 'border-color 0.15s',
   };
 
   const tabs = [
-    { id: 'profile',     label: 'Profile' },
+    { id: 'profile', label: 'Profile' },
     { id: 'preferences', label: 'Preferences' },
   ];
 
@@ -251,7 +248,7 @@ export default function Settings() {
                 className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
                 style={{
                   backgroundColor: activeTab === t.id ? 'var(--color-bg-active)' : 'transparent',
-                  color:           activeTab === t.id ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                  color: activeTab === t.id ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
                 }}
               >
                 {t.label}
@@ -286,8 +283,8 @@ export default function Settings() {
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors"
                     style={{
                       backgroundColor: 'var(--color-bg-active)',
-                      color:           'var(--color-text-primary)',
-                      border:          '1px solid var(--color-border)',
+                      color: 'var(--color-text-primary)',
+                      border: '1px solid var(--color-border)',
                     }}
                   >
                     {isUploading ? 'Uploading…' : 'Upload photo'}
@@ -415,8 +412,8 @@ export default function Settings() {
                   className="px-5 py-2 rounded-lg text-sm font-medium transition-colors"
                   style={{
                     backgroundColor: 'var(--color-bg-active)',
-                    color:           'var(--color-text-primary)',
-                    border:          '1px solid var(--color-border)',
+                    color: 'var(--color-text-primary)',
+                    border: '1px solid var(--color-border)',
                   }}
                 >
                   Sign out

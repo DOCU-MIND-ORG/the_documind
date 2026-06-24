@@ -7,7 +7,7 @@ export default function Streaming({ text, isStreaming, citations, onCitationClic
     if (!text) return { completedText: '', streamingLine: '' };
     const parts = text.split(/(```[\s\S]*?```)/g);
     const processedText = parts.map((part, index) => {
-      
+
       if (index % 2 === 0) {
         return part.replace(/\[CITE:(\d+)\]/g, '[$1](#cite-$1)');
       }

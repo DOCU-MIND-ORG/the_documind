@@ -102,28 +102,111 @@ public class HybridRetrievalService {
     private static final int MIN_SOURCE_MATCH_WORD_LENGTH = 4;
 
     public Mono<List<Document>> retrieve(String query, Long sessionId) {
-        long t0 = System.currentTimeMillis();
+        return retrieve(query, sessionId, Set.of(), null);
+    }
 
-        return findUniquelyMatchedSource(query)
+    /**
+     * Same as {@link #retrieve(String, Long)}, with two extra, independent
+     * narrowing controls layered on top of the normal hybrid search:
+     *
+     * @param excludedSources exact sourceName values that must never appear in
+     *                        the returned candidates, no matter how well they'd
+     *                        otherwise rank (e.g. user said "... except the SQL
+     *                        notes pdf"). Empty/null means no exclusion.
+     * @param scopedSources   if non-null and non-empty, restricts retrieval to
+     *                        ONLY these sourceName values (e.g. a follow-up like
+     *                        "compare these two" that should stay anchored to
+     *                        the documents the previous answer actually used,
+     *                        rather than re-searching the whole company corpus).
+     *                        Null/empty means no restriction - normal corpus-wide
+     *                        search.
+     */
+    public Mono<List<Document>> retrieve(String query, Long sessionId, Set<String> excludedSources, Set<String> scopedSources) {
+        long t0 = System.currentTimeMillis();
+        Set<String> exclusions = excludedSources == null ? Set.of() : excludedSources;
+
+        if (scopedSources != null && !scopedSources.isEmpty()) {
+            log.info("Query is a follow-up referencing prior sources {} - scoping retrieval to just those, skipping whole-corpus ranking", scopedSources);
+            return scopedSourcesRetrieve(scopedSources, exclusions);
+        }
+
+        return findUniquelyMatchedSource(query, exclusions)
                 .flatMap(matchedSource -> {
                     log.info("Query matched single source '{}' - using whole-document retrieval, skipping corpus-wide ranking", matchedSource);
                     return wholeDocumentRetrieve(matchedSource);
                 })
-                .switchIfEmpty(Mono.defer(() -> rankedRetrieve(query, sessionId, t0)));
+                .switchIfEmpty(Mono.defer(() -> rankedRetrieve(query, sessionId, t0, exclusions)));
     }
 
     /**
-     * Checks whether the query contains a distinctive word (length >=
-     * MIN_SOURCE_MATCH_WORD_LENGTH) that also appears in exactly one uploaded
-     * source's filename. Word-boundary matching only (not substring), so e.g.
-     * "hitesh" matches "Hitesh_Resume.pdf" but doesn't accidentally match
-     * unrelated filenames that merely contain "hitesh" as part of a longer word.
-     * <p>
-     * Returns empty (not an error) when zero or 2+ sources match - ambiguous or
-     * no match both mean "fall back to normal ranked retrieval", since whole-
-     * document mode only makes sense when exactly one source is clearly meant.
+     * Public entry point for fetching every chunk of a known set of source
+     * names directly, in document order, with no relevance ranking - the
+     * same whole-document fetch {@link #retrieve} uses internally for
+     * follow-up scoping, exposed here for callers (like
+     * ContextBuilderService's deictic-upload branch) that already know
+     * exactly which source(s) they want and don't need the full intent-
+     * resolution pipeline in {@link #retrieve} to get there.
      */
-    private Mono<String> findUniquelyMatchedSource(String query) {
+    public Mono<List<Document>> fetchSourcesByName(Set<String> sourceNames) {
+        return scopedSourcesRetrieve(sourceNames, Set.of());
+    }
+
+    /**
+     * Retrieves every chunk of each named source (in document order, no
+     * relevance ranking - same rationale as {@link #wholeDocumentRetrieve}),
+     * used when a follow-up question has been anchored to a specific set of
+     * previously-discussed documents rather than re-ranked against the whole
+     * corpus. Any source in excludedSources is dropped even if it was in
+     * scopedSources, so "compare these two, except the resume" still works.
+     */
+    private Mono<List<Document>> scopedSourcesRetrieve(Set<String> scopedSources, Set<String> excludedSources) {
+        Set<String> effectiveSources = new LinkedHashSet<>(scopedSources);
+        effectiveSources.removeAll(excludedSources);
+
+        if (effectiveSources.isEmpty()) {
+            return Mono.just(List.of());
+        }
+
+        return Mono.fromCallable(() -> {
+                    List<Document> docs = new ArrayList<>();
+                    for (String sourceName : effectiveSources) {
+                        documentChunkRepository.findBySourceNameOrderByChunkIndexAsc(sourceName).stream()
+                                .map(this::toDocument)
+                                .peek(doc -> doc.getMetadata().put("wholeDocumentMatch", true))
+                                .forEach(docs::add);
+                    }
+                    return docs;
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .doOnNext(docs -> log.info("Scoped multi-source retrieval: {} chunks from {}", docs.size(), effectiveSources));
+    }
+
+    /**
+     * Checks whether the query contains a word that DISTINCTIVELY identifies
+     * exactly one uploaded source - i.e. a shared word, length >=
+     * MIN_SOURCE_MATCH_WORD_LENGTH, that appears in that source's filename
+     * AND in no other source's filename. Word-boundary matching only (not
+     * substring), so e.g. "hitesh" matches "Hitesh_Resume.pdf" but doesn't
+     * accidentally match unrelated filenames that merely contain "hitesh" as
+     * part of a longer word.
+     * <p>
+     * Document-frequency filtering matters once the corpus has more than a
+     * couple of files: a query like "the flipkart project" naively overlaps
+     * BOTH "Flipkart_Supply_Chain.pdf" (on "flipkart") AND any other
+     * "..._Project.pdf" / "project_..." filename (on "project") - without
+     * filtering out words that appear in multiple filenames, that reads as
+     * "2 sources matched, ambiguous" and falls through to ranked search even
+     * though "flipkart" alone is obviously what the user meant. Requiring the
+     * overlap to include at least one word unique to that single filename
+     * fixes this: "project" is excluded as non-distinctive once 2+ filenames
+     * contain it, leaving "flipkart" as the sole distinguishing word.
+     * <p>
+     * Returns empty (not an error) when zero or 2+ sources have a distinctive
+     * match - ambiguous or no match both mean "fall back to normal ranked
+     * retrieval", since whole-document mode only makes sense when exactly one
+     * source is clearly meant.
+     */
+    private Mono<String> findUniquelyMatchedSource(String query, Set<String> excludedSources) {
         Set<String> queryWords = wordsOf(query).stream()
                 .filter(w -> w.length() >= MIN_SOURCE_MATCH_WORD_LENGTH)
                 .collect(Collectors.toSet());
@@ -135,15 +218,7 @@ public class HybridRetrievalService {
         return Mono.fromCallable(documentChunkRepository::findDistinctSourceNames)
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(sourceNames -> {
-                    Set<String> matched = new LinkedHashSet<>();
-                    for (String sourceName : sourceNames) {
-                        if (sourceName == null) continue;
-                        Set<String> sourceWords = wordsOf(sourceName);
-                        boolean overlaps = queryWords.stream().anyMatch(sourceWords::contains);
-                        if (overlaps) {
-                            matched.add(sourceName);
-                        }
-                    }
+                    Set<String> matched = findDistinctivelyMatchedSources(queryWords, sourceNames, excludedSources);
                     if (matched.size() == 1) {
                         return Mono.just(matched.iterator().next());
                     }
@@ -154,14 +229,65 @@ public class HybridRetrievalService {
                 });
     }
 
-    /** Lowercased, punctuation-stripped words - used for both query and filename matching. */
+    /**
+     * Lowercased words for query/filename matching - splits on non-alphanumeric
+     * runs AND on camelCase boundaries (lower/digit -> upper), so a filename
+     * like "CoverLetter_Priya.pdf" tokenizes to {cover, letter, priya, pdf}
+     * instead of one fused {coverletter, priya, pdf} that can never match the
+     * separate words a user actually types ("the cover letter"). Must run
+     * camelCase splitting BEFORE lowercasing - the case information that
+     * marks the boundary is gone once everything is already lowercase.
+     */
+    /**
+     * Shared by both whole-document single-source matching (above) and
+     * QueryIntentService's comparison-target resolution, which needs the
+     * exact same "distinctive word, not just any shared word" matching
+     * against the same corpus filenames - kept in one place rather than
+     * reimplemented twice with the risk of the two drifting out of sync.
+     */
+    public Set<String> findDistinctivelyMatchedSources(Set<String> queryWords, List<String> sourceNames, Set<String> excludedSources) {
+        Map<String, Set<String>> sourceWordsByName = new LinkedHashMap<>();
+        for (String sourceName : sourceNames) {
+            if (sourceName == null || excludedSources.contains(sourceName)) continue;
+            sourceWordsByName.put(sourceName, wordsOf(sourceName));
+        }
+
+        // Document frequency: how many DIFFERENT filenames in the corpus
+        // contain each word. A word with df >= 2 (e.g. "project" shared by
+        // several "..._project_..." files) carries no distinguishing power -
+        // matching on it alone can't tell which of those files is meant, so
+        // it's excluded from counting as a real match below.
+        Map<String, Integer> docFreq = new HashMap<>();
+        for (Set<String> words : sourceWordsByName.values()) {
+            for (String w : words) {
+                docFreq.merge(w, 1, Integer::sum);
+            }
+        }
+
+        Set<String> matched = new LinkedHashSet<>();
+        for (Map.Entry<String, Set<String>> entry : sourceWordsByName.entrySet()) {
+            boolean hasDistinctiveOverlap = entry.getValue().stream()
+                    .anyMatch(w -> queryWords.contains(w) && docFreq.get(w) == 1);
+            if (hasDistinctiveOverlap) {
+                matched.add(entry.getKey());
+            }
+        }
+        return matched;
+    }
+
     private Set<String> wordsOf(String text) {
         if (text == null || text.isBlank()) {
             return Set.of();
         }
-        return Arrays.stream(text.toLowerCase().split("[^a-z0-9]+"))
-                .filter(w -> !w.isBlank())
-                .collect(Collectors.toSet());
+        Set<String> words = new LinkedHashSet<>();
+        for (String token : text.split("[^a-zA-Z0-9]+")) {
+            if (token.isBlank()) continue;
+            String spaced = token.replaceAll("(?<=[a-z0-9])(?=[A-Z])", " ");
+            for (String w : spaced.toLowerCase().split("\\s+")) {
+                if (!w.isBlank()) words.add(w);
+            }
+        }
+        return words;
     }
 
     /**
@@ -186,11 +312,13 @@ public class HybridRetrievalService {
                 });
     }
 
-    private Mono<List<Document>> rankedRetrieve(String query, Long sessionId, long t0) {
+    private Mono<List<Document>> rankedRetrieve(String query, Long sessionId, long t0, Set<String> excludedSources) {
         Mono<List<Document>> denseMono = vectorStoreService.retrieve(query, CANDIDATE_POOL_SIZE)
+                .map(docs -> filterExcluded(docs, excludedSources))
                 .doOnNext(docs -> log.info("[TIMING] dense (Pinecone) search: {}ms, {} hits",
                         System.currentTimeMillis() - t0, docs.size()));
         Mono<List<Document>> keywordMono = keywordSearch(query, CANDIDATE_POOL_SIZE)
+                .map(docs -> filterExcluded(docs, excludedSources))
                 .doOnNext(docs -> log.info("[TIMING] keyword (Postgres BM25) search: {}ms, {} hits",
                         System.currentTimeMillis() - t0, docs.size()));
 
@@ -202,9 +330,25 @@ public class HybridRetrievalService {
                         sources.add(doc.getMetadata().getOrDefault("sourceName", "unknown"));
                     }
                     log.info(
-                        "Hybrid retrieval: fused {} unique candidates company-wide (boosting session {}); sources in pool: {}",
-                        fused.size(), sessionId, sources);
+                        "Hybrid retrieval: fused {} unique candidates company-wide (boosting session {}, excluding {}); sources in pool: {}",
+                        fused.size(), sessionId, excludedSources, sources);
                 });
+    }
+
+    /**
+     * Drops any candidate whose sourceName is in excludedSources, before it ever
+     * reaches RRF fusion or the reranker. Filtering this early (rather than after
+     * fusion, or worse, after rerank) means an excluded source can't consume any
+     * of the candidate pool's limited slots, and can't influence RRF rank
+     * contributions for the documents that ARE kept.
+     */
+    private List<Document> filterExcluded(List<Document> docs, Set<String> excludedSources) {
+        if (excludedSources == null || excludedSources.isEmpty()) {
+            return docs;
+        }
+        return docs.stream()
+                .filter(doc -> !excludedSources.contains(doc.getMetadata().get("sourceName")))
+                .collect(Collectors.toList());
     }
 
     private Mono<List<Document>> keywordSearch(String query, int topK) {

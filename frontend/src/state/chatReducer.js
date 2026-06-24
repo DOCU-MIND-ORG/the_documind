@@ -1,7 +1,6 @@
-
 export const initialChatState = {
-  sessionId: null,        
-  messages: [],           
+  sessionId: null,
+  messages: [],
   streamingMessageId: null,
   isStreaming: false,
   messagesLoading: false,
@@ -24,7 +23,7 @@ export function chatReducer(state, action) {
       const paramId = action.payload.sessionId ? String(action.payload.sessionId) : null;
       const stateId = state.sessionId ? String(state.sessionId) : null;
       if (paramId === stateId) return state;
-      
+
       return {
         ...initialChatState,
         sessionId: action.payload.sessionId,

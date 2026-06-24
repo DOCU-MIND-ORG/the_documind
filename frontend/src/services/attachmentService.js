@@ -1,6 +1,3 @@
-// This file contains functions for storing and showing the attachments (files) 
-// uploaded by the user for a session
-
 import { request } from './api.js';
 
 const BASE_URL = import.meta.env.VITE_API_URL || '';
@@ -24,8 +21,7 @@ export const attachmentService = {
     return response.json();
   },
 
- 
-  uploadWikipedia: async (sessionId, url) => {
+   uploadWikipedia: async (sessionId, url) => {
     const response = await fetch(`${BASE_URL}/api/sessions/${sessionId}/attachments/wikipedia`, {
       method: 'POST',
       headers: {

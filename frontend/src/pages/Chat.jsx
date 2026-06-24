@@ -53,36 +53,31 @@ const formatBytes = (bytes) => {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 };
 
-// The backend saves a synthetic message like "[file upload: resume.pdf]" or
-// "[wikipedia link: Some_Page]" purely as a row to anchor the Attachment
-// record to (it needs a Message to attach to). It's plumbing, not something
-// the user typed or the assistant said, so it should never show up as its own
-// chat bubble — the upload itself is already visible via the pending-file
-// chips while it's happening.
+// Synthetic anchor messages created by the backend for file/wiki uploads; never rendered as chat bubbles
 const UPLOAD_ANCHOR_PATTERN = /^\[(file upload|wikipedia link): .+\]$/;
 const isUploadAnchorMessage = (msg) => UPLOAD_ANCHOR_PATTERN.test((msg.text || '').trim());
 
 export default function Chat() {
   const { sessionId: routeSessionId } = useParams();
-  const navigate                      = useNavigate();
-  const { user }                      = useAuth();
-  const { sessions, addSession }      = useSessions();
-  const { showToast }                 = useToast();
-  const { openMobileSidebar }         = useOutletContext();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { sessions, addSession } = useSessions();
+  const { showToast } = useToast();
+  const { openMobileSidebar } = useOutletContext();
 
   const [state, dispatch] = useReducer(chatReducer, {
     ...initialChatState,
     sessionId: routeSessionId ?? null,
   });
 
-  const [input, setInput]             = useState('');
-  const [isDragging, setIsDragging]   = useState(false);
+  const [input, setInput] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
   const [pendingFiles, setPendingFiles] = useState([]);
   const [activeCitation, setActiveCitation] = useState(null);
   const [showWikiInput, setShowWikiInput] = useState(false);
   const [wikiUrl, setWikiUrl] = useState('');
-  const bottomRef    = useRef(null);
-  const textareaRef  = useRef(null);
+  const bottomRef = useRef(null);
+  const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
   const dragCounterRef = useRef(0);
 
@@ -128,15 +123,13 @@ export default function Chat() {
     dispatch({ type: 'MESSAGES_LOADING', sessionId: state.sessionId });
     sessionService.getMessages(state.sessionId)
       .then(msgs => { if (!cancelled) dispatch({ type: 'MESSAGES_LOADED', sessionId: state.sessionId, payload: { messages: msgs } }); })
-      .catch(err  => { if (!cancelled) { dispatch({ type: 'MESSAGES_LOAD_FAILED', sessionId: state.sessionId }); showToast(err.message || 'Failed to load messages', 'error'); } });
+      .catch(err => { if (!cancelled) { dispatch({ type: 'MESSAGES_LOAD_FAILED', sessionId: state.sessionId }); showToast(err.message || 'Failed to load messages', 'error'); } });
     return () => { cancelled = true; };
   }, [state.sessionId]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [state.messages]);
 
-  // Polls GET /api/sessions/{id}/suggested-questions every 2s until ingestion's
-  // question-generation step reports READY or FAILED, then stops. Started after
-  // a successful file/Wikipedia upload (see uploadPendingFiles / handleWikiSubmit).
+  // Polls suggested-questions endpoint every 2s until it reports READY or FAILED
   const pollSuggestedQuestions = useCallback((sessionId) => {
     if (suggestionsPollRef.current) {
       clearInterval(suggestionsPollRef.current);
@@ -156,8 +149,7 @@ export default function Chat() {
         }
         // NOT_STARTED / GENERATING: keep polling
       } catch {
-        // Transient network errors shouldn't kill polling permanently, but stop
-        // after this interval's tick — the next tick will simply retry.
+        // Transient errors shouldn't stop polling; the next tick retries
       }
     };
 
@@ -176,8 +168,8 @@ export default function Chat() {
 
   const onDragEnter = useCallback((e) => { e.preventDefault(); dragCounterRef.current += 1; if (dragCounterRef.current === 1) setIsDragging(true); }, []);
   const onDragLeave = useCallback((e) => { e.preventDefault(); dragCounterRef.current -= 1; if (dragCounterRef.current === 0) setIsDragging(false); }, []);
-  const onDragOver  = useCallback((e) => { e.preventDefault(); }, []);
-  const onDrop      = useCallback((e) => { e.preventDefault(); dragCounterRef.current = 0; setIsDragging(false); const files = Array.from(e.dataTransfer.files); if (files.length > 0) addFiles(files); }, []);
+  const onDragOver = useCallback((e) => { e.preventDefault(); }, []);
+  const onDrop = useCallback((e) => { e.preventDefault(); dragCounterRef.current = 0; setIsDragging(false); const files = Array.from(e.dataTransfer.files); if (files.length > 0) addFiles(files); }, []);
 
   const addFiles = useCallback((files) => {
     setPendingFiles(prev => [...prev, ...files.map(f => ({ file: f, name: f.name, status: 'pending' }))]);
@@ -236,19 +228,18 @@ export default function Chat() {
       const userMessage = { id: crypto.randomUUID(), role: 'USER', text: query, createdAt: new Date().toISOString(), status: 'complete' };
       const assistantPlaceholder = { id: crypto.randomUUID(), role: 'ASSISTANT', text: '', createdAt: new Date().toISOString(), status: 'streaming' };
       dispatch({ type: 'SEND_MESSAGE_OPTIMISTIC', sessionId: activeSessionId, payload: { userMessage, assistantPlaceholder } });
-      
+
       try {
         if (hasPendingFiles) await uploadPendingFiles(activeSessionId);
-        
+
         await chatService.streamMessage(
           activeSessionId, query, selectedModel,
           (chunk) => dispatch({ type: 'APPEND_STREAM_CHUNK', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id, chunk } }),
           (citations) => dispatch({ type: 'SET_CITATIONS', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id, citations } }),
-          (err)   => { dispatch({ type: 'STREAM_ERROR', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } }); showToast(err.message || 'Stream error', 'error'); },
-          ()      => {
+          (err) => { dispatch({ type: 'STREAM_ERROR', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } }); showToast(err.message || 'Stream error', 'error'); },
+          () => {
             dispatch({ type: 'STREAM_DONE', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } });
-            // Backend regenerates suggested questions after every response too
-            // (not just after uploads) — poll the same endpoint to pick them up.
+            // Suggested questions also regenerate after a normal response, not just uploads
             pollSuggestedQuestions(activeSessionId);
           },
         );
@@ -270,9 +261,9 @@ export default function Chat() {
     if (!url.startsWith('http')) {
       url = 'https://en.wikipedia.org/wiki/' + url.replace(/ /g, '_');
     }
-    
+
     setPendingFiles(prev => [...prev, { name: decodeURIComponent(url.substring(url.lastIndexOf('/') + 1)), id: tempId, status: 'uploading' }]);
-    
+
     setShowWikiInput(false);
     setWikiUrl('');
 
@@ -289,7 +280,7 @@ export default function Chat() {
     }
   };
 
-  const onKeyDown     = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); } };
+  const onKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); } };
   const onInputChange = (e) => { setInput(e.target.value); const ta = e.target; ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 160) + 'px'; };
 
   const firstName = user?.name?.split(' ')[0] || 'there';
@@ -349,75 +340,75 @@ export default function Chat() {
           </svg>
         </button>
 
-          <div className="flex-1 flex items-center justify-between">
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setModelMenuOpen(prev => !prev)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-[15px] font-semibold text-primary rounded-xl interactive cursor-pointer select-none"
-              >
-                DocuMind <span className="text-tertiary font-medium">{displayModelName}</span>
-                <svg className={`w-3.5 h-3.5 text-tertiary transition-transform duration-200 ${modelMenuOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                </svg>
-              </button>
+        <div className="flex-1 flex items-center justify-between">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setModelMenuOpen(prev => !prev)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[15px] font-semibold text-primary rounded-xl interactive cursor-pointer select-none"
+            >
+              DocuMind <span className="text-tertiary font-medium">{displayModelName}</span>
+              <svg className={`w-3.5 h-3.5 text-tertiary transition-transform duration-200 ${modelMenuOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+              </svg>
+            </button>
 
-              {modelMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setModelMenuOpen(false)} />
-                  <div className="absolute left-0 mt-2 z-50 w-[280px] menu-popup py-1.5 animate-fade-in-up">
-                    {models.map(m => {
-                      const isSelected = m.id === selectedModel;
-                      return (
-                        <button
-                          key={m.id}
-                          type="button"
-                          onClick={() => handleModelSelect(m.id)}
-                          className="flex items-start w-full text-left px-4 py-2.5 interactive group cursor-pointer"
-                        >
-                          <div className="w-5 shrink-0 pt-0.5">
-                            {isSelected && (
-                              <svg className="w-3.5 h-3.5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                              </svg>
+            {modelMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setModelMenuOpen(false)} />
+                <div className="absolute left-0 mt-2 z-50 w-[280px] menu-popup py-1.5 animate-fade-in-up">
+                  {models.map(m => {
+                    const isSelected = m.id === selectedModel;
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => handleModelSelect(m.id)}
+                        className="flex items-start w-full text-left px-4 py-2.5 interactive group cursor-pointer"
+                      >
+                        <div className="w-5 shrink-0 pt-0.5">
+                          {isSelected && (
+                            <svg className="w-3.5 h-3.5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                            </svg>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0 pr-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[13px] font-semibold text-primary group-hover:text-blue-500 transition-colors">
+                              {m.name}
+                            </span>
+                            {m.isNew && (
+                              <span className="px-2 py-0.5 text-[9px] font-medium bg-blue-500/10 text-blue-500 rounded-full shrink-0">New</span>
                             )}
                           </div>
-                          <div className="flex-1 min-w-0 pr-2">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-[13px] font-semibold text-primary group-hover:text-blue-500 transition-colors">
-                                {m.name}
-                              </span>
-                              {m.isNew && (
-                                <span className="px-2 py-0.5 text-[9px] font-medium bg-blue-500/10 text-blue-500 rounded-full shrink-0">New</span>
-                              )}
-                            </div>
-                            <p className="text-[11px] text-secondary mt-0.5 leading-normal">{m.description}</p>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-            </div>
-            
-            {!isNewChat && (
-              <div className="hidden sm:block px-3 py-1.5 bg-[var(--color-bg-base)] border border-[var(--color-border)] rounded-lg max-w-[300px]">
-                <h1 className="text-[13px] font-medium text-secondary truncate">
-                  {session?.title || 'Loading…'}
-                </h1>
-              </div>
+                          <p className="text-[11px] text-secondary mt-0.5 leading-normal">{m.description}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </div>
+
+          {!isNewChat && (
+            <div className="hidden sm:block px-3 py-1.5 bg-[var(--color-bg-base)] border border-[var(--color-border)] rounded-lg max-w-[300px]">
+              <h1 className="text-[13px] font-medium text-secondary truncate">
+                {session?.title || 'Loading…'}
+              </h1>
+            </div>
+          )}
+        </div>
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6" style={{ backgroundColor: 'var(--color-bg-base)' }}>
         {isNewChat ? (
           <div className="h-full flex flex-col items-center justify-center text-center px-4">
             {user?.profileImageUrl ? (
-              <img 
-                src={user.profileImageUrl} 
-                alt="Profile" 
+              <img
+                src={user.profileImageUrl}
+                alt="Profile"
                 className="w-16 h-16 rounded-full object-cover shadow-sm ring-2 ring-white/10"
               />
             ) : (
@@ -458,8 +449,8 @@ export default function Chat() {
                       boxShadow: 'var(--shadow-sm)',
                     } : {}}>
                       {isBot
-                        ? <Streaming 
-                            text={msg.text} 
+                        ? <Streaming
+                            text={msg.text}
                             isStreaming={msg.id === state.streamingMessageId}
                             citations={msg.citations}
                             onCitationClick={setActiveCitation}
@@ -604,7 +595,7 @@ export default function Chat() {
               border: '1px solid var(--color-border)',
             }}
             onFocus={(e) => e.currentTarget.style.borderColor = 'var(--color-accent)'}
-            onBlur={(e) => e.currentTarget.style.borderColor  = 'var(--color-border)'}
+            onBlur={(e) => e.currentTarget.style.borderColor = 'var(--color-border)'}
           >
             <div className="flex items-center">
               <button

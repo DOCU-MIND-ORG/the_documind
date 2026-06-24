@@ -69,9 +69,9 @@ export default function Attachments() {
   const { sessions } = useSessions();
 
   const [attachments, setAttachments] = useState([]);
-  const [loading, setLoading]         = useState(true);
-  const [error, setError]             = useState(null);
-  const [filter, setFilter]           = useState('ALL');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [filter, setFilter] = useState('ALL');
 
   const session = sessions.find(s => String(s.sessionId) === String(sessionId));
 

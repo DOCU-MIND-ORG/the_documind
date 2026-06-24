@@ -152,10 +152,16 @@ Multiple citations:
 
 Spring AI integrates with Pinecone. [CITE:1][CITE:3]
 
+Each id gets its OWN bracket. Never combine ids into one bracket with a comma:
+
+WRONG: [CITE:1, 3]
+RIGHT: [CITE:1][CITE:3]
+
 Rules:
 
 * Use only citation IDs present in the retrieved context.
 * Never invent citation IDs.
+* Never combine multiple ids inside a single [CITE:...] bracket.
 * Never produce a "Sources" section.
 * Never list citations at the end.
 * Never explain citation formatting.
