@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useSessions } from '../context/SessionsContext.jsx';
 import { sessionService } from '../services/sessionService.js';
 import { useToast } from '../context/ToastContext.jsx';
+import { toast } from 'sonner';
 import Modal from './Modal.jsx';
 
 const PanelIcon = () => (
@@ -113,15 +114,26 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
   const handleDelete = async (e, sessionId) => {
     e.stopPropagation();
     setOpenMenuId(null);
-    if (!window.confirm('Delete this session?')) return;
-    try {
-      await sessionService.delete(sessionId);
-      removeSession(sessionId);
-      showToast('Session deleted', 'success');
-      if (String(activeId) === String(sessionId)) navigate('/dashboard');
-    } catch (err) {
-      showToast(err.message || 'Failed to delete', 'error');
-    }
+    
+    toast('Delete this session?', {
+      description: 'This action cannot be undone.',
+      action: {
+        label: 'Delete',
+        onClick: async () => {
+          try {
+            await sessionService.delete(sessionId);
+            removeSession(sessionId);
+            toast.success('Session deleted');
+            if (String(activeId) === String(sessionId)) navigate('/dashboard');
+          } catch (err) {
+            toast.error(err.message || 'Failed to delete');
+          }
+        }
+      },
+      cancel: {
+        label: 'Cancel'
+      }
+    });
   };
 
   const handleViewAttachments = (e, sessionId) => {

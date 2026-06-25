@@ -51,6 +51,7 @@ export default function Settings() {
   const [errors, setErrors] = useState({});
   const [savedMsg, setSavedMsg] = useState('');
 
+  const [language, setLanguage] = useState('en');
   const [model, setModel] = useState('GEMINI_2_5_FLASH');
   const [responseStyle, setResponseStyle] = useState('BALANCED');
   const [prefSaved, setPrefSaved] = useState(false);
@@ -88,6 +89,7 @@ export default function Settings() {
         if (modelsRes) setAvailableModels(modelsRes);
         if (prefsRes) {
           if (prefsRes.modelName) setModel(prefsRes.modelName);
+          if (prefsRes.language) setLanguage(prefsRes.language);
           if (prefsRes.responseStyle) setResponseStyle(prefsRes.responseStyle);
         }
       } catch (err) {
@@ -172,6 +174,7 @@ export default function Settings() {
     try {
       await preferenceService.updateModel({
         modelName: model,
+        language: language,
         responseStyle: responseStyle,
         theme: theme
       });
@@ -431,18 +434,15 @@ export default function Settings() {
 
             <Section title="AI Configuration">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 max-w-lg">
-                <Field label="Default AI Model" hint="Used for new chat sessions">
-                  <select value={model} onChange={e => setModel(e.target.value)} style={inputStyle}
+                <Field label="System Language" hint="AI will respond in the selected language">
+                  <select value={language} onChange={e => setLanguage(e.target.value)} style={inputStyle}
                     onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
                     onBlur={e  => e.target.style.borderColor = 'var(--color-border)'}>
-                    {availableModels.length > 0 ? (
-                      availableModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)
-                    ) : (
-                      <>
-                        <option value="GEMINI_2_5_FLASH">Gemini 2.5 Flash</option>
-                        <option value="GEMINI_2_5_PRO">Gemini 2.5 Pro</option>
-                      </>
-                    )}
+                    <option value="en">English</option>
+                    <option value="hi">Hindi</option>
+                    <option value="es">Spanish</option>
+                    <option value="fr">French</option>
+                    <option value="de">German</option>
                   </select>
                 </Field>
                 <Field label="Response Style" hint="How verbose the AI should be">

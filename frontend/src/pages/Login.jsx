@@ -2,8 +2,6 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
-import ForgotPasswordModal from '../components/ForgotPasswordModal.jsx';
-import logo from "../assets/Logo.png";
 
 export default function Login() {
   const endpoint = import.meta.env.VITE_API_URL;
@@ -12,24 +10,11 @@ export default function Login() {
   const { showToast } = useToast();
   const [form, setForm] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   const handleChange = e => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
   const isValidEmail = email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-  const handleOpenForgotPassword = () => {
-    if (!form.email) {
-      showToast('Please enter your email address first.', 'error');
-      return;
-    }
-
-    if (!isValidEmail(form.email)) {
-      showToast('Please enter a valid email address.', 'error');
-      return;
-    }
-
-    setShowForgotPassword(true);
-  };
+  const isValidEmail = email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
   const handleSubmit = async e => {
     e.preventDefault();
@@ -68,20 +53,16 @@ export default function Login() {
       <div className="w-full max-w-[450px] bg-[#16181d]/60 backdrop-blur-xl border border-white/5 rounded-2xl flex flex-col px-6 py-8 sm:px-10 sm:py-12 shadow-2xl animate-fade-in-up">
         <div className="text-center mb-8">
           <div className="flex flex-col items-center mb-6">
-            <div className="mb-3">
+            <div className="mb-2">
               <img
-                src={logo}
+                src="/logodoc.png"
                 alt="DocuMind Logo"
-                className="w-32 h-32 mx-auto object-contain"
+                className="w-56 h-auto mx-auto object-contain"
               />
             </div>
-
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
-              DocuMind
-            </h1>
           </div>
 
-          <h2 className="text-xl text-white font-semibold mb-1">
+          <h2 className="text-xl t-text-main font-semibold mb-1">
             Welcome back
           </h2>
 
@@ -125,13 +106,12 @@ export default function Login() {
               <input type="checkbox" className="cursor-pointer accent-blue-500" />
               <span>Remember me</span>
             </label>
-            <button
-              type="button"
-              onClick={handleOpenForgotPassword}
+            <Link
+              to="/reset-password"
               className="text-[#94a3b8] transition-colors hover:text-white"
             >
               Forgot password?
-            </button>
+            </Link>
           </div>
 
           <button
@@ -149,12 +129,6 @@ export default function Login() {
           Don't have an account? <Link to="/register" className="text-blue-500 font-medium ml-1 hover:underline">Create one</Link>
         </div>
       </div>
-
-      <ForgotPasswordModal
-        isOpen={showForgotPassword}
-        email={form.email}
-        onClose={() => setShowForgotPassword(false)}
-      />
     </div>
   );
 }

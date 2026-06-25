@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useToast } from '../context/ToastContext.jsx';
 
 const OTP_EXPIRY_SECONDS = 10 * 60;
 
-export default function ForgotPasswordModal({ isOpen, email, onClose }) {
+export default function ResetPassword() {
   const endpoint = import.meta.env.VITE_API_URL;
   const { showToast } = useToast();
+  const navigate = useNavigate();
   const [step, setStep] = useState(1);
+  const [email, setEmail] = useState('');
   const [form, setForm] = useState({
     otp: '',
     newPassword: '',
@@ -26,16 +29,6 @@ export default function ForgotPasswordModal({ isOpen, email, onClose }) {
     const remainingSeconds = (seconds % 60).toString().padStart(2, '0');
     return `${minutes}:${remainingSeconds}`;
   };
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    setStep(1);
-    setForm({ otp: '', newPassword: '', confirmPassword: '' });
-    setOtpExpiresAt(null);
-    setOtpTimeLeft(0);
-    setVerificationToken('');
-  }, [isOpen, email]);
 
   useEffect(() => {
     if (!otpExpiresAt) return undefined;
@@ -61,7 +54,7 @@ export default function ForgotPasswordModal({ isOpen, email, onClose }) {
   const handleRequestOTP = async e => {
     e.preventDefault();
     if (!email) {
-      showToast('Please enter your email address on the login page first.', 'error');
+      showToast('Please enter your email address.', 'error');
       return;
     }
 
@@ -167,7 +160,7 @@ export default function ForgotPasswordModal({ isOpen, email, onClose }) {
       }
 
       showToast('Password reset successfully! You can now log in.', 'success');
-      handleClose();
+      navigate('/login');
     } catch (err) {
       showToast('Unable to reach the server. Please try again later.', 'error');
     } finally {
@@ -175,43 +168,54 @@ export default function ForgotPasswordModal({ isOpen, email, onClose }) {
     }
   };
 
-  const handleClose = () => {
-    setStep(1);
-    setForm({ otp: '', newPassword: '', confirmPassword: '' });
-    setOtpExpiresAt(null);
-    setOtpTimeLeft(0);
-    setVerificationToken('');
-    onClose();
-  };
-
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="w-full max-w-[450px] bg-[#16181d]/95 backdrop-blur-xl border border-white/5 rounded-2xl px-6 py-8 sm:px-10 sm:py-12 shadow-2xl">
-        <h2 className="text-2xl font-bold text-white mb-2 text-center">Reset Password</h2>
-        <p className="text-center text-[#94a3b8] text-sm mb-6">
-          {step === 1 && 'Send an OTP to your login email'}
-          {step === 2 && 'Enter the OTP sent to your email'}
-          {step === 3 && 'Create your new password'}
-        </p>
+    <div className="min-h-screen flex items-center justify-center bg-[#0f1115] bg-[radial-gradient(circle_at_15%_50%,rgba(59,130,246,0.12),transparent_25%),radial-gradient(circle_at_85%_30%,rgba(147,51,234,0.12),transparent_25%)] p-4 sm:p-8">
+      <div className="w-full max-w-[450px] bg-[#16181d]/60 backdrop-blur-xl border border-white/5 rounded-2xl flex flex-col px-6 py-8 sm:px-10 sm:py-12 shadow-2xl animate-fade-in-up">
+        
+        <div className="text-center mb-8">
+          <div className="flex flex-col items-center mb-6">
+            <div className="mb-2">
+              <img
+                src="/logodoc.png"
+                alt="DocuMind Logo"
+                className="w-56 h-auto mx-auto object-contain"
+              />
+            </div>
+          </div>
+          <h2 className="text-2xl font-bold t-text-main mb-2">Reset Password</h2>
+          <p className="text-[#94a3b8] text-sm">
+            {step === 1 && 'Send an OTP to your login email'}
+            {step === 2 && 'Enter the OTP sent to your email'}
+            {step === 3 && 'Create your new password'}
+          </p>
+        </div>
 
         <form className="flex flex-col gap-5">
           {step === 1 ? (
             <>
-              <div className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3">
-                <p className="text-xs text-[#94a3b8] mb-1">OTP will be sent to</p>
-                <p className="text-sm text-white break-all">{email}</p>
+              <div className="flex flex-col gap-2">
+                <label className="text-xs t-text-muted font-medium" htmlFor="email">Email Address</label>
+                <input
+                  id="email"
+                  type="email"
+                  name="email"
+                  className="input-bg px-4 py-3 rounded-lg text-sm outline-none"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
+                  required
+                />
               </div>
 
               <button
                 type="button"
                 onClick={handleRequestOTP}
-                className="bg-white text-black py-3 rounded-lg font-semibold text-sm cursor-pointer transition-all hover:bg-slate-100 hover:-translate-y-[1px] active:translate-y-0 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
+                className="bg-blue-600 text-white py-3 rounded-lg font-semibold text-sm cursor-pointer transition-all hover:bg-blue-500 hover:-translate-y-[1px] active:translate-y-0 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none mt-2 flex items-center justify-center gap-2"
                 disabled={loading}
               >
                 {loading ? (
-                  <><span className="w-4 h-4 border-2 border-black/10 border-t-black rounded-full animate-spin" /> Sending OTP...</>
+                  <><span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> Sending OTP...</>
                 ) : 'Send OTP'}
               </button>
             </>
@@ -221,10 +225,10 @@ export default function ForgotPasswordModal({ isOpen, email, onClose }) {
                 <div className="flex items-center justify-between gap-3">
                   <label className="text-xs text-[#94a3b8] font-medium" htmlFor="otp">One-Time Password (OTP)</label>
                   {isOtpActive && (
-                    <span className="text-xs text-emerald-300">Expires in {formatTime(otpTimeLeft)}</span>
+                    <span className="text-xs text-emerald-400">Expires in {formatTime(otpTimeLeft)}</span>
                   )}
                   {isOtpExpired && (
-                    <span className="text-xs text-red-300">OTP expired</span>
+                    <span className="text-xs text-red-400">OTP expired</span>
                   )}
                 </div>
                 <input
@@ -232,7 +236,7 @@ export default function ForgotPasswordModal({ isOpen, email, onClose }) {
                   type="text"
                   name="otp"
                   inputMode="numeric"
-                  className="bg-white/[0.03] border border-white/10 px-4 py-3 rounded-lg text-white text-sm transition-all focus:bg-white/[0.05] focus:border-white/20 focus:ring-4 focus:ring-white/[0.03] outline-none placeholder-white/20 disabled:opacity-70"
+                  className="input-bg px-4 py-3 rounded-lg text-sm outline-none disabled:opacity-70"
                   placeholder="Enter OTP"
                   value={form.otp}
                   onChange={handleChange}
@@ -240,25 +244,25 @@ export default function ForgotPasswordModal({ isOpen, email, onClose }) {
                   required
                 />
                 {isOtpExpired && (
-                  <p className="text-xs text-red-300">OTP expired. Request a new OTP to continue.</p>
+                  <p className="text-xs text-red-400">OTP expired. Request a new OTP to continue.</p>
                 )}
               </div>
 
               <button
                 type="button"
                 onClick={handleVerifyOTP}
-                className="bg-white text-black py-3 rounded-lg font-semibold text-sm cursor-pointer transition-all hover:bg-slate-100 hover:-translate-y-[1px] active:translate-y-0 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
+                className="bg-blue-600 text-white py-3 rounded-lg font-semibold text-sm cursor-pointer transition-all hover:bg-blue-500 hover:-translate-y-[1px] active:translate-y-0 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
                 disabled={loading || isOtpExpired}
               >
                 {loading ? (
-                  <><span className="w-4 h-4 border-2 border-black/10 border-t-black rounded-full animate-spin" /> Verifying...</>
+                  <><span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> Verifying...</>
                 ) : 'Verify OTP'}
               </button>
 
               <button
                 type="button"
                 onClick={handleRequestOTP}
-                className="text-[#94a3b8] hover:text-white text-sm transition-colors disabled:opacity-70"
+                className="text-[#94a3b8] hover:text-white text-sm transition-colors disabled:opacity-70 mt-2"
                 disabled={loading}
               >
                 Resend OTP
@@ -272,7 +276,7 @@ export default function ForgotPasswordModal({ isOpen, email, onClose }) {
                   id="newPassword"
                   type="password"
                   name="newPassword"
-                  className="bg-white/[0.03] border border-white/10 px-4 py-3 rounded-lg text-white text-sm transition-all focus:bg-white/[0.05] focus:border-white/20 focus:ring-4 focus:ring-white/[0.03] outline-none placeholder-white/20"
+                  className="input-bg px-4 py-3 rounded-lg text-sm outline-none"
                   placeholder="Min 8 chars"
                   value={form.newPassword}
                   onChange={handleChange}
@@ -286,7 +290,7 @@ export default function ForgotPasswordModal({ isOpen, email, onClose }) {
                   id="confirmPassword"
                   type="password"
                   name="confirmPassword"
-                  className="bg-white/[0.03] border border-white/10 px-4 py-3 rounded-lg text-white text-sm transition-all focus:bg-white/[0.05] focus:border-white/20 focus:ring-4 focus:ring-white/[0.03] outline-none placeholder-white/20"
+                  className="input-bg px-4 py-3 rounded-lg text-sm outline-none"
                   placeholder="Re-enter password"
                   value={form.confirmPassword}
                   onChange={handleChange}
@@ -297,18 +301,18 @@ export default function ForgotPasswordModal({ isOpen, email, onClose }) {
               <button
                 type="button"
                 onClick={handleResetPassword}
-                className="bg-white text-black py-3 rounded-lg font-semibold text-sm cursor-pointer transition-all hover:bg-slate-100 hover:-translate-y-[1px] active:translate-y-0 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
+                className="bg-blue-600 text-white py-3 rounded-lg font-semibold text-sm cursor-pointer transition-all hover:bg-blue-500 hover:-translate-y-[1px] active:translate-y-0 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 disabled={loading}
               >
                 {loading ? (
-                  <><span className="w-4 h-4 border-2 border-black/10 border-t-black rounded-full animate-spin" /> Resetting...</>
+                  <><span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> Resetting...</>
                 ) : 'Reset Password'}
               </button>
 
               <button
                 type="button"
                 onClick={() => setStep(2)}
-                className="text-[#94a3b8] hover:text-white text-sm transition-colors"
+                className="text-[#94a3b8] hover:text-white text-sm transition-colors mt-2"
               >
                 Back to OTP
               </button>
@@ -316,12 +320,9 @@ export default function ForgotPasswordModal({ isOpen, email, onClose }) {
           )}
         </form>
 
-        <button
-          onClick={handleClose}
-          className="absolute top-4 right-4 text-[#94a3b8] hover:text-white text-2xl leading-none"
-        >
-          ×
-        </button>
+        <div className="text-center mt-8 text-sm t-text-muted">
+          Remember your password? <Link to="/login" className="text-blue-500 font-medium ml-1 hover:underline">Sign In</Link>
+        </div>
       </div>
     </div>
   );

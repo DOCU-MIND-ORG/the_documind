@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
-import logo from '../assets/Logo.png';
 
 export default function Register() {
   const endpoint = import.meta.env.VITE_API_URL;
@@ -73,20 +72,16 @@ export default function Register() {
       <div className="relative w-full max-w-[450px] panel-card flex flex-col px-6 py-8 sm:px-10 sm:py-12 animate-fade-in-up">
         <div className="text-center mb-8">
           <div className="flex flex-col items-center mb-6">
-            <div className="mb-3">
+            <div className="mb-2">
               <img
-                src={logo}
+                src="/logodoc.png"
                 alt="DocuMind Logo"
-                className="w-32 h-32 mx-auto object-contain"
+                className="w-56 h-auto mx-auto object-contain"
               />
             </div>
-
-            <h1 className="text-4xl font-bold text-white">
-              DocuMind
-            </h1>
           </div>
 
-          <h2 className="text-xl text-white font-semibold mb-1">
+          <h2 className="text-xl t-text-main font-semibold mb-1">
             Create Account
           </h2>
 

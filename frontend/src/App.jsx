@@ -5,7 +5,9 @@ import { SessionsProvider } from './context/SessionsContext.jsx';
 import AppSidebar from './components/AppSidebar.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
+import ResetPassword from './pages/ResetPassword.jsx';
 import Chat from './pages/Chat.jsx';
+import { Toaster } from 'sonner';
 import Settings from './pages/Settings.jsx';
 import Attachments from './pages/Attachments.jsx';
 
@@ -65,10 +67,12 @@ function RootRedirect() {
 export default function App() {
   return (
     <Router>
+      <Toaster position="top-right" richColors />
       <Routes>
         <Route path="/" element={<RootRedirect />} />
         <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
         <Route path="/register" element={<GuestRoute><Register /></GuestRoute>} />
+        <Route path="/reset-password" element={<GuestRoute><ResetPassword /></GuestRoute>} />
 
         <Route element={<ProtectedLayout />}>
           <Route path="/dashboard" element={<Chat />} />
