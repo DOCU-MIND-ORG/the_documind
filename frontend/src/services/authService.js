@@ -26,11 +26,14 @@ export const authService = {
       body: JSON.stringify(userData),
     }),
 
-  updateProfileImage: (imageData) =>
-    request('/auth/update-profile-image', {
+  updateProfileImage: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return request('/auth/update-profile-image', {
       method: 'PUT',
-      body: JSON.stringify(imageData),
-    }),
+      body: formData,
+    });
+  },
 
   deleteMe: () =>
     request('/auth/me', {

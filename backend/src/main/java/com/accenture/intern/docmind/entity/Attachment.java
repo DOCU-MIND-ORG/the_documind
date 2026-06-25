@@ -32,11 +32,25 @@ public class Attachment {
     /** Original filename as uploaded by the user */
     private String fileName;
 
-    /** Relative path on disk, e.g. storage/pdfs/uuid_report.pdf */
+    /** Relative path on disk, e.g. storage/pdfs/uuid_report.pdf - only set for attachment types still stored locally (TEXT, OTHER) */
     private String storagePath;
 
-    /** Full public/internal URL (can be generated later for serving) */
+    /** Full public/internal URL - either our /files/{storagePath} (local types) or a Cloudinary secure_url (PDF, IMAGE) */
     private String url;
+
+    /**
+     * Cloudinary public_id for this asset, set whenever {@link #url} points at
+     * Cloudinary (PDF or IMAGE attachments). Kept for reference/admin purposes
+     * only - it is NOT used to delete the asset when this row is removed.
+     * Both PDF and IMAGE attachments intentionally keep their Cloudinary asset
+     * after deletion, since citations can keep referencing them (via sourceUrl /
+     * imageUrl on the chunk) long after the attachment/session that uploaded
+     * them is gone. See AttachmentEntityListener.
+     */
+    private String cloudinaryPublicId;
+
+    /** "image" or "raw" - which Cloudinary resource_type cloudinaryPublicId was uploaded as */
+    private String cloudinaryResourceType;
 
     private String mimeType;
 

@@ -374,6 +374,9 @@ public class HybridRetrievalService {
             metadata.put("imageUrl", chunk.getImageUrl());
             metadata.put("isImage", true);
         }
+        if (chunk.getSourceUrl() != null && !chunk.getSourceUrl().isBlank()) {
+            metadata.put("sourceUrl", chunk.getSourceUrl());
+        }
         return new Document(chunk.getVectorId(), chunk.getContent(), metadata);
     }
 

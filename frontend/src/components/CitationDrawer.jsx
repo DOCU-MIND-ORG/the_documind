@@ -6,6 +6,13 @@ const XIcon = () => (
   </svg>
 );
 
+const PdfIcon = () => (
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M14 2v6h6" />
+  </svg>
+);
+
 export default function CitationDrawer({ citation, onClose }) {
   useEffect(() => {
     if (!citation) return;
@@ -22,6 +29,12 @@ export default function CitationDrawer({ citation, onClose }) {
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
   const resolvedImageUrl = citation.imageUrl
     ? (citation.imageUrl.startsWith('http') ? citation.imageUrl : `${API_URL}${citation.imageUrl}`)
+    : null;
+  // sourceUrl points at the original PDF this text chunk came from (Cloudinary,
+  // so always absolute) - distinct from imageUrl, which means "render this
+  // inline as an image". A PDF text citation has sourceUrl but no imageUrl.
+  const resolvedSourceUrl = citation.sourceUrl
+    ? (citation.sourceUrl.startsWith('http') ? citation.sourceUrl : `${API_URL}${citation.sourceUrl}`)
     : null;
 
   return (
@@ -100,6 +113,25 @@ export default function CitationDrawer({ citation, onClose }) {
                 style={{ borderColor: 'var(--color-border)' }}
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
+            </div>
+          )}
+
+          {!citation.isImage && resolvedSourceUrl && (
+            <div className="mb-5">
+              <a
+                href={resolvedSourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium interactive"
+                style={{
+                  border: '1px solid var(--color-border)',
+                  color: 'var(--color-text-primary)',
+                  backgroundColor: 'var(--color-bg-subtle)',
+                }}
+              >
+                <PdfIcon />
+                Open source PDF
+              </a>
             </div>
           )}
 

@@ -11,6 +11,7 @@ import com.accenture.intern.docmind.aiservices.DocumentParserService;
 import com.accenture.intern.docmind.aiservices.EmbeddingService;
 import com.accenture.intern.docmind.aiservices.ImageVisionService;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,8 +39,9 @@ public class AttachmentService {
     private final DocumentParserService parserService;
     private final EmbeddingService embeddingService;
     private final ImageVisionService imageVisionService;
+    private final CloudinaryService cloudinaryService;
 
-    /** Root storage dir — always resolved to absolute path at startup */
+    /** Root storage dir for the attachment types still kept locally (TEXT, OTHER) — always resolved to absolute path at startup */
     @Value("${app.storage.root:storage}")
     private String storageRoot;
 
@@ -50,13 +52,15 @@ public class AttachmentService {
                              SessionRepository sessionRepository,
                              DocumentParserService parserService,
                              EmbeddingService embeddingService,
-                             ImageVisionService imageVisionService) {
+                             ImageVisionService imageVisionService,
+                             CloudinaryService cloudinaryService) {
         this.attachmentRepository = attachmentRepository;
         this.messageRepository = messageRepository;
         this.sessionRepository = sessionRepository;
         this.parserService = parserService;
         this.embeddingService = embeddingService;
         this.imageVisionService = imageVisionService;
+        this.cloudinaryService = cloudinaryService;
     }
 
     @jakarta.annotation.PostConstruct
@@ -70,156 +74,179 @@ public class AttachmentService {
     // ── Upload ────────────────────────────────────────────────────────────────
 
     /**
-     * Saves the file to the correct sub-folder under storageRoot,
-     * then persists an Attachment row linked to a system Message in the given session.
+     * Persists the uploaded file. PDF and IMAGE attachments are uploaded
+     * straight to Cloudinary (under storage/pdfs or storage/images,
+     * mirroring the old local folder layout) without ever touching local
+     * disk. TEXT and OTHER attachments are still written to local disk and
+     * served via /files/{storagePath}, exactly as before.
      */
     public Mono<AttachmentUploadResult> uploadFile(Long sessionId, String userEmail, FilePart filePart) {
-        return Mono.fromCallable(() -> {
-            // 1. Verify session belongs to caller
-            Session session = sessionRepository.findById(sessionId)
-                    .orElseThrow(() -> new RuntimeException("Session not found"));
+        // Read the full file into memory once, up front — both the Cloudinary
+        // upload path and the local-disk path need the bytes, and FilePart's
+        // content can only be consumed once.
+        return DataBufferUtils.join(filePart.content())
+                .map(dataBuffer -> {
+                    byte[] bytes = new byte[dataBuffer.readableByteCount()];
+                    dataBuffer.read(bytes);
+                    DataBufferUtils.release(dataBuffer);
+                    return bytes;
+                })
+                .defaultIfEmpty(new byte[0])
+                .flatMap(fileBytes -> Mono.fromCallable(() -> {
+                    // 1. Verify session belongs to caller
+                    Session session = sessionRepository.findById(sessionId)
+                            .orElseThrow(() -> new RuntimeException("Session not found"));
 
-            if (!session.getUser().getEmail().equals(userEmail)) {
-                throw new RuntimeException("Access denied");
-            }
-
-            // 2. Determine type + subfolder from content-type
-            String contentType = filePart.headers().getContentType() != null
-                    ? filePart.headers().getContentType().toString()
-                    : "application/octet-stream";
-
-            AttachmentType type = resolveType(contentType);
-            String subFolder = resolveFolder(type);
-
-            // 3. Build destination path using the resolved absolute root
-            Path dir = absoluteStorageRoot.resolve(subFolder);
-            Files.createDirectories(dir);
-
-            String originalName = filePart.filename();
-            String storedName = UUID.randomUUID() + "_" + originalName;
-            Path dest = dir.resolve(storedName);
-
-            // 4. Write file to disk (blocking, hence fromCallable + boundedElastic)
-            filePart.transferTo(dest).block();
-
-            // Store a relative path so it works even if the server moves
-            String storagePath = subFolder + "/" + storedName;
-            // The url is the public serving path: GET /files/{storagePath}
-            String publicUrl = "/files/" + storagePath;
-
-            List<Mono<Void>> ingestionMonos = new ArrayList<>();
-            try {
-                if (type == AttachmentType.PDF) {
-                    // Extracts page text, AND separately every embedded chart/graph/
-                    // image (described via Gemini Vision) — see DocumentParserService.
-                    DocumentParserService.PdfParseResult parsed = parserService.parsePdfWithImages(dest);
-
-                    if (parsed.text() != null && !parsed.text().isBlank()) {
-                        ingestionMonos.add(
-                                embeddingService.processAndIngest(parsed.text(), type.name(), originalName, sessionId));
+                    if (!session.getUser().getEmail().equals(userEmail)) {
+                        throw new RuntimeException("Access denied");
                     }
 
-                    int imgIndex = 0;
-                    for (DocumentParserService.ExtractedImage img : parsed.images()) {
-                        imgIndex++;
-                        String extractedImageUrl = saveExtractedPdfImage(img, originalName, imgIndex);
-                        if (extractedImageUrl == null) {
-                            continue; // failed to persist this one image — skip, don't fail the whole upload
+                    // 2. Determine type from content-type
+                    String contentType = filePart.headers().getContentType() != null
+                            ? filePart.headers().getContentType().toString()
+                            : "application/octet-stream";
+
+                    AttachmentType type = resolveType(contentType);
+                    String originalName = filePart.filename();
+
+                    String storagePath = null;   // only set for local types (TEXT/OTHER)
+                    String publicUrl;
+                    String cloudinaryPublicId = null;
+                    String cloudinaryResourceType = null;
+
+                    if (type == AttachmentType.PDF) {
+                        CloudinaryService.UploadResult uploaded =
+                                cloudinaryService.uploadRaw(fileBytes, "storage/pdfs", originalName);
+                        publicUrl = uploaded.url();
+                        cloudinaryPublicId = uploaded.publicId();
+                        cloudinaryResourceType = "raw";
+                    } else if (type == AttachmentType.IMAGE) {
+                        CloudinaryService.UploadResult uploaded =
+                                cloudinaryService.uploadImage(fileBytes, "storage/images", originalName);
+                        publicUrl = uploaded.url();
+                        cloudinaryPublicId = uploaded.publicId();
+                        cloudinaryResourceType = "image";
+                    } else {
+                        // TEXT / OTHER — keep on local disk as before
+                        String subFolder = resolveFolder(type);
+                        Path dir = absoluteStorageRoot.resolve(subFolder);
+                        Files.createDirectories(dir);
+
+                        String storedName = UUID.randomUUID() + "_" + originalName;
+                        Path dest = dir.resolve(storedName);
+                        Files.write(dest, fileBytes);
+
+                        storagePath = subFolder + "/" + storedName;
+                        publicUrl = "/files/" + storagePath;
+                    }
+
+                    List<Mono<Void>> ingestionMonos = new ArrayList<>();
+                    try {
+                        if (type == AttachmentType.PDF) {
+                            // Extracts page text, AND separately every embedded chart/graph/
+                            // image (described via Gemini Vision) — see DocumentParserService.
+                            // Parsed directly from the in-memory bytes — the PDF itself now
+                            // lives only on Cloudinary, never on local disk.
+                            DocumentParserService.PdfParseResult parsed = parserService.parsePdfWithImages(fileBytes);
+
+                            if (parsed.text() != null && !parsed.text().isBlank()) {
+                                ingestionMonos.add(
+                                        embeddingService.processAndIngest(parsed.text(), type.name(), originalName, sessionId, null, publicUrl));
+                            }
+
+                            int imgIndex = 0;
+                            for (DocumentParserService.ExtractedImage img : parsed.images()) {
+                                imgIndex++;
+                                String extractedImageUrl = saveExtractedPdfImage(img, originalName, imgIndex);
+                                if (extractedImageUrl == null) {
+                                    continue; // failed to persist this one image — skip, don't fail the whole upload
+                                }
+                                String imageSourceName = originalName + " (page " + img.pageNumber() + " image)";
+                                ingestionMonos.add(embeddingService.processAndIngest(
+                                        img.description(), "PDF_IMAGE", imageSourceName, sessionId, extractedImageUrl));
+                            }
+
+                            log.info("Successfully processed '{}' ({} text chunk-source, {} embedded images)",
+                                    originalName, parsed.text() == null || parsed.text().isBlank() ? 0 : 1, parsed.images().size());
+
+                        } else if (type == AttachmentType.TEXT) {
+                            Path dest = absoluteStorageRoot.resolve(storagePath);
+                            String parsedText = parserService.parseTextFile(dest);
+                            if (parsedText != null && !parsedText.isBlank()) {
+                                ingestionMonos.add(embeddingService.processAndIngest(parsedText, type.name(), originalName, sessionId));
+                                log.info("Successfully processed '{}'", originalName);
+                            }
+                        } else if (type == AttachmentType.IMAGE) {
+                            // A directly uploaded image (photo, chart, graph, screenshot, ...).
+                            // There's no text to extract, so Gemini Vision generates a detailed
+                            // textual description, which is then chunked and embedded exactly
+                            // like any other document text — tagged with this image's own
+                            // Cloudinary URL so citations can render the actual image.
+                            String parsedText = imageVisionService.describeImage(fileBytes, contentType).block();
+                            if (parsedText != null && !parsedText.isBlank()) {
+                                ingestionMonos.add(
+                                        embeddingService.processAndIngest(parsedText, type.name(), originalName, sessionId, publicUrl));
+                                log.info("Successfully processed '{}'", originalName);
+                            }
                         }
-                        String imageSourceName = originalName + " (page " + img.pageNumber() + " image)";
-                        ingestionMonos.add(embeddingService.processAndIngest(
-                                img.description(), "PDF_IMAGE", imageSourceName, sessionId, extractedImageUrl));
+                    } catch (Exception e) {
+                        log.error("Failed to parse/ingest '{}': {}", originalName, e.getMessage());
+                        // We proceed even if parsing fails so the attachment is still recorded
                     }
 
-                    log.info("Successfully processed '{}' ({} text chunk-source, {} embedded images)",
-                            originalName, parsed.text() == null || parsed.text().isBlank() ? 0 : 1, parsed.images().size());
+                    Mono<Void> ingestionMono = ingestionMonos.isEmpty()
+                            ? Mono.empty()
+                            : Mono.when(ingestionMonos);
 
-                } else if (type == AttachmentType.TEXT) {
-                    String parsedText = parserService.parseTextFile(dest);
-                    if (parsedText != null && !parsedText.isBlank()) {
-                        ingestionMonos.add(embeddingService.processAndIngest(parsedText, type.name(), originalName, sessionId));
-                        log.info("Successfully processed '{}'", originalName);
-                    }
-                } else if (type == AttachmentType.IMAGE) {
-                    // A directly uploaded image (photo, chart, graph, screenshot, ...).
-                    // There's no text to extract, so Gemini Vision generates a detailed
-                    // textual description, which is then chunked and embedded exactly
-                    // like any other document text — tagged with this image's own
-                    // public URL so citations can render the actual image.
-                    byte[] imageBytes = Files.readAllBytes(dest);
-                    String parsedText = imageVisionService.describeImage(imageBytes, contentType).block();
-                    if (parsedText != null && !parsedText.isBlank()) {
-                        ingestionMonos.add(
-                                embeddingService.processAndIngest(parsedText, type.name(), originalName, sessionId, publicUrl));
-                        log.info("Successfully processed '{}'", originalName);
-                    }
-                }
-            } catch (Exception e) {
-                log.error("Failed to parse/ingest '{}': {}", originalName, e.getMessage());
-                // We proceed even if parsing fails so the attachment is still recorded
-            }
+                    long sizeBytes = fileBytes.length;
 
-            Mono<Void> ingestionMono = ingestionMonos.isEmpty()
-                    ? Mono.empty()
-                    : Mono.when(ingestionMonos);
+                    // 5. Create a system Message to anchor the attachment
+                    Message systemMsg = Message.builder()
+                            .session(session)
+                            .role(MessageRole.USER)
+                            .content("[file upload: " + originalName + "]")
+                            .status(MessageStatus.COMPLETE)
+                            .createdAt(LocalDateTime.now())
+                            .build();
+                    messageRepository.save(systemMsg);
 
-            long sizeBytes;
-            try {
-                sizeBytes = Files.size(dest);
-            } catch (IOException e) {
-                sizeBytes = -1L;
-            }
+                    // 6. Persist the Attachment record
+                    Attachment attachment = Attachment.builder()
+                            .message(systemMsg)
+                            .type(type)
+                            .fileName(originalName)
+                            .storagePath(storagePath)
+                            .url(publicUrl)
+                            .cloudinaryPublicId(cloudinaryPublicId)
+                            .cloudinaryResourceType(cloudinaryResourceType)
+                            .mimeType(contentType)
+                            .fileSizeBytes(sizeBytes)
+                            .uploadedAt(LocalDateTime.now())
+                            .build();
+                    attachmentRepository.save(attachment);
 
-            // 5. Create a system Message to anchor the attachment
-            Message systemMsg = Message.builder()
-                    .session(session)
-                    .role(MessageRole.USER)
-                    .content("[file upload: " + originalName + "]")
-                    .status(MessageStatus.COMPLETE)
-                    .createdAt(LocalDateTime.now())
-                    .build();
-            messageRepository.save(systemMsg);
-
-            // 6. Persist the Attachment record
-            Attachment attachment = Attachment.builder()
-                    .message(systemMsg)
-                    .type(type)
-                    .fileName(originalName)
-                    .storagePath(storagePath)
-                    .url(publicUrl)
-                    .mimeType(contentType)
-                    .fileSizeBytes(sizeBytes)
-                    .uploadedAt(LocalDateTime.now())
-                    .build();
-            attachmentRepository.save(attachment);
-
-            return new AttachmentUploadResult(toResponse(attachment), ingestionMono);
-        }).subscribeOn(Schedulers.boundedElastic());
+                    return new AttachmentUploadResult(toResponse(attachment), ingestionMono);
+                }).subscribeOn(Schedulers.boundedElastic()));
     }
 
     /**
-     * Persists a single image extracted from inside a PDF to
-     * {@code storage/images/extracted/} and returns its public {@code /files/...}
-     * URL, so a citation referencing that image's chunk can render it. Returns
-     * null (rather than throwing) on failure, so one bad image never fails the
-     * whole PDF's ingestion.
+     * Uploads a single image extracted from inside a PDF to Cloudinary under
+     * storage/images/extracted (mirroring the old local folder layout) and
+     * returns its secure_url, so a citation referencing that image's chunk
+     * can render it. Returns null (rather than throwing) on failure, so one
+     * bad image never fails the whole PDF's ingestion.
      */
     private String saveExtractedPdfImage(DocumentParserService.ExtractedImage img, String originalPdfName, int imgIndex) {
         try {
-            Path dir = absoluteStorageRoot.resolve("images").resolve("extracted");
-            Files.createDirectories(dir);
-
             String ext = img.mimeType() != null && img.mimeType().contains("png") ? "png" : "jpg";
             String baseName = originalPdfName.replaceAll("[^a-zA-Z0-9.-]", "_");
-            String storedName = UUID.randomUUID() + "_" + baseName + "_p" + img.pageNumber() + "_" + imgIndex + "." + ext;
-            Path dest = dir.resolve(storedName);
+            String fileName = baseName + "_p" + img.pageNumber() + "_" + imgIndex + "." + ext;
 
-            Files.write(dest, img.imageBytes());
-
-            String storagePath = "images/extracted/" + storedName;
-            return "/files/" + storagePath;
-        } catch (IOException e) {
-            log.error("Failed to persist extracted PDF image (page {}): {}", img.pageNumber(), e.getMessage());
+            CloudinaryService.UploadResult uploaded =
+                    cloudinaryService.uploadImage(img.imageBytes(), "storage/images/extracted", fileName);
+            return uploaded.url();
+        } catch (Exception e) {
+            log.error("Failed to upload extracted PDF image to Cloudinary (page {}): {}", img.pageNumber(), e.getMessage());
             return null;
         }
     }

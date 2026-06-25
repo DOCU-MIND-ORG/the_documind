@@ -8,6 +8,8 @@ import com.accenture.intern.docmind.entity.User;
 import com.accenture.intern.docmind.repository.UserRepository;
 import com.accenture.intern.docmind.security.JwtService;
 import com.accenture.intern.docmind.service.AuthService;
+import org.springframework.core.io.buffer.DataBufferUtils;
+import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.*;
@@ -15,6 +17,8 @@ import org.springframework.web.bind.annotation.*;
 import com.accenture.intern.docmind.dto.auth.OtpRequest;
 import com.accenture.intern.docmind.dto.auth.VerifyOtpRequest;
 import com.accenture.intern.docmind.dto.auth.ResetPasswordRequest;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -214,35 +218,46 @@ public class AuthController {
         }
     }
 
-    @PutMapping("/update-profile-image")
-    public ResponseEntity<?> updateProfileImage(@RequestBody com.accenture.intern.docmind.dto.auth.ProfileImageUpdateDto updateDto, ServerHttpRequest request) {
+    @PutMapping(value = "/update-profile-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Mono<ResponseEntity<Object>> updateProfileImage(
+            @RequestPart("file") FilePart filePart,
+            ServerHttpRequest request) {
         String token = extractCookieValue(request, "access_token");
 
         if (token == null || !jwtService.isTokenValid(token)) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(new ErrorResponse("No valid session found"));
+            return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body((Object) new ErrorResponse("No valid session found")));
         }
 
         String email = jwtService.extractEmail(token);
         User user = userRepository.findByEmail(email);
 
         if (user == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(new ErrorResponse("User not found"));
+            return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body((Object) new ErrorResponse("User not found")));
         }
 
-        try {
-            LoginResponse response = AuthService.updateProfileImageAndGetResponse(user, updateDto);
-            return buildCookieResponse(response);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new ErrorResponse(e.getMessage()));
-        }
+        String originalFileName = filePart.filename();
+
+        return DataBufferUtils.join(filePart.content())
+                .map(dataBuffer -> {
+                    byte[] bytes = new byte[dataBuffer.readableByteCount()];
+                    dataBuffer.read(bytes);
+                    DataBufferUtils.release(dataBuffer);
+                    return bytes;
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .<ResponseEntity<Object>>map(bytes -> {
+                    LoginResponse response = AuthService.updateProfileImageAndGetResponse(user, bytes, originalFileName);
+                    return buildCookieResponse(response);
+                })
+                .onErrorResume(RuntimeException.class, e -> Mono.just(
+                        ResponseEntity.status(HttpStatus.BAD_REQUEST).body((Object) new ErrorResponse(e.getMessage()))));
     }
 
     
 
-    private ResponseEntity<?> buildCookieResponse(LoginResponse response) {
+    private ResponseEntity<Object> buildCookieResponse(LoginResponse response) {
         ResponseCookie jwtCookie = ResponseCookie.from("access_token", response.getAccessToken())
                 .httpOnly(true)
                 .secure(false) 

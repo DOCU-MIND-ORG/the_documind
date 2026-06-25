@@ -39,8 +39,14 @@ public class DocumentParserService {
 
     public record PdfParseResult(String text, List<ExtractedImage> images) {}
 
-    public PdfParseResult parsePdfWithImages(Path filePath) throws IOException {
-        try (PDDocument doc = PDDocument.load(filePath.toFile())) {
+    /**
+     * Parses a PDF directly from in-memory bytes (PDFBox supports loading from
+     * a byte array, no local file needed) - the original PDF itself is now
+     * uploaded straight to Cloudinary by AttachmentService rather than written
+     * to local disk first.
+     */
+    public PdfParseResult parsePdfWithImages(byte[] pdfBytes) throws IOException {
+        try (PDDocument doc = PDDocument.load(pdfBytes)) {
             PDFTextStripper stripper = new PDFTextStripper();
             String text = stripper.getText(doc);
             List<ExtractedImage> images = extractAndDescribeImages(doc);

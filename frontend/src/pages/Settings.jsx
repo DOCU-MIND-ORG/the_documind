@@ -113,29 +113,10 @@ export default function Settings() {
     if (!file) return;
     setIsUploading(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("upload_preset", "Documind");
-      formData.append("quality", "100");
-
-      const response = await fetch(
-        "https://api.cloudinary.com/v1_1/dinp3cp9p/image/upload",
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
-
-      const result = await response.json();
-
-      if (!result.secure_url || !result.public_id) {
-        throw new Error("Upload to Cloudinary failed");
-      }
-
-      const res = await authService.updateProfileImage({
-        link: result.secure_url,
-        public_id: result.public_id,
-      });
+      // Upload goes straight to our backend, which uploads to Cloudinary
+      // (signed, server-side) under assets/profile_images and persists the
+      // resulting url/public_id - the browser never talks to Cloudinary directly.
+      const res = await authService.updateProfileImage(file);
 
       if (res?.user) {
         try { updateUser(res.user); } catch (_) { /* ignore */ }

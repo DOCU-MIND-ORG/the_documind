@@ -84,6 +84,18 @@ public class DocumentChunk {
     @Column(name = "image_url")
     private String imageUrl;
 
+    /**
+     * Public URL of the original source document this chunk came from, when that
+     * source is itself viewable/downloadable (currently: the Cloudinary URL of the
+     * PDF a text chunk was extracted from). Distinct from imageUrl: imageUrl means
+     * "this chunk IS an image, render it inline"; sourceUrl means "this chunk is
+     * text, but here's a link to the original document it was extracted from."
+     * A chunk can have sourceUrl without imageUrl (PDF text chunk), but never both
+     * set simultaneously in practice (PDF-extracted-image chunks use imageUrl).
+     */
+    @Column(name = "source_url")
+    private String sourceUrl;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 }

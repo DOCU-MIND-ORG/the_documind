@@ -46,10 +46,25 @@ public class EmbeddingService {
     }
 
     public Mono<Void> processAndIngest(String text, String sourceType, String sourceName, Long sessionId) {
-        return processAndIngest(text, sourceType, sourceName, sessionId, null);
+        return processAndIngest(text, sourceType, sourceName, sessionId, null, null);
     }
 
     public Mono<Void> processAndIngest(String text, String sourceType, String sourceName, Long sessionId, String imageUrl) {
+        return processAndIngest(text, sourceType, sourceName, sessionId, imageUrl, null);
+    }
+
+    /**
+     * @param imageUrl  set when this text IS a Gemini Vision description of an
+     *                  image (standalone IMAGE attachment, or an image extracted
+     *                  from inside a PDF) - the frontend renders this inline as
+     *                  the cited image itself.
+     * @param sourceUrl set when this text came from a document that's itself
+     *                  viewable/downloadable (currently: a PDF's own Cloudinary
+     *                  URL) - the frontend offers it as "open the source document"
+     *                  rather than rendering it inline. Independent of imageUrl;
+     *                  a plain PDF text chunk has sourceUrl but no imageUrl.
+     */
+    public Mono<Void> processAndIngest(String text, String sourceType, String sourceName, Long sessionId, String imageUrl, String sourceUrl) {
 
         log.info("=== INGESTION STARTED ===");
         log.info("SessionId={}", sessionId);
@@ -57,6 +72,7 @@ public class EmbeddingService {
         log.info("SourceType={}", sourceType);
         log.info("TextLength={}", text == null ? 0 : text.length());
         log.info("ImageUrl={}", imageUrl);
+        log.info("SourceUrl={}", sourceUrl);
 
         if (text == null || text.isBlank()) {
             log.warn("Skipping ingest — empty text for '{}'", sourceName);
@@ -81,7 +97,7 @@ public class EmbeddingService {
                     if (!existingChunks.isEmpty()) {
                         return reboostExistingChunks(existingChunks, sourceName, sessionId, state);
                     }
-                    return doIngest(text, sourceType, sourceName, sessionId, imageUrl, contentHash, state);
+                    return doIngest(text, sourceType, sourceName, sessionId, imageUrl, sourceUrl, contentHash, state);
                 });
     }
 
@@ -135,6 +151,9 @@ public class EmbeddingService {
                                     metadata.put("imageUrl", chunk.getImageUrl());
                                     metadata.put("isImage", true);
                                 }
+                                if (chunk.getSourceUrl() != null && !chunk.getSourceUrl().isBlank()) {
+                                    metadata.put("sourceUrl", chunk.getSourceUrl());
+                                }
                                 return new Document(chunk.getVectorId(), chunk.getContent(), metadata);
                             })
                             .collect(java.util.stream.Collectors.toList());
@@ -165,9 +184,9 @@ public class EmbeddingService {
     }
 
     private Mono<Void> doIngest(String text, String sourceType, String sourceName, Long sessionId,
-                                 String imageUrl, String contentHash, SessionUploadState state) {
+                                 String imageUrl, String sourceUrl, String contentHash, SessionUploadState state) {
         log.info("Chunking document...");
-        List<Document> documents = chunkText(text, sourceType, sourceName, sessionId, imageUrl);
+        List<Document> documents = chunkText(text, sourceType, sourceName, sessionId, imageUrl, sourceUrl);
         log.info("Generated {} chunks", documents.size());
 
         if (!documents.isEmpty()) {
@@ -283,6 +302,7 @@ public class EmbeddingService {
                                     .contentHash(contentHash)
                                     .chunkIndex(((Number) doc.getMetadata().getOrDefault("chunkIndex", 0)).intValue())
                                     .imageUrl((String) doc.getMetadata().get("imageUrl"))
+                                    .sourceUrl((String) doc.getMetadata().get("sourceUrl"))
                                     .createdAt(LocalDateTime.now())
                                     .build())
                             .toList();
@@ -308,7 +328,7 @@ public class EmbeddingService {
      * 3. The old space/newline snap — only as a last resort, e.g. for text with no
      *    punctuation at all (a single very long line, code, etc.).
      */
-    private List<Document> chunkText(String text, String sourceType, String sourceName, Long sessionId, String imageUrl) {
+    private List<Document> chunkText(String text, String sourceType, String sourceName, Long sessionId, String imageUrl, String sourceUrl) {
         List<Document> chunks = new ArrayList<>();
         int totalLen = text.length();
         int cursor = 0;
@@ -343,6 +363,9 @@ public class EmbeddingService {
                 if (imageUrl != null && !imageUrl.isBlank()) {
                     meta.put("imageUrl", imageUrl);
                     meta.put("isImage", true);
+                }
+                if (sourceUrl != null && !sourceUrl.isBlank()) {
+                    meta.put("sourceUrl", sourceUrl);
                 }
 
                 // Explicit, stable id (rather than letting Pinecone/Spring AI auto-generate

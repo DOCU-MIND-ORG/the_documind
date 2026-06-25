@@ -126,15 +126,32 @@ public class AuthService {
         return userRepository.save(user);
     }
 
-    public LoginResponse updateProfileImageAndGetResponse(User user, com.accenture.intern.docmind.dto.auth.ProfileImageUpdateDto dto) {
-        if (dto.getLink() != null && !dto.getLink().isEmpty()) {
-            if (user.getProfileImagePublicId() != null && !user.getProfileImagePublicId().equals(dto.getPublic_id())) {
-                cloudinaryService.deleteImage(user.getProfileImagePublicId());
-            }
-            user.setProfileImageUrl(dto.getLink());
-            user.setProfileImagePublicId(dto.getPublic_id());
-            userRepository.save(user);
+    /**
+     * Uploads the given image bytes to Cloudinary under assets/profile_images
+     * (signed, server-side upload - the frontend never talks to Cloudinary
+     * directly for this), deletes the user's previous profile image (if any),
+     * and persists the new url/public_id on the user.
+     */
+    public LoginResponse updateProfileImageAndGetResponse(User user, byte[] imageBytes, String originalFileName) {
+        if (imageBytes == null || imageBytes.length == 0) {
+            throw new RuntimeException("No image data received");
         }
+
+        CloudinaryService.UploadResult result = cloudinaryService.uploadImage(
+                imageBytes, "assets/profile_images", originalFileName);
+
+        String previousPublicId = user.getProfileImagePublicId();
+
+        user.setProfileImageUrl(result.url());
+        user.setProfileImagePublicId(result.publicId());
+        userRepository.save(user);
+
+        // Clean up the old image only after the new one is safely persisted,
+        // and only if it's actually a different asset.
+        if (previousPublicId != null && !previousPublicId.equals(result.publicId())) {
+            cloudinaryService.deleteImage(previousPublicId);
+        }
+
         return generateAuthResponse(user, "Profile image updated successfully");
     }
     

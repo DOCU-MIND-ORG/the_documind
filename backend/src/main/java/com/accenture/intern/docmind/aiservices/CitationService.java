@@ -143,6 +143,9 @@ public class CitationService {
         String imageUrl = imageUrlObj instanceof String s && !s.isBlank() ? s : null;
         boolean isImage = imageUrl != null;
 
+        Object sourceUrlObj = doc.getMetadata().get("sourceUrl");
+        String sourceUrl = sourceUrlObj instanceof String s && !s.isBlank() ? s : null;
+
         Map<String, Object> citation = new java.util.LinkedHashMap<>();
         citation.put("sourceName", doc.getMetadata().getOrDefault("sourceName", "unknown"));
         citation.put("sourceType", doc.getMetadata().getOrDefault("sourceType", ""));
@@ -153,6 +156,7 @@ public class CitationService {
         citation.put("documentId", doc.getMetadata().getOrDefault("documentId", ""));
         citation.put("isImage", isImage);
         citation.put("imageUrl", imageUrl);
+        citation.put("sourceUrl", sourceUrl);
         return citation;
     }
 }
