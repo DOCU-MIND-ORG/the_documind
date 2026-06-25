@@ -63,13 +63,8 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center t-bg-main p-4 sm:p-8">
-      <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-blue-500/10 blur-[120px]" />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[400px] h-[400px] rounded-full bg-purple-500/10 blur-[120px]" />
-      </div>
-
-      <div className="relative w-full max-w-[450px] panel-card flex flex-col px-6 py-8 sm:px-10 sm:py-12 animate-fade-in-up">
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4 sm:p-8">
+      <div className="relative w-full max-w-[450px] bg-white rounded-2xl flex flex-col px-6 py-8 sm:px-10 sm:py-12 shadow-2xl animate-fade-in-up">
         <div className="text-center mb-8">
           <div className="flex flex-col items-center mb-6">
             <div className="mb-2">
@@ -81,31 +76,31 @@ export default function Register() {
             </div>
           </div>
 
-          <h2 className="text-xl t-text-main font-semibold mb-1">
+          <h2 className="text-xl text-slate-900 font-semibold mb-1">
             Create Account
           </h2>
 
-          <p className="text-[#94a3b8] text-sm">
+          <p className="text-slate-500 text-sm">
             Join us to start querying
           </p>
         </div>
 
         <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-2">
-            <label className="text-xs t-text-muted font-medium" htmlFor="name">Full Name</label>
+            <label className="text-xs text-slate-600 font-medium" htmlFor="name">Full Name</label>
             <input
               id="name" type="text" name="name"
-              className="input-bg px-4 py-3 rounded-lg text-sm outline-none"
+              className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-lg text-sm text-slate-900 outline-none focus:border-blue-500"
               placeholder="Jane Doe"
               value={form.name} onChange={handleChange} required
             />
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-xs t-text-muted font-medium" htmlFor="email">Email Address</label>
+            <label className="text-xs text-slate-600 font-medium" htmlFor="email">Email Address</label>
             <input
               id="email" type="email" name="email"
-              className="input-bg px-4 py-3 rounded-lg text-sm outline-none"
+              className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-lg text-sm text-slate-900 outline-none focus:border-blue-500"
               placeholder="you@example.com"
               value={form.email} onChange={handleChange} required
             />
@@ -113,19 +108,19 @@ export default function Register() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
-              <label className="text-xs t-text-muted font-medium" htmlFor="password">Password</label>
+              <label className="text-xs text-slate-600 font-medium" htmlFor="password">Password</label>
               <input
                 id="password" type="password" name="password"
-                className="input-bg px-4 py-3 rounded-lg text-sm outline-none"
+                className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-lg text-sm text-slate-900 outline-none focus:border-blue-500"
                 placeholder="Min 8 chars"
                 value={form.password} onChange={handleChange} required
               />
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-xs t-text-muted font-medium" htmlFor="confirm">Confirm</label>
+              <label className="text-xs text-slate-600 font-medium" htmlFor="confirm">Confirm</label>
               <input
                 id="confirm" type="password" name="confirm"
-                className="input-bg px-4 py-3 rounded-lg text-sm outline-none"
+                className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-lg text-sm text-slate-900 outline-none focus:border-blue-500"
                 placeholder="Re-enter"
                 value={form.confirm} onChange={handleChange} required
               />
@@ -143,8 +138,8 @@ export default function Register() {
           </button>
         </form>
 
-        <div className="text-center mt-8 text-sm t-text-muted">
-          Already have an account? <Link to="/login" className="text-blue-500 font-medium ml-1 hover:underline">Sign in</Link>
+        <div className="text-center mt-8 text-sm text-slate-600">
+          Already have an account? <Link to="/login" className="text-blue-600 font-medium ml-1 hover:underline">Sign in</Link>
         </div>
       </div>
     </div>

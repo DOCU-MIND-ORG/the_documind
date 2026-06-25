@@ -14,8 +14,6 @@ export default function Login() {
   const handleChange = e => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
   const isValidEmail = email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-  const isValidEmail = email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
   const handleSubmit = async e => {
     e.preventDefault();
     if (!form.email || !form.password) {
@@ -49,8 +47,8 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0f1115] bg-[radial-gradient(circle_at_15%_50%,rgba(59,130,246,0.12),transparent_25%),radial-gradient(circle_at_85%_30%,rgba(147,51,234,0.12),transparent_25%)] p-4 sm:p-8">
-      <div className="w-full max-w-[450px] bg-[#16181d]/60 backdrop-blur-xl border border-white/5 rounded-2xl flex flex-col px-6 py-8 sm:px-10 sm:py-12 shadow-2xl animate-fade-in-up">
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4 sm:p-8">
+      <div className="w-full max-w-[450px] bg-white rounded-2xl flex flex-col px-6 py-8 sm:px-10 sm:py-12 shadow-2xl animate-fade-in-up">
         <div className="text-center mb-8">
           <div className="flex flex-col items-center mb-6">
             <div className="mb-2">
@@ -62,22 +60,22 @@ export default function Login() {
             </div>
           </div>
 
-          <h2 className="text-xl t-text-main font-semibold mb-1">
+          <h2 className="text-xl text-slate-900 font-semibold mb-1">
             Welcome back
           </h2>
 
-          <p className="text-[#94a3b8] text-sm">
+          <p className="text-slate-500 text-sm">
             Sign in to continue your session
           </p>
         </div>
         <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-2">
-            <label className="text-xs t-text-muted font-medium" htmlFor="email">Email Address</label>
+            <label className="text-xs text-slate-600 font-medium" htmlFor="email">Email Address</label>
             <input
               id="email"
               type="email"
               name="email"
-              className="input-bg px-4 py-3 rounded-lg text-sm outline-none"
+              className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-lg text-sm text-slate-900 outline-none focus:border-blue-500"
               placeholder="you@example.com"
               value={form.email}
               onChange={handleChange}
@@ -87,12 +85,12 @@ export default function Login() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-xs t-text-muted font-medium" htmlFor="password">Password</label>
+            <label className="text-xs text-slate-600 font-medium" htmlFor="password">Password</label>
             <input
               id="password"
               type="password"
               name="password"
-              className="input-bg px-4 py-3 rounded-lg text-sm outline-none"
+              className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-lg text-sm text-slate-900 outline-none focus:border-blue-500"
               placeholder="••••••••"
               value={form.password}
               onChange={handleChange}
@@ -102,13 +100,13 @@ export default function Login() {
           </div>
 
           <div className="flex justify-between items-center text-xs mt-[-4px]">
-            <label className="flex items-center gap-2 t-text-muted cursor-pointer">
+            <label className="flex items-center gap-2 text-slate-600 cursor-pointer">
               <input type="checkbox" className="cursor-pointer accent-blue-500" />
               <span>Remember me</span>
             </label>
             <Link
               to="/reset-password"
-              className="text-[#94a3b8] transition-colors hover:text-white"
+              className="text-slate-500 transition-colors hover:text-blue-600"
             >
               Forgot password?
             </Link>
@@ -125,8 +123,8 @@ export default function Login() {
           </button>
         </form>
 
-        <div className="text-center mt-8 text-sm t-text-muted">
-          Don't have an account? <Link to="/register" className="text-blue-500 font-medium ml-1 hover:underline">Create one</Link>
+        <div className="text-center mt-8 text-sm text-slate-600">
+          Don't have an account? <Link to="/register" className="text-blue-600 font-medium ml-1 hover:underline">Create one</Link>
         </div>
       </div>
     </div>

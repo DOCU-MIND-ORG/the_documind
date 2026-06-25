@@ -169,8 +169,8 @@ export default function ResetPassword() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0f1115] bg-[radial-gradient(circle_at_15%_50%,rgba(59,130,246,0.12),transparent_25%),radial-gradient(circle_at_85%_30%,rgba(147,51,234,0.12),transparent_25%)] p-4 sm:p-8">
-      <div className="w-full max-w-[450px] bg-[#16181d]/60 backdrop-blur-xl border border-white/5 rounded-2xl flex flex-col px-6 py-8 sm:px-10 sm:py-12 shadow-2xl animate-fade-in-up">
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4 sm:p-8">
+      <div className="w-full max-w-[450px] bg-white rounded-2xl flex flex-col px-6 py-8 sm:px-10 sm:py-12 shadow-2xl animate-fade-in-up">
         
         <div className="text-center mb-8">
           <div className="flex flex-col items-center mb-6">
@@ -182,8 +182,8 @@ export default function ResetPassword() {
               />
             </div>
           </div>
-          <h2 className="text-2xl font-bold t-text-main mb-2">Reset Password</h2>
-          <p className="text-[#94a3b8] text-sm">
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Reset Password</h2>
+          <p className="text-slate-500 text-sm">
             {step === 1 && 'Send an OTP to your login email'}
             {step === 2 && 'Enter the OTP sent to your email'}
             {step === 3 && 'Create your new password'}
@@ -194,12 +194,12 @@ export default function ResetPassword() {
           {step === 1 ? (
             <>
               <div className="flex flex-col gap-2">
-                <label className="text-xs t-text-muted font-medium" htmlFor="email">Email Address</label>
+                <label className="text-xs text-slate-600 font-medium" htmlFor="email">Email Address</label>
                 <input
                   id="email"
                   type="email"
                   name="email"
-                  className="input-bg px-4 py-3 rounded-lg text-sm outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-lg text-sm text-slate-900 outline-none focus:border-blue-500"
                   placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -223,12 +223,12 @@ export default function ResetPassword() {
             <>
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-3">
-                  <label className="text-xs text-[#94a3b8] font-medium" htmlFor="otp">One-Time Password (OTP)</label>
+                  <label className="text-xs text-slate-600 font-medium" htmlFor="otp">One-Time Password (OTP)</label>
                   {isOtpActive && (
-                    <span className="text-xs text-emerald-400">Expires in {formatTime(otpTimeLeft)}</span>
+                    <span className="text-xs text-emerald-600">Expires in {formatTime(otpTimeLeft)}</span>
                   )}
                   {isOtpExpired && (
-                    <span className="text-xs text-red-400">OTP expired</span>
+                    <span className="text-xs text-red-500">OTP expired</span>
                   )}
                 </div>
                 <input
@@ -236,7 +236,7 @@ export default function ResetPassword() {
                   type="text"
                   name="otp"
                   inputMode="numeric"
-                  className="input-bg px-4 py-3 rounded-lg text-sm outline-none disabled:opacity-70"
+                  className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-lg text-sm text-slate-900 outline-none focus:border-blue-500 disabled:opacity-70"
                   placeholder="Enter OTP"
                   value={form.otp}
                   onChange={handleChange}
@@ -244,7 +244,7 @@ export default function ResetPassword() {
                   required
                 />
                 {isOtpExpired && (
-                  <p className="text-xs text-red-400">OTP expired. Request a new OTP to continue.</p>
+                  <p className="text-xs text-red-500">OTP expired. Request a new OTP to continue.</p>
                 )}
               </div>
 
@@ -262,7 +262,7 @@ export default function ResetPassword() {
               <button
                 type="button"
                 onClick={handleRequestOTP}
-                className="text-[#94a3b8] hover:text-white text-sm transition-colors disabled:opacity-70 mt-2"
+                className="text-slate-500 hover:text-blue-600 text-sm transition-colors disabled:opacity-70 mt-2"
                 disabled={loading}
               >
                 Resend OTP
@@ -271,12 +271,12 @@ export default function ResetPassword() {
           ) : (
             <>
               <div className="flex flex-col gap-2">
-                <label className="text-xs text-[#94a3b8] font-medium" htmlFor="newPassword">New Password</label>
+                <label className="text-xs text-slate-600 font-medium" htmlFor="newPassword">New Password</label>
                 <input
                   id="newPassword"
                   type="password"
                   name="newPassword"
-                  className="input-bg px-4 py-3 rounded-lg text-sm outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-lg text-sm text-slate-900 outline-none focus:border-blue-500"
                   placeholder="Min 8 chars"
                   value={form.newPassword}
                   onChange={handleChange}
@@ -285,12 +285,12 @@ export default function ResetPassword() {
               </div>
 
               <div className="flex flex-col gap-2">
-                <label className="text-xs text-[#94a3b8] font-medium" htmlFor="confirmPassword">Confirm Password</label>
+                <label className="text-xs text-slate-600 font-medium" htmlFor="confirmPassword">Confirm Password</label>
                 <input
                   id="confirmPassword"
                   type="password"
                   name="confirmPassword"
-                  className="input-bg px-4 py-3 rounded-lg text-sm outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-lg text-sm text-slate-900 outline-none focus:border-blue-500"
                   placeholder="Re-enter password"
                   value={form.confirmPassword}
                   onChange={handleChange}
@@ -312,7 +312,7 @@ export default function ResetPassword() {
               <button
                 type="button"
                 onClick={() => setStep(2)}
-                className="text-[#94a3b8] hover:text-white text-sm transition-colors mt-2"
+                className="text-slate-500 hover:text-blue-600 text-sm transition-colors mt-2"
               >
                 Back to OTP
               </button>
@@ -320,8 +320,8 @@ export default function ResetPassword() {
           )}
         </form>
 
-        <div className="text-center mt-8 text-sm t-text-muted">
-          Remember your password? <Link to="/login" className="text-blue-500 font-medium ml-1 hover:underline">Sign In</Link>
+        <div className="text-center mt-8 text-sm text-slate-600">
+          Remember your password? <Link to="/login" className="text-blue-600 font-medium ml-1 hover:underline">Sign In</Link>
         </div>
       </div>
     </div>
