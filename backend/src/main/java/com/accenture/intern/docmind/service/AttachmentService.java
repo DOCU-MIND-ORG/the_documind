@@ -116,7 +116,51 @@ public class AttachmentService {
             String cloudinaryPublicId = null;
             String cloudinaryResourceType = null;
 
-            if (type == AttachmentType.PDF) {
+            // For PDF/IMAGE we can know up front (via parsed text or vision
+            // description) whether this exact content already exists somewhere
+            // in the corpus. If so, reuse its existing Cloudinary URL instead of
+            // uploading another copy of the same bytes — this is the whole point
+            // of doing parse/vision BEFORE the Cloudinary call rather than after.
+            // OTHER files have no extractable text to hash, so they always upload
+            // (no dedup signal available for them).
+            //
+            // Wrapped in its own try/catch with fail-open semantics: if parsing/
+            // vision blows up here, we fall straight through to the unconditional
+            // Cloudinary upload below exactly as before this change, rather than
+            // aborting the whole request — a dedup check is an optimization, not
+            // something that should be able to block an upload from succeeding.
+            DocumentParserService.PdfParseResult pdfParsed = null;
+            ImageVisionResponse imageVision = null;
+            String existingSourceUrl = null;
+
+            try {
+                if (type == AttachmentType.PDF) {
+                    pdfParsed = parserService.parsePdfWithImages(dest);
+                    if (pdfParsed.text() != null && !pdfParsed.text().isBlank()) {
+                        existingSourceUrl = embeddingService.findExistingSourceUrl(pdfParsed.text())
+                                .block().orElse(null);
+                    }
+                } else if (type == AttachmentType.IMAGE) {
+                    imageVision = imageVisionService.describeImage(fileBytes, contentType).block();
+                    if (imageVision != null && imageVision.denseDescription() != null && !imageVision.denseDescription().isBlank()) {
+                        existingSourceUrl = embeddingService.findExistingSourceUrl(imageVision.denseDescription())
+                                .block().orElse(null);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Pre-upload parse/vision failed for '{}', will upload to Cloudinary and retry parsing below: {}", originalName, e.getMessage());
+                pdfParsed = null;
+                imageVision = null;
+                existingSourceUrl = null;
+            }
+
+            if (existingSourceUrl != null) {
+                log.info("'{}' matches content already in Cloudinary ({}) — skipping re-upload", originalName, existingSourceUrl);
+                publicUrl = existingSourceUrl;
+                // cloudinaryPublicId/cloudinaryResourceType stay null: this Attachment
+                // row doesn't own a distinct Cloudinary asset, so there's nothing
+                // for THIS row to delete later — the original upload's row does.
+            } else if (type == AttachmentType.PDF) {
                 CloudinaryService.UploadResult uploaded =
                         cloudinaryService.uploadRaw(fileBytes, "storage/pdfs", originalName);
                 publicUrl = uploaded.url();
@@ -139,9 +183,12 @@ public class AttachmentService {
             List<Mono<Void>> ingestionMonos = new ArrayList<>();
             try {
                 if (type == AttachmentType.PDF) {
-                    // Extracts page text, AND separately every embedded chart/graph/
-                    // image (described via Gemini Vision) — see DocumentParserService.
-                    DocumentParserService.PdfParseResult parsed = parserService.parsePdfWithImages(dest);
+                    // Reuse the parse from the pre-Cloudinary dedup check above when
+                    // available; if that check was skipped/failed, parse now exactly
+                    // as the original code always did.
+                    DocumentParserService.PdfParseResult parsed = pdfParsed != null
+                            ? pdfParsed
+                            : parserService.parsePdfWithImages(dest);
 
                     if (parsed.text() != null && !parsed.text().isBlank()) {
                         ingestionMonos.add(
@@ -173,13 +220,12 @@ public class AttachmentService {
                         log.info("Successfully processed '{}'", originalName);
                     }
                 } else if (type == AttachmentType.IMAGE) {
-                    // A directly uploaded image (photo, chart, graph, screenshot, ...).
-                    // There's no text to extract, so Gemini Vision generates a detailed
-                    // textual description, which is then chunked and embedded exactly
-                    // like any other document text — tagged with this image's own
-                    // public URL so citations can render the actual image.
-                    byte[] imageBytes = Files.readAllBytes(dest);
-                    ImageVisionResponse parsedVision = imageVisionService.describeImage(imageBytes, contentType).block();
+                    // Reuse the vision result from the pre-Cloudinary dedup check
+                    // above when available; if that check was skipped/failed, run
+                    // vision now exactly as the original code always did.
+                    ImageVisionResponse parsedVision = imageVision != null
+                            ? imageVision
+                            : imageVisionService.describeImage(fileBytes, contentType).block();
                     if (parsedVision != null && parsedVision.denseDescription() != null && !parsedVision.denseDescription().isBlank()) {
                         String tags = parsedVision.tags() != null ? String.join(",", parsedVision.tags()) : null;
                         ingestionMonos.add(

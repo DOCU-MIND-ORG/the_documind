@@ -344,6 +344,15 @@ public class HybridRetrievalService {
             metadata.put("imageUrl", chunk.getImageUrl());
             metadata.put("isImage", true);
         }
+        // Without this, any chunk surfaced via the BM25/Postgres path (or
+        // whole-document retrieval, which also goes through this method) loses
+        // its Cloudinary source link by the time it reaches CitationService -
+        // the dense/Pinecone path keeps sourceUrl because it returns Documents
+        // straight from the vector store with their original embedding-time
+        // metadata intact, but this path rebuilds the Document from scratch.
+        if (chunk.getSourceUrl() != null && !chunk.getSourceUrl().isBlank()) {
+            metadata.put("sourceUrl", chunk.getSourceUrl());
+        }
         return new Document(chunk.getVectorId(), chunk.getContent(), metadata);
     }
 

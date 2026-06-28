@@ -54,6 +54,30 @@ public class EmbeddingService {
         return processAndIngest(text, sourceType, originalFileName, originalFileName, null, null, sessionId, null, sourceUrl);
     }
 
+    /**
+     * Looks up whether content with this exact text already exists anywhere in
+     * the corpus, and if so returns its stored sourceUrl (the Cloudinary URL
+     * from whichever upload created it first).
+     * <p>
+     * Used by AttachmentService BEFORE uploading raw file bytes to Cloudinary:
+     * if the parsed text (or, for images, the Gemini Vision description) hashes
+     * to a match already on file, there's no reason to push another copy of the
+     * same bytes to Cloudinary — the existing URL is reused instead, and only
+     * the session re-pointing in processAndIngest()/reboostExistingChunks()
+     * still happens.
+     */
+    public Mono<java.util.Optional<String>> findExistingSourceUrl(String text) {
+        if (text == null || text.isBlank()) {
+            return Mono.just(java.util.Optional.empty());
+        }
+        String contentHash = hashContent(text);
+        return Mono.fromCallable(() -> documentChunkRepository.findByContentHash(contentHash))
+                .subscribeOn(Schedulers.boundedElastic())
+                .map(existingChunks -> existingChunks.isEmpty()
+                        ? java.util.Optional.<String>empty()
+                        : java.util.Optional.ofNullable(existingChunks.get(0).getSourceUrl()));
+    }
+
     public Mono<Void> processAndIngest(String text, String sourceType, String originalFileName, String enrichedFileName, String assetClassification, String assetTags, Long sessionId, String imageUrl, String sourceUrl) {
 
         log.info("=== INGESTION STARTED ===");
@@ -253,7 +277,13 @@ public class EmbeddingService {
      * content — still hash identically. Not intended to catch real content edits;
      * any visible text difference should and will produce a different hash.
      */
-    private String hashContent(String text) {
+    /**
+     * Public so callers (AttachmentService) can hash extracted text/vision-description
+     * BEFORE uploading the original file bytes to Cloudinary, and skip that upload
+     * entirely when the content already exists in the corpus under a different
+     * file/session. See AttachmentService#findExistingSourceUrl.
+     */
+    public String hashContent(String text) {
         String normalized = text.trim().replaceAll("\\s+", " ");
         try {
             java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");

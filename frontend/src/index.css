@@ -568,7 +568,7 @@ select:focus,
 }
 
 /* ========================================================================
-   Accenture Loader — playful "thinking" indicator (purple chevron mark)
+   Accenture Loader — single-chevron "thinking" indicator (purple accent mark)
    ======================================================================== */
 .accenture-loader {
   display: inline-flex;
@@ -587,65 +587,39 @@ select:focus,
   fill: none;
   stroke: #A100FF;
   stroke-width: 2;
-  opacity: 0.18;
+  opacity: 0.16;
   transform-origin: center;
   transform-box: fill-box;
-  animation: alHaloPulse 1.6s ease-in-out infinite;
-}
-
-.al-chevrons {
-  transform-origin: center;
-  transform-box: fill-box;
-  animation: alHop 1.6s ease-in-out infinite;
+  animation: alHaloPulse 1.8s ease-in-out infinite;
 }
 
 .al-chevron {
   fill: none;
   stroke: #A100FF;
-  stroke-width: 6.5;
+  stroke-width: 7;
   stroke-linecap: round;
   stroke-linejoin: round;
   transform-origin: center;
   transform-box: fill-box;
+  animation: alChevronBreathe 1.4s ease-in-out infinite;
+  filter: drop-shadow(0 0 4px rgba(161, 0, 255, 0.4));
 }
 
-.dark .al-chevron { stroke: #C875FF; }
+.dark .al-chevron { stroke: #C875FF; filter: drop-shadow(0 0 6px rgba(200, 117, 255, 0.55)); }
 .dark .al-halo { stroke: #C875FF; }
-.dark .al-sparkle { fill: #C875FF; }
-
-.al-chevron-1 { animation: alChevronBounce 1.6s ease-in-out infinite; animation-delay: 0s; opacity: 0.55; }
-.al-chevron-2 { animation: alChevronBounce 1.6s ease-in-out infinite; animation-delay: 0.12s; opacity: 0.78; }
-.al-chevron-3 { animation: alChevronBounce 1.6s ease-in-out infinite; animation-delay: 0.24s; opacity: 1; }
-
-.al-sparkle {
-  fill: #A100FF;
-  transform-origin: 32px 32px;
-  transform-box: view-box;
-  animation: alOrbit 2.4s linear infinite;
-}
 
 @keyframes alHaloPulse {
-  0%, 100% { transform: scale(0.9); opacity: 0.12; }
-  50% { transform: scale(1.15); opacity: 0.24; }
+  0%, 100% { transform: scale(0.9); opacity: 0.1; }
+  50% { transform: scale(1.2); opacity: 0.26; }
 }
 
-@keyframes alHop {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-2px); }
-}
-
-@keyframes alChevronBounce {
-  0%, 40%, 100% { transform: translateX(0) scale(1); }
-  20% { transform: translateX(2px) scale(1.08); }
-}
-
-@keyframes alOrbit {
-  from { transform: rotate(0deg) translateY(-22px) rotate(0deg); }
-  to   { transform: rotate(360deg) translateY(-22px) rotate(-360deg); }
+@keyframes alChevronBreathe {
+  0%, 100% { transform: scale(1) translateX(0); opacity: 0.8; filter: drop-shadow(0 0 2px rgba(161, 0, 255, 0.3)); }
+  50% { transform: scale(1.16) translateX(2px); opacity: 1; filter: drop-shadow(0 0 7px rgba(161, 0, 255, 0.55)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .al-halo, .al-chevrons, .al-chevron-1, .al-chevron-2, .al-chevron-3, .al-sparkle {
+  .al-halo, .al-chevron {
     animation: none;
   }
 }
