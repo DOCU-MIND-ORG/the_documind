@@ -39,6 +39,15 @@ public class FastIntentService {
         if (cleanQuery.contains("what are your") ||
             cleanQuery.contains("who are you") ||
             cleanQuery.contains("what can you do") ||
+            cleanQuery.contains("what all you can do") ||
+            cleanQuery.contains("what all can you do") ||
+            cleanQuery.contains("what can u do") ||
+            cleanQuery.contains("what do you do") ||
+            cleanQuery.contains("what are you capable") ||
+            cleanQuery.contains("your capabilities") ||
+            cleanQuery.contains("your features") ||
+            cleanQuery.contains("how can you help") ||
+            cleanQuery.contains("how do you help") ||
             cleanQuery.contains("what are you")) {
             return Intent.BOT_QA;
         }

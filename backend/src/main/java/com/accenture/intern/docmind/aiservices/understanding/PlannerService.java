@@ -151,6 +151,21 @@ public class PlannerService {
         If no specific document is requested, leave "target_documents" empty.
  
         ═══════════════════════════════════════════════════════════════════
+        PART A0 — BOT IDENTITY / CAPABILITY CHECK
+        ═══════════════════════════════════════════════════════════════════
+        First, decide whether this query is actually about the assistant itself —
+        its capabilities, what it can help with, or who/what it is — rather than
+        about the content of any uploaded document. This covers ANY phrasing of
+        that idea, not just exact matches: "what can you do", "what all can you
+        help with", "what are you able to do", "who are you", "what is this tool",
+        "what kind of questions can I ask you", etc.
+        → If true, set "is_bot_qa": true. No document retrieval will run for this
+          query, so the rest of this prompt (strategy/entities/target_documents)
+          can be left at their defaults — they are ignored when is_bot_qa is true.
+        → If the query asks about document content, summarization, extraction, or
+          anything that needs the uploaded corpus, set "is_bot_qa": false.
+
+        ═══════════════════════════════════════════════════════════════════
         PART A — STRATEGY CLASSIFICATION
         ═══════════════════════════════════════════════════════════════════
  
@@ -215,6 +230,7 @@ public class PlannerService {
         OUTPUT — Return ONLY a valid JSON object, no explanation:
         ═══════════════════════════════════════════════════════════════════
         {
+          "is_bot_qa": false,
           "strategy": "SINGLE_SOURCE | MULTI_SOURCE | CONCEPT_EXPANSION | META_DOC_SEARCH",
           "execution_tier": "DIRECT | DECOMPOSE | ADAPTIVE",
           "optimized_query": "keyword-dense rewrite",
@@ -259,7 +275,7 @@ public class PlannerService {
                 .onErrorResume(e -> {
                         String fallbackStrategy = "SINGLE_SOURCE";
                         log.error("Unified LLM Router failed. Falling back to {} using heuristics. Error: {}", fallbackStrategy, e.getMessage());
-                        return Mono.just(new LlmRoutingResponse(fallbackStrategy, query, List.of(), List.of(), List.of(), List.of(), "DIRECT"));
+                        return Mono.just(new LlmRoutingResponse(fallbackStrategy, false, query, List.of(), List.of(), List.of(), List.of(), "DIRECT"));
                 });
     }
 
@@ -268,6 +284,16 @@ public class PlannerService {
         String strategyStr = response.strategy() != null ? response.strategy() : "SINGLE_SOURCE";
         
         List<EntityResolution> resolvedEntities = response.entities() != null ? response.entities() : List.of();
+
+        // The LLM router's own judgment that this query is about the bot's
+        // capabilities/identity rather than document content - catches phrasings
+        // FastIntentService's fixed keyword list doesn't recognize (e.g. "what all
+        // can you help with"), instead of those silently falling through to a
+        // DOCUMENT_QA retrieval plan and forcing a citation-mandatory answer onto
+        // a question that has nothing to do with any uploaded document.
+        if (Boolean.TRUE.equals(response.isBotQa())) {
+            return new RetrievalPlan(Intent.BOT_QA, Scope.NONE, RetrievalStrategy.SINGLE_SOURCE, RetrievalExecutionMode.WHOLE_DOCUMENT, List.of(), List.of(), optimizedQuery, resolvedEntities, List.of());
+        }
 
         if ("MULTI_SOURCE".equals(strategyStr) && response.comparisons() != null && response.comparisons().size() >= 2) {
             return new RetrievalPlan(Intent.DOCUMENT_QA, Scope.CORPUS, RetrievalStrategy.MULTI_SOURCE, RetrievalExecutionMode.RANKED_RETRIEVAL, response.comparisons(), List.of(), optimizedQuery, resolvedEntities, response.targetDocuments() != null ? response.targetDocuments() : List.of());
