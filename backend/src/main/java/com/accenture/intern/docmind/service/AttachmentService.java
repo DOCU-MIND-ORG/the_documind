@@ -268,19 +268,37 @@ public class AttachmentService {
             // it was uploaded in (provenance) — this row is part of DocMind's
             // shared, persistent corpus and survives even if that session is
             // later deleted (see SessionService#deleteSession).
-            Attachment attachment = Attachment.builder()
-                    .session(session)
-                    .type(type)
-                    .fileName(originalName)
-                    .storagePath(storagePath)
-                    .url(publicUrl)
-                    .cloudinaryPublicId(cloudinaryPublicId)
-                    .cloudinaryResourceType(cloudinaryResourceType)
-                    .mimeType(contentType)
-                    .fileSizeBytes(sizeBytes)
-                    .uploadedAt(LocalDateTime.now())
-                    .build();
-            attachmentRepository.save(attachment);
+            //
+            // If this content was already detected as a duplicate above
+            // (existingSourceUrl != null), don't insert a second Attachment
+            // row for bytes that are already on file — reuse the original
+            // row instead, and only add a fresh ViewAttachment link so this
+            // session can still see it. Falls back to inserting normally if,
+            // for whatever reason, no Attachment row owns that URL (shouldn't
+            // happen in practice, but a dedup check shouldn't be able to make
+            // the upload disappear entirely).
+            Attachment attachment = existingSourceUrl != null
+                    ? attachmentRepository.findFirstByUrlOrderByUploadedAtAsc(existingSourceUrl).orElse(null)
+                    : null;
+
+            if (attachment != null) {
+                log.info("'{}' duplicates existing attachment #{} — reusing it instead of inserting a new row",
+                        originalName, attachment.getAttachmentId());
+            } else {
+                attachment = Attachment.builder()
+                        .session(session)
+                        .type(type)
+                        .fileName(originalName)
+                        .storagePath(storagePath)
+                        .url(publicUrl)
+                        .cloudinaryPublicId(cloudinaryPublicId)
+                        .cloudinaryResourceType(cloudinaryResourceType)
+                        .mimeType(contentType)
+                        .fileSizeBytes(sizeBytes)
+                        .uploadedAt(LocalDateTime.now())
+                        .build();
+                attachmentRepository.save(attachment);
+            }
 
             // 7. Record this session's membership in the "View Attachments" list.
             // Unlike the Attachment row above, this join row IS deleted when the

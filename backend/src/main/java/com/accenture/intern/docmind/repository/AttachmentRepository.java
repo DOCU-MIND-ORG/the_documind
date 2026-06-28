@@ -25,4 +25,16 @@ public interface AttachmentRepository extends JpaRepository<Attachment, Long> {
      * real FK column.
      */
     List<Attachment> findBySessionSessionId(Long sessionId);
+
+    /**
+     * The original Attachment row that owns a given Cloudinary URL. Used when
+     * a new upload's content hashes to something already in the corpus
+     * (see AttachmentService#uploadFile's existingSourceUrl check) so that
+     * upload can reuse this row via a new ViewAttachment link instead of
+     * inserting a duplicate Attachment for content that's already on file.
+     * Ordered ascending so a chain of dedup'd re-uploads always resolves back
+     * to the first/original row, not whichever duplicate happened to be most
+     * recent.
+     */
+    java.util.Optional<Attachment> findFirstByUrlOrderByUploadedAtAsc(String url);
 }
