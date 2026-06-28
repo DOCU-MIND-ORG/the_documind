@@ -306,7 +306,11 @@ export default function Chat() {
       if (pendingFiles[i].status !== 'pending') continue;
       setPendingFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: 'uploading' } : f));
       try {
-        await attachmentService.upload(sessionId, pendingFiles[i].file);
+        if (pendingFiles[i].type === 'wikipedia') {
+          await attachmentService.uploadWikipedia(sessionId, pendingFiles[i].wikiUrl);
+        } else {
+          await attachmentService.upload(sessionId, pendingFiles[i].file);
+        }
         setPendingFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: 'done' } : f));
       } catch {
         setPendingFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: 'error' } : f));
@@ -375,57 +379,60 @@ export default function Chat() {
     }
   }, [input, pendingFiles, state.sessionId, state.isStreaming, navigate, addSession, showToast, uploadPendingFiles, selectedModel, pollSuggestedQuestions]);
 
-  const handleWikiSubmit = async (e, directUrl = null) => {
+  const handleWikiSubmit = async (e, directUrl = null, confirmedDirectIngest = false) => {
     if (e) e.preventDefault();
     const urlToUse = directUrl || wikiUrl.trim();
-    if (!urlToUse || !state.sessionId) return;
+    if (!urlToUse) return;
+
+    let activeSessionId = state.sessionId;
+    if (!activeSessionId) {
+      try {
+        const title = 'New Chat - ' + new Date().toLocaleString([], {
+          month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit',
+        });
+        const created = await sessionService.create(title);
+        activeSessionId = created.sessionId;
+        addSession(created);
+        dispatch({ type: 'SET_SESSION', payload: { sessionId: activeSessionId } });
+        navigate(`/chat/${activeSessionId}`, { replace: true });
+      } catch (err) { showToast(err.message || 'Failed to create session', 'error'); return; }
+    }
+
+    // A raw URL the user just typed/pasted is shown as a single confirmable
+    // preview row rather than ingested immediately - pressing Enter or clicking
+    // "Search/Add" on a URL shouldn't silently upload it with no chance to
+    // back out. Only once they explicitly click that preview row (directUrl
+    // set + confirmedDirectIngest true, mirroring how a search-result click
+    // already works below) does the actual ingestion happen.
+    if (urlToUse.startsWith('http') && !confirmedDirectIngest) {
+        const pageTitle = decodeURIComponent(urlToUse.substring(urlToUse.lastIndexOf('/') + 1)).replace(/_/g, ' ');
+        setWikiSearchResults([{ title: pageTitle, url: urlToUse }]);
+        return;
+    }
 
     if (urlToUse.startsWith('http')) {
-        // Direct ingestion
-        const tempId = Date.now();
-        setPendingFiles(prev => [...prev, { name: decodeURIComponent(urlToUse.substring(urlToUse.lastIndexOf('/') + 1)), id: tempId, status: 'uploading' }]);
-        
+        // Confirmed — queue it like a regular pending attachment. The actual
+        // upload happens in uploadPendingFiles, which only runs when the user
+        // hits Send, not at confirmation time.
+        const pageTitle = decodeURIComponent(urlToUse.substring(urlToUse.lastIndexOf('/') + 1)).replace(/_/g, ' ');
+        setPendingFiles(prev => [...prev, { name: pageTitle, wikiUrl: urlToUse, type: 'wikipedia', status: 'pending' }]);
+
         setShowWikiInput(false);
         setWikiUrl('');
         setWikiSearchResults([]);
-
-        try {
-          await attachmentService.uploadWikipedia(state.sessionId, urlToUse);
-          setPendingFiles(prev => prev.map(f => f.id === tempId ? { ...f, status: 'done' } : f));
-          setTimeout(() => {
-            setPendingFiles(prev => prev.filter(f => f.id !== tempId));
-          }, 2000);
-          pollSuggestedQuestions(state.sessionId);
-        } catch (err) {
-          setPendingFiles(prev => prev.map(f => f.id === tempId ? { ...f, status: 'error' } : f));
-          showToast(err.message, 'error');
-        }
     } else {
         // Just text, so search
         if (directUrl) {
-            // User clicked a result, ingest it as the title directly
-            const tempId = Date.now();
-            setPendingFiles(prev => [...prev, { name: urlToUse, id: tempId, status: 'uploading' }]);
-            
+            // User clicked a search result — queue it the same way, awaiting Send.
+            setPendingFiles(prev => [...prev, { name: urlToUse, wikiUrl: urlToUse, type: 'wikipedia', status: 'pending' }]);
+
             setShowWikiInput(false);
             setWikiUrl('');
             setWikiSearchResults([]);
-
-            try {
-              await attachmentService.uploadWikipedia(state.sessionId, urlToUse);
-              setPendingFiles(prev => prev.map(f => f.id === tempId ? { ...f, status: 'done' } : f));
-              setTimeout(() => {
-                setPendingFiles(prev => prev.filter(f => f.id !== tempId));
-              }, 2000);
-              pollSuggestedQuestions(state.sessionId);
-            } catch (err) {
-              setPendingFiles(prev => prev.map(f => f.id === tempId ? { ...f, status: 'error' } : f));
-              showToast(err.message, 'error');
-            }
         } else {
             setIsWikiSearching(true);
             try {
-                const results = await attachmentService.searchWikipedia(state.sessionId, urlToUse);
+                const results = await attachmentService.searchWikipedia(activeSessionId, urlToUse);
                 setWikiSearchResults(results || []);
             } catch (err) {
                 showToast(err.message || 'Failed to search Wikipedia', 'error');
@@ -834,17 +841,25 @@ export default function Chat() {
               
               {wikiSearchResults.length > 0 && (
                 <div className="p-2 rounded-2xl bg-surface border shadow-lg flex flex-col gap-1" style={{ borderColor: 'var(--color-border)' }}>
-                  <div className="px-2 py-1 text-xs text-secondary font-semibold">Select an article:</div>
-                  {wikiSearchResults.map((title, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={(e) => handleWikiSubmit(e, title)}
-                      className="text-left px-3 py-2 text-[13px] text-primary hover:bg-blue-500/10 hover:text-blue-500 rounded-xl transition-colors interactive"
-                    >
-                      {title}
-                    </button>
-                  ))}
+                  <div className="px-2 py-1 text-xs text-secondary font-semibold">
+                    {wikiSearchResults.length === 1 && wikiSearchResults[0].url ? 'Confirm and add this page:' : 'Select an article:'}
+                  </div>
+                  {wikiSearchResults.map((result, idx) => {
+                    const isUrlPreview = typeof result === 'object' && result.url;
+                    const label = isUrlPreview ? result.title : result;
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={(e) => isUrlPreview
+                          ? handleWikiSubmit(e, result.url, true)
+                          : handleWikiSubmit(e, result)}
+                        className="text-left px-3 py-2 text-[13px] text-primary hover:bg-blue-500/10 hover:text-blue-500 rounded-xl transition-colors interactive"
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
