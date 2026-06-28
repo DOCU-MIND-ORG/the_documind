@@ -1,47 +1,46 @@
-import { request } from './api.js';
+// Service for attachment operations — uploads, listing by session, and global explore
 
-const BASE_URL = import.meta.env.VITE_API_URL || '';
+import { request } from './api.js';
 
 export const attachmentService = {
   upload: async (sessionId, file) => {
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await fetch(`${BASE_URL}/api/sessions/${sessionId}/attachments/upload`, {
+    return request(`/api/sessions/${sessionId}/attachments/upload`, {
       method: 'POST',
-      credentials: 'include',
       body: formData,
     });
-
-    if (!response.ok) {
-      const data = await response.json().catch(() => null);
-      throw new Error(data?.message || `Upload failed: ${response.status}`);
-    }
-
-    return response.json();
   },
 
-   uploadWikipedia: async (sessionId, url) => {
-    const response = await fetch(`${BASE_URL}/api/sessions/${sessionId}/attachments/wikipedia`, {
+  uploadWikipedia: async (sessionId, url) => {
+    return request(`/api/sessions/${sessionId}/attachments/wikipedia`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
       body: JSON.stringify({ url }),
     });
-
-    if (!response.ok) {
-      const data = await response.json().catch(() => null);
-      throw new Error(data?.message || `Wikipedia ingestion failed: ${response.status}`);
-    }
-
-    return response.json();
   },
 
+  searchWikipedia: async (sessionId, query) => {
+    return request(`/api/sessions/${sessionId}/attachments/wikipedia/search?query=${encodeURIComponent(query)}`);
+  },
+
+  /**
+   * Returns attachments uploaded in a specific session.
+   * Backend reads from view_attachments joined to attachments, so only
+   * files from THIS session are returned. Rows are deleted automatically
+   * when the session is deleted.
+   */
   getBySession: (sessionId) =>
     request(`/api/sessions/${sessionId}/attachments`),
 
+  /**
+   * Returns ALL attachments across every session (global knowledge base).
+   * Used by the Explore page — includes PDFs, images, text files, Wikipedia
+   * links, and any other uploaded type.
+   */
+  getAllGlobal: () =>
+    request(`/api/explore/attachments`),
+
   getSuggestedQuestions: (sessionId) =>
-    request(`/api/sessions/${sessionId}/suggested-questions`),
+    request(`/api/sessions/${sessionId}/suggested-questions`, { hideProgress: true }),
 };

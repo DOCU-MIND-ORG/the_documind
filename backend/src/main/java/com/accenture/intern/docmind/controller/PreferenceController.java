@@ -38,6 +38,7 @@ public class PreferenceController {
         updateRequest.setModelName(request.getModelName());
         updateRequest.setTheme(request.getTheme());
         updateRequest.setResponseStyle(request.getResponseStyle());
+        updateRequest.setLanguage(request.getLanguage());
         PreferenceResponse response = preferenceService.updatePreferences(principal.getName(), updateRequest);
         return ResponseEntity.ok(response);
     }

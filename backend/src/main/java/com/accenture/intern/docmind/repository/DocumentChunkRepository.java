@@ -47,12 +47,12 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, Lo
     List<String> findDistinctSourceNames();
 
     /**
-     * Every chunk belonging to one exact source, in original document order.
+     * Every chunk belonging to one exact source, in original document order, ignoring case.
      * Used by whole-document retrieval mode once a query has been matched to a
      * single source - we want full document coverage here, not a similarity-
      * ranked subset, so this intentionally bypasses keyword/dense ranking.
      */
-    List<DocumentChunk> findBySourceNameOrderByChunkIndexAsc(String sourceName);
+    List<DocumentChunk> findBySourceNameIgnoreCaseOrderByChunkIndexAsc(String sourceName);
 
     /**
      * Every chunk of an already-ingested document with this exact content hash,

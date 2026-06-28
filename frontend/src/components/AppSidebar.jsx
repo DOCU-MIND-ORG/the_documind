@@ -5,6 +5,9 @@ import { useSessions } from '../context/SessionsContext.jsx';
 import { sessionService } from '../services/sessionService.js';
 import { useToast } from '../context/ToastContext.jsx';
 import Modal from './Modal.jsx';
+import GlowingDot from './GlowingDot.jsx';
+
+// ─── Icons ────────────────────────────────────────────────────────────────────
 
 const PanelIcon = () => (
   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
@@ -16,6 +19,12 @@ const PanelIcon = () => (
 const PlusIcon = () => (
   <svg className="w-[16px] h-[16px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.2">
     <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+  </svg>
+);
+
+const GlobeIcon = () => (
+  <svg className="w-[16px] h-[16px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A11.954 11.954 0 0112 16.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0a8.959 8.959 0 01-2.253 2.253" />
   </svg>
 );
 
@@ -54,7 +63,6 @@ const ShareIcon = () => (
     <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
   </svg>
 );
-
 const RenameIcon = () => (
   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
     <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.83 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
@@ -85,12 +93,13 @@ const UserAvatar = ({ name, picture }) => (
 );
 
 const LogoMark = () => (
-  <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-md shrink-0">
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="white">
-      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-    </svg>
+  <div className="w-6 h-6 flex items-center justify-center shrink-0">
+    <img src="/light.png" className="w-full h-full object-contain dark:hidden" alt="Logo" />
+    <img src="/dark.png" className="w-full h-full object-contain hidden dark:block" alt="Logo" />
   </div>
 );
+
+// ─── AppSidebar ───────────────────────────────────────────────────────────────
 
 export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobileOpen }) {
   const { user, logout } = useAuth();
@@ -99,28 +108,36 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
   const navigate = useNavigate();
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [openMenuId, setOpenMenuId] = useState(null);
+  const [openMenuId, setOpenMenuId]     = useState(null);
   const [renameSessionId, setRenameSessionId] = useState(null);
-  const [renameTitle, setRenameTitle] = useState('');
+  const [renameTitle, setRenameTitle]         = useState('');
+  const [deleteSessionId, setDeleteSessionId] = useState(null);
 
   const activeId = location.pathname.startsWith('/chat/')
     ? location.pathname.split('/')[2]
     : null;
 
-  const goNewChat = () => { navigate('/dashboard'); setMobileOpen(false); };
-  const goSession = (id) => { navigate(`/chat/${id}`); setMobileOpen(false); };
+  const goNewChat  = () => { navigate('/dashboard'); setMobileOpen(false); };
+  const goExplore  = () => { navigate('/explore'); setMobileOpen(false); };
+  const goSession  = (id) => { navigate(`/chat/${id}`); setMobileOpen(false); };
 
-  const handleDelete = async (e, sessionId) => {
+  const handleDeleteClick = (e, sessionId) => {
     e.stopPropagation();
     setOpenMenuId(null);
-    if (!window.confirm('Delete this session?')) return;
+    setDeleteSessionId(sessionId);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteSessionId) return;
     try {
-      await sessionService.delete(sessionId);
-      removeSession(sessionId);
+      await sessionService.delete(deleteSessionId);
+      removeSession(deleteSessionId);
       showToast('Session deleted', 'success');
-      if (String(activeId) === String(sessionId)) navigate('/dashboard');
+      if (String(activeId) === String(deleteSessionId)) navigate('/dashboard');
     } catch (err) {
       showToast(err.message || 'Failed to delete', 'error');
+    } finally {
+      setDeleteSessionId(null);
     }
   };
 
@@ -134,18 +151,6 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
   const toggleMenu = (e, sessionId) => {
     e.stopPropagation();
     setOpenMenuId(prev => prev === sessionId ? null : sessionId);
-  };
-
-  const handleShare = async (e, sessionId) => {
-    e.stopPropagation();
-    setOpenMenuId(null);
-    const shareUrl = `${window.location.origin}/chat/${sessionId}`;
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      showToast('Share link copied to clipboard!', 'success');
-    } catch {
-      showToast('Failed to copy link', 'error');
-    }
   };
 
   const handleRenameClick = (e, sessionId, currentTitle) => {
@@ -167,6 +172,8 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
       showToast(err.message || 'Failed to rename session', 'error');
     }
   };
+
+  // ── Session list ────────────────────────────────────────────────────────────
 
   const SessionList = ({ alwaysExpanded = false }) => {
     const show = alwaysExpanded || expanded;
@@ -203,11 +210,12 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
                     : 't-text-muted hover:t-text-main t-hover-bg'
                 } ${!show ? 'justify-center' : ''}`}
               >
-                <ChatIcon />
+                <GlowingDot sessionId={s.sessionId} />
                 {show && (
                   <>
                     <span className="flex-1 truncate text-[13px]">{s.title}</span>
 
+                    {/* ⋮ Three-dot menu */}
                     <button
                       onClick={(e) => toggleMenu(e, s.sessionId)}
                       className="opacity-0 group-hover:opacity-100 p-1 rounded-lg t-text-faint hover:t-text-main t-hover-bg transition-all shrink-0"
@@ -216,6 +224,7 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
                       <DotsIcon />
                     </button>
 
+                    {/* Dropdown */}
                     {menuOpen && (
                       <div
                         className="absolute right-1 top-8 z-50 t-bg-menu t-border-soft border rounded-xl shadow-2xl py-1 min-w-[160px]"
@@ -231,20 +240,13 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
                         </button>
                         <div className="h-px t-border mx-2 my-0.5" />
                         <button
-                          onClick={(e) => handleDelete(e, s.sessionId)}
+                          onClick={(e) => handleDeleteClick(e, s.sessionId)}
                           className="flex items-center gap-2.5 w-full text-left px-3 py-2 text-[12px] text-red-400 hover:text-red-300 hover:bg-red-500/[0.07] transition-colors"
                         >
                           <TrashIcon />
                           Delete session
                         </button>
-                        <div className="h-px t-border mx-2 my-0.5" />
-                        <button
-                          onClick={(e) => handleShare(e, s.sessionId)}
-                          className="flex items-center gap-2.5 w-full text-left px-3 py-2 text-[12px] t-text-muted hover:t-text-main t-hover-bg transition-colors"
-                        >
-                          <ShareIcon />
-                          Share
-                        </button>
+
                         <div className="h-px t-border mx-2 my-0.5" />
                         <button
                           onClick={(e) => handleRenameClick(e, s.sessionId, s.title)}
@@ -264,6 +266,8 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
       </div>
     );
   };
+
+  // ── User footer ──────────────────────────────────────────────────────────────
 
   const UserFooter = ({ show }) => (
     <div className="shrink-0 border-t t-border p-2 relative">
@@ -307,8 +311,11 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
     </div>
   );
 
+  // ─────────────────────────────────────────────────────────────────────────────
+
   return (
     <>
+      {/* ── Mobile overlay ── */}
       <div
         className={`fixed inset-0 bg-black/50 backdrop-blur-sm z-30 md:hidden transition-opacity duration-300 ${
           mobileOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
@@ -316,6 +323,7 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
         onClick={() => setMobileOpen(false)}
       />
 
+      {/* ── Mobile drawer ── */}
       <aside
         className={`fixed inset-y-0 left-0 z-40 w-72 flex flex-col t-bg-sidebar border-r t-border md:hidden transition-transform duration-300 ease-out ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
@@ -331,10 +339,19 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
             <CloseIcon />
           </button>
         </div>
-        <div className="px-2 mt-1 shrink-0">
+        <div className="px-2 mt-1 shrink-0 flex flex-col gap-1">
+          <button
+            onClick={goExplore}
+            className={`flex items-center gap-3 w-full px-3 py-2.5 text-[13px] font-medium t-text-main rounded-xl transition-all cursor-pointer ${
+              location.pathname === '/explore' ? 't-bg-active' : 't-hover-bg'
+            }`}
+          >
+            <GlobeIcon />
+            Explore
+          </button>
           <button
             onClick={goNewChat}
-            className="flex items-center gap-3 w-full px-3 py-2.5 text-[13px] font-medium t-text-main t-bg-hover hover:t-bg-active rounded-xl border t-border transition-all cursor-pointer"
+            className="flex items-center gap-3 w-full px-3 py-2.5 text-[13px] font-medium t-text-main rounded-xl t-hover-bg transition-all cursor-pointer"
           >
             <PlusIcon />
             New chat
@@ -344,12 +361,14 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
         <UserFooter show />
       </aside>
 
+      {/* ── Desktop sidebar (collapsible) ── */}
       <aside
         className={`hidden md:flex flex-col h-full t-bg-sidebar border-r t-border shrink-0 transition-all duration-300 ease-in-out overflow-hidden ${
           expanded ? 'w-[248px]' : 'w-[62px]'
         }`}
         onClick={() => settingsOpen && setSettingsOpen(false)}
       >
+        {/* Header */}
         <div className={`flex items-center h-14 shrink-0 px-2.5 ${expanded ? 'justify-between' : 'justify-center'}`}>
           {expanded && (
             <div className="flex items-center gap-2.5 pl-1">
@@ -366,11 +385,26 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
           </button>
         </div>
 
-        <div className="px-2 mt-1 shrink-0">
+        {/* Explore & New chat */}
+        <div className="px-2 mt-1 shrink-0 flex flex-col gap-1">
+          <button
+            onClick={goExplore}
+            title={!expanded ? 'Explore' : undefined}
+            className={`flex items-center gap-3 w-full px-2.5 py-[10px] text-[13px] font-medium t-text-main rounded-xl transition-all active:scale-[0.97] cursor-pointer ${
+              !expanded ? 'justify-center' : ''
+            } ${
+              location.pathname === '/explore'
+                ? 't-bg-active'
+                : 't-hover-bg'
+            }`}
+          >
+            <GlobeIcon />
+            {expanded && <span className="whitespace-nowrap">Explore</span>}
+          </button>
           <button
             onClick={goNewChat}
             title={!expanded ? 'New chat' : undefined}
-            className={`flex items-center gap-3 w-full px-2.5 py-[10px] text-[13px] font-medium t-text-main t-bg-hover hover:t-bg-active rounded-xl border t-border transition-all active:scale-[0.97] cursor-pointer ${!expanded ? 'justify-center' : ''}`}
+            className={`flex items-center gap-3 w-full px-2.5 py-[10px] text-[13px] font-medium t-text-main rounded-xl t-hover-bg transition-all active:scale-[0.97] cursor-pointer ${!expanded ? 'justify-center' : ''}`}
           >
             <PlusIcon />
             {expanded && <span className="whitespace-nowrap">New chat</span>}
@@ -416,6 +450,32 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
             autoFocus
           />
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={deleteSessionId !== null}
+        title="Delete Session"
+        onClose={() => setDeleteSessionId(null)}
+        footer={
+          <>
+            <button
+              onClick={() => setDeleteSessionId(null)}
+              className="px-4 py-2.5 text-xs font-semibold t-text-muted hover:t-text-main t-hover-bg rounded-xl transition-all cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmDelete}
+              className="px-4 py-2.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-500 active:scale-95 rounded-xl shadow-lg shadow-red-500/20 transition-all cursor-pointer"
+            >
+              Delete
+            </button>
+          </>
+        }
+      >
+        <p className="text-[13px] t-text-muted">
+          Are you sure you want to delete this session? This action cannot be undone and all associated attachments and chat history will be permanently lost.
+        </p>
       </Modal>
     </>
   );

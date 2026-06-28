@@ -71,8 +71,23 @@ public class DocumentChunk {
     @Column(name = "content_hash", length = 64)
     private String contentHash;
 
+    @Column(name = "original_file_name")
+    private String originalFileName;
+
+    @Column(name = "enriched_file_name")
+    private String enrichedFileName;
+
+    @Column(name = "asset_classification")
+    private String assetClassification;
+
+    @Column(name = "asset_tags", columnDefinition = "text")
+    private String assetTags;
+
     @Column(name = "chunk_index")
     private Integer chunkIndex;
+
+    @Column(name = "total_chunks")
+    private Integer totalChunks;
 
     /**
      * Public URL of the source image when this chunk's content is a Gemini Vision
@@ -85,15 +100,10 @@ public class DocumentChunk {
     private String imageUrl;
 
     /**
-     * Public URL of the original source document this chunk came from, when that
-     * source is itself viewable/downloadable (currently: the Cloudinary URL of the
-     * PDF a text chunk was extracted from). Distinct from imageUrl: imageUrl means
-     * "this chunk IS an image, render it inline"; sourceUrl means "this chunk is
-     * text, but here's a link to the original document it was extracted from."
-     * A chunk can have sourceUrl without imageUrl (PDF text chunk), but never both
-     * set simultaneously in practice (PDF-extracted-image chunks use imageUrl).
+     * The URL pointing to the original source file (e.g., Cloudinary URL or Wikipedia URL).
+     * Rendered as "View Source" link in citations.
      */
-    @Column(name = "source_url")
+    @Column(name = "source_url", length = 1024)
     private String sourceUrl;
 
     @Column(name = "created_at")

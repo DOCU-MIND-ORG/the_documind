@@ -1,5 +1,6 @@
 import { useReducer, useRef, useEffect, useCallback, useState } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
+import { toast as sonnerToast } from 'sonner';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useSessions } from '../context/SessionsContext.jsx';
 import { sessionService } from '../services/sessionService.js';
@@ -9,7 +10,12 @@ import { useToast } from '../context/ToastContext.jsx';
 import { preferenceService } from '../services/preferenceService.js';
 import Streaming from '../components/streaming.jsx';
 import CitationDrawer from '../components/CitationDrawer.jsx';
+import ProgressIndicator from '../components/ProgressIndicator.jsx';
+import ThinkingProcess from '../components/ThinkingProcess.jsx';
+import Constellation from '../components/Constellation.jsx';
+import Modal from '../components/Modal.jsx';
 import { chatReducer, initialChatState } from '../state/chatReducer.js';
+import { useTheme } from '../context/ThemeContext.jsx';
 
 
 const SendIcon = () => (
@@ -36,15 +42,28 @@ const XIcon = () => (
   </svg>
 );
 
-const BotAvatar = () => (
-  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0 shadow-lg shadow-blue-500/25">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" />
-      <rect x="5" y="8" width="14" height="14" rx="2" />
-      <line x1="9" y1="13" x2="9" y2="13.01" />
-      <line x1="15" y1="13" x2="15" y2="13.01" />
-    </svg>
-  </div>
+const BotAvatar = () => {
+  const { theme } = useTheme();
+  // Using light.png for dark mode (light pixels on dark bg) and dark.png for light mode
+  const imgSrc = theme === 'dark' ? '/dark.png' : '/light.png';
+  
+  return (
+    <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm overflow-hidden">
+      <img src={imgSrc} alt="AI Avatar" className="w-full h-full object-cover" />
+    </div>
+  );
+};
+
+const ChevronDownIcon = () => (
+  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+  </svg>
+);
+
+const ChevronUpIcon = () => (
+  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+  </svg>
 );
 
 const formatBytes = (bytes) => {
@@ -53,31 +72,39 @@ const formatBytes = (bytes) => {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 };
 
-// Synthetic anchor messages created by the backend for file/wiki uploads; never rendered as chat bubbles
+// The backend saves a synthetic message like "[file upload: resume.pdf]" or
+// "[wikipedia link: Some_Page]" purely as a row to anchor the Attachment
+// record to (it needs a Message to attach to). It's plumbing, not something
+// the user typed or the assistant said, so it should never show up as its own
+// chat bubble — the upload itself is already visible via the pending-file
+// chips while it's happening.
 const UPLOAD_ANCHOR_PATTERN = /^\[(file upload|wikipedia link): .+\]$/;
 const isUploadAnchorMessage = (msg) => UPLOAD_ANCHOR_PATTERN.test((msg.text || '').trim());
 
 export default function Chat() {
   const { sessionId: routeSessionId } = useParams();
-  const navigate = useNavigate();
-  const { user } = useAuth();
-  const { sessions, addSession } = useSessions();
-  const { showToast } = useToast();
-  const { openMobileSidebar } = useOutletContext();
+  const navigate                      = useNavigate();
+  const { user }                      = useAuth();
+  const { sessions, addSession }      = useSessions();
+  const { showToast }                 = useToast();
+  const { openMobileSidebar }         = useOutletContext();
 
   const [state, dispatch] = useReducer(chatReducer, {
     ...initialChatState,
     sessionId: routeSessionId ?? null,
   });
 
-  const [input, setInput] = useState('');
-  const [isDragging, setIsDragging] = useState(false);
+  const [input, setInput]             = useState('');
+  const [isDragging, setIsDragging]   = useState(false);
   const [pendingFiles, setPendingFiles] = useState([]);
   const [activeCitation, setActiveCitation] = useState(null);
   const [showWikiInput, setShowWikiInput] = useState(false);
   const [wikiUrl, setWikiUrl] = useState('');
-  const bottomRef = useRef(null);
-  const textareaRef = useRef(null);
+  const [wikiSearchResults, setWikiSearchResults] = useState([]);
+  const [isWikiSearching, setIsWikiSearching] = useState(false);
+  const [isInputOpen, setIsInputOpen]         = useState(true);
+  const bottomRef    = useRef(null);
+  const textareaRef  = useRef(null);
   const fileInputRef = useRef(null);
   const dragCounterRef = useRef(0);
 
@@ -88,6 +115,96 @@ export default function Chat() {
   );
   const [models, setModels] = useState([]);
   const suggestionsPollRef = useRef(null);
+
+  const [showShareMenu, setShowShareMenu] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [shareEmailAddress, setShareEmailAddress] = useState('');
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+
+  const handleShareUrl = async () => {
+    setShowShareMenu(false);
+    const shareUrl = `${window.location.origin}/chat/${routeSessionId}`;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      showToast('Share link copied to clipboard!', 'success');
+    } catch {
+      showToast('Failed to copy link', 'error');
+    }
+  };
+
+  const handleSendMail = () => {
+    setShowShareMenu(false);
+    setShowEmailModal(true);
+    setShareEmailAddress('');
+  };
+
+  const submitShareEmail = async () => {
+    if (!shareEmailAddress || !shareEmailAddress.trim()) return;
+    
+    try {
+      setShowEmailModal(false);
+      showToast('Email is being sent in the background!', 'info');
+      await sessionService.shareViaEmail(routeSessionId, shareEmailAddress.trim());
+      showToast('Email sent successfully!', 'success');
+    } catch (err) {
+      showToast(err.message || 'Error sending email', 'error');
+    }
+  };
+
+  const handleExportMarkdown = () => {
+    setShowShareMenu(false);
+    window.open(`${import.meta.env.VITE_API_URL || 'http://localhost:8080'}/api/sessions/${routeSessionId}/export`, '_blank');
+  };
+
+  const handleExportPdf = async () => {
+    setShowShareMenu(false);
+    if (isExportingPdf) return;
+    setIsExportingPdf(true);
+
+    const toastId = sonnerToast.loading('Preparing your PDF…', {
+      description: 'Summarizing the session and rendering the document.',
+    });
+
+    try {
+      const { jobId } = await sessionService.requestPdfExport(routeSessionId);
+
+      // Poll until the worker finishes (READY) or fails — same "submit job,
+      // poll for result" shape used for chat generation and suggested
+      // questions, just without SSE since this is a single terminal result.
+      const POLL_INTERVAL_MS = 1500;
+      const MAX_ATTEMPTS = 80; // ~2 minutes, generous for an LLM summary + PDF render
+
+      let result = null;
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        const status = await sessionService.getPdfExportStatus(routeSessionId, jobId);
+        if (status.status === 'READY') {
+          result = status;
+          break;
+        }
+        if (status.status === 'FAILED') {
+          throw new Error(status.errorMessage || 'PDF export failed');
+        }
+        await new Promise(res => setTimeout(res, POLL_INTERVAL_MS));
+      }
+
+      if (!result) {
+        throw new Error('PDF export timed out. Please try again.');
+      }
+
+      sonnerToast.success('Your PDF is ready', {
+        id: toastId,
+        description: result.fileName || 'session.pdf',
+      });
+
+      // Fetch the rendered PDF straight from our own backend and trigger a
+      // real browser download — no cloud storage involved.
+      await sessionService.downloadPdfExportFile(routeSessionId, jobId, result.fileName);
+    } catch (err) {
+      sonnerToast.error(err.message || 'Failed to export PDF', { id: toastId });
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
 
   useEffect(() => {
     const fetchModels = async () => {
@@ -123,13 +240,15 @@ export default function Chat() {
     dispatch({ type: 'MESSAGES_LOADING', sessionId: state.sessionId });
     sessionService.getMessages(state.sessionId)
       .then(msgs => { if (!cancelled) dispatch({ type: 'MESSAGES_LOADED', sessionId: state.sessionId, payload: { messages: msgs } }); })
-      .catch(err => { if (!cancelled) { dispatch({ type: 'MESSAGES_LOAD_FAILED', sessionId: state.sessionId }); showToast(err.message || 'Failed to load messages', 'error'); } });
+      .catch(err  => { if (!cancelled) { dispatch({ type: 'MESSAGES_LOAD_FAILED', sessionId: state.sessionId }); showToast(err.message || 'Failed to load messages', 'error'); } });
     return () => { cancelled = true; };
   }, [state.sessionId]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [state.messages]);
 
-  // Polls suggested-questions endpoint every 2s until it reports READY or FAILED
+  // Polls GET /api/sessions/{id}/suggested-questions every 2s until ingestion's
+  // question-generation step reports READY or FAILED, then stops. Started after
+  // a successful file/Wikipedia upload (see uploadPendingFiles / handleWikiSubmit).
   const pollSuggestedQuestions = useCallback((sessionId) => {
     if (suggestionsPollRef.current) {
       clearInterval(suggestionsPollRef.current);
@@ -149,7 +268,8 @@ export default function Chat() {
         }
         // NOT_STARTED / GENERATING: keep polling
       } catch {
-        // Transient errors shouldn't stop polling; the next tick retries
+        // Transient network errors shouldn't kill polling permanently, but stop
+        // after this interval's tick — the next tick will simply retry.
       }
     };
 
@@ -168,8 +288,8 @@ export default function Chat() {
 
   const onDragEnter = useCallback((e) => { e.preventDefault(); dragCounterRef.current += 1; if (dragCounterRef.current === 1) setIsDragging(true); }, []);
   const onDragLeave = useCallback((e) => { e.preventDefault(); dragCounterRef.current -= 1; if (dragCounterRef.current === 0) setIsDragging(false); }, []);
-  const onDragOver = useCallback((e) => { e.preventDefault(); }, []);
-  const onDrop = useCallback((e) => { e.preventDefault(); dragCounterRef.current = 0; setIsDragging(false); const files = Array.from(e.dataTransfer.files); if (files.length > 0) addFiles(files); }, []);
+  const onDragOver  = useCallback((e) => { e.preventDefault(); }, []);
+  const onDrop      = useCallback((e) => { e.preventDefault(); dragCounterRef.current = 0; setIsDragging(false); const files = Array.from(e.dataTransfer.files); if (files.length > 0) addFiles(files); }, []);
 
   const addFiles = useCallback((files) => {
     setPendingFiles(prev => [...prev, ...files.map(f => ({ file: f, name: f.name, status: 'pending' }))]);
@@ -228,20 +348,23 @@ export default function Chat() {
       const userMessage = { id: crypto.randomUUID(), role: 'USER', text: query, createdAt: new Date().toISOString(), status: 'complete' };
       const assistantPlaceholder = { id: crypto.randomUUID(), role: 'ASSISTANT', text: '', createdAt: new Date().toISOString(), status: 'streaming' };
       dispatch({ type: 'SEND_MESSAGE_OPTIMISTIC', sessionId: activeSessionId, payload: { userMessage, assistantPlaceholder } });
-
+      
       try {
         if (hasPendingFiles) await uploadPendingFiles(activeSessionId);
-
-        await chatService.streamMessage(
-          activeSessionId, query, selectedModel,
+        
+        const jobResponse = await chatService.submitMessage(activeSessionId, query, selectedModel);
+        
+        await chatService.consumeStream(
+          activeSessionId, jobResponse.messageId,
           (chunk) => dispatch({ type: 'APPEND_STREAM_CHUNK', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id, chunk } }),
           (citations) => dispatch({ type: 'SET_CITATIONS', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id, citations } }),
-          (err) => { dispatch({ type: 'STREAM_ERROR', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } }); showToast(err.message || 'Stream error', 'error'); },
-          () => {
+          (progress) => dispatch({ type: 'UPDATE_PROGRESS', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id, progress } }),
+          (err)   => { dispatch({ type: 'STREAM_ERROR', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } }); showToast(err.message || 'Stream error', 'error'); },
+          ()      => {
             dispatch({ type: 'STREAM_DONE', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } });
-            // Suggested questions also regenerate after a normal response, not just uploads
             pollSuggestedQuestions(activeSessionId);
           },
+          ()      => dispatch({ type: 'RESET_STREAM_TEXT', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } })
         );
       } catch (err) {
         dispatch({ type: 'STREAM_ERROR', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } });
@@ -252,35 +375,68 @@ export default function Chat() {
     }
   }, [input, pendingFiles, state.sessionId, state.isStreaming, navigate, addSession, showToast, uploadPendingFiles, selectedModel, pollSuggestedQuestions]);
 
-  const handleWikiSubmit = async (e) => {
+  const handleWikiSubmit = async (e, directUrl = null) => {
     if (e) e.preventDefault();
-    if (!wikiUrl.trim() || !state.sessionId) return;
+    const urlToUse = directUrl || wikiUrl.trim();
+    if (!urlToUse || !state.sessionId) return;
 
-    const tempId = Date.now();
-    let url = wikiUrl.trim();
-    if (!url.startsWith('http')) {
-      url = 'https://en.wikipedia.org/wiki/' + url.replace(/ /g, '_');
-    }
+    if (urlToUse.startsWith('http')) {
+        // Direct ingestion
+        const tempId = Date.now();
+        setPendingFiles(prev => [...prev, { name: decodeURIComponent(urlToUse.substring(urlToUse.lastIndexOf('/') + 1)), id: tempId, status: 'uploading' }]);
+        
+        setShowWikiInput(false);
+        setWikiUrl('');
+        setWikiSearchResults([]);
 
-    setPendingFiles(prev => [...prev, { name: decodeURIComponent(url.substring(url.lastIndexOf('/') + 1)), id: tempId, status: 'uploading' }]);
+        try {
+          await attachmentService.uploadWikipedia(state.sessionId, urlToUse);
+          setPendingFiles(prev => prev.map(f => f.id === tempId ? { ...f, status: 'done' } : f));
+          setTimeout(() => {
+            setPendingFiles(prev => prev.filter(f => f.id !== tempId));
+          }, 2000);
+          pollSuggestedQuestions(state.sessionId);
+        } catch (err) {
+          setPendingFiles(prev => prev.map(f => f.id === tempId ? { ...f, status: 'error' } : f));
+          showToast(err.message, 'error');
+        }
+    } else {
+        // Just text, so search
+        if (directUrl) {
+            // User clicked a result, ingest it as the title directly
+            const tempId = Date.now();
+            setPendingFiles(prev => [...prev, { name: urlToUse, id: tempId, status: 'uploading' }]);
+            
+            setShowWikiInput(false);
+            setWikiUrl('');
+            setWikiSearchResults([]);
 
-    setShowWikiInput(false);
-    setWikiUrl('');
-
-    try {
-      await attachmentService.uploadWikipedia(state.sessionId, url);
-      setPendingFiles(prev => prev.map(f => f.id === tempId ? { ...f, status: 'done' } : f));
-      setTimeout(() => {
-        setPendingFiles(prev => prev.filter(f => f.id !== tempId));
-      }, 2000);
-      pollSuggestedQuestions(state.sessionId);
-    } catch (err) {
-      setPendingFiles(prev => prev.map(f => f.id === tempId ? { ...f, status: 'error' } : f));
-      showToast(err.message, 'error');
+            try {
+              await attachmentService.uploadWikipedia(state.sessionId, urlToUse);
+              setPendingFiles(prev => prev.map(f => f.id === tempId ? { ...f, status: 'done' } : f));
+              setTimeout(() => {
+                setPendingFiles(prev => prev.filter(f => f.id !== tempId));
+              }, 2000);
+              pollSuggestedQuestions(state.sessionId);
+            } catch (err) {
+              setPendingFiles(prev => prev.map(f => f.id === tempId ? { ...f, status: 'error' } : f));
+              showToast(err.message, 'error');
+            }
+        } else {
+            setIsWikiSearching(true);
+            try {
+                const results = await attachmentService.searchWikipedia(state.sessionId, urlToUse);
+                setWikiSearchResults(results || []);
+            } catch (err) {
+                showToast(err.message || 'Failed to search Wikipedia', 'error');
+            } finally {
+                setIsWikiSearching(false);
+            }
+        }
     }
   };
 
-  const onKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); } };
+  const onKeyDown     = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); } };
   const onInputChange = (e) => { setInput(e.target.value); const ta = e.target; ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 160) + 'px'; };
 
   const firstName = user?.name?.split(' ')[0] || 'there';
@@ -340,75 +496,128 @@ export default function Chat() {
           </svg>
         </button>
 
-        <div className="flex-1 flex items-center justify-between">
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setModelMenuOpen(prev => !prev)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[15px] font-semibold text-primary rounded-xl interactive cursor-pointer select-none"
-            >
-              DocuMind <span className="text-tertiary font-medium">{displayModelName}</span>
-              <svg className={`w-3.5 h-3.5 text-tertiary transition-transform duration-200 ${modelMenuOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-              </svg>
-            </button>
+          <div className="flex-1 flex items-center justify-between">
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setModelMenuOpen(prev => !prev)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[15px] font-semibold text-primary rounded-xl interactive cursor-pointer select-none"
+              >
+                DocuMind <span className="text-tertiary font-medium">{displayModelName}</span>
+                <svg className={`w-3.5 h-3.5 text-tertiary transition-transform duration-200 ${modelMenuOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                </svg>
+              </button>
 
-            {modelMenuOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setModelMenuOpen(false)} />
-                <div className="absolute left-0 mt-2 z-50 w-[280px] menu-popup py-1.5 animate-fade-in-up">
-                  {models.map(m => {
-                    const isSelected = m.id === selectedModel;
-                    return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => handleModelSelect(m.id)}
-                        className="flex items-start w-full text-left px-4 py-2.5 interactive group cursor-pointer"
-                      >
-                        <div className="w-5 shrink-0 pt-0.5">
-                          {isSelected && (
-                            <svg className="w-3.5 h-3.5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                            </svg>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0 pr-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[13px] font-semibold text-primary group-hover:text-blue-500 transition-colors">
-                              {m.name}
-                            </span>
-                            {m.isNew && (
-                              <span className="px-2 py-0.5 text-[9px] font-medium bg-blue-500/10 text-blue-500 rounded-full shrink-0">New</span>
+              {modelMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setModelMenuOpen(false)} />
+                  <div className="absolute left-0 mt-2 z-50 w-[280px] menu-popup py-1.5 animate-fade-in-up">
+                    {models.map(m => {
+                      const isSelected = m.id === selectedModel;
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => handleModelSelect(m.id)}
+                          className="flex items-start w-full text-left px-4 py-2.5 interactive group cursor-pointer"
+                        >
+                          <div className="w-5 shrink-0 pt-0.5">
+                            {isSelected && (
+                              <svg className="w-3.5 h-3.5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                              </svg>
                             )}
                           </div>
-                          <p className="text-[11px] text-secondary mt-0.5 leading-normal">{m.description}</p>
-                        </div>
-                      </button>
-                    );
-                  })}
+                          <div className="flex-1 min-w-0 pr-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[13px] font-semibold text-primary group-hover:text-blue-500 transition-colors">
+                                {m.name}
+                              </span>
+                              {m.isNew && (
+                                <span className="px-2 py-0.5 text-[9px] font-medium bg-blue-500/10 text-blue-500 rounded-full shrink-0">New</span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-secondary mt-0.5 leading-normal">{m.description}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+            
+            {!isNewChat && (
+              <div className="hidden sm:flex items-center gap-2 relative">
+                <div className="px-3 py-1.5 bg-[var(--color-bg-base)] border border-[var(--color-border)] rounded-lg max-w-[300px]">
+                  <h1 className="text-[13px] font-medium text-secondary truncate">
+                    {session?.title || 'Loading…'}
+                  </h1>
                 </div>
-              </>
+                <button
+                  type="button"
+                  onClick={() => setShowShareMenu(prev => !prev)}
+                  className="p-1.5 text-secondary hover:text-primary hover:bg-[var(--color-bg-surface-hover)] rounded-md transition-colors"
+                  title="Share options"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                  </svg>
+                </button>
+                {showShareMenu && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowShareMenu(false)} />
+                    <div className="absolute top-full right-0 mt-2 z-50 w-48 menu-popup py-1.5 animate-fade-in-up">
+                      <button
+                        onClick={handleShareUrl}
+                        className="flex items-center gap-2 w-full text-left px-4 py-2 text-[13px] text-primary hover:bg-[var(--color-bg-surface-hover)] transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" /></svg>
+                        Share public URL
+                      </button>
+                      <button
+                        onClick={handleSendMail}
+                        className="flex items-center gap-2 w-full text-left px-4 py-2 text-[13px] text-primary hover:bg-[var(--color-bg-surface-hover)] transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                        Send via mail
+                      </button>
+                      <div className="h-px bg-[var(--color-border)] my-1" />
+                      <button
+                        onClick={handleExportMarkdown}
+                        className="flex items-center gap-2 w-full text-left px-4 py-2 text-[13px] text-primary hover:bg-[var(--color-bg-surface-hover)] transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                        Export markdown
+                      </button>
+                      <button
+                        onClick={handleExportPdf}
+                        disabled={isExportingPdf}
+                        className="flex items-center gap-2 w-full text-left px-4 py-2 text-[13px] text-primary hover:bg-[var(--color-bg-surface-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isExportingPdf ? (
+                          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 11v6m-3-3h6" /></svg>
+                        )}
+                        {isExportingPdf ? 'Preparing PDF…' : 'Export PDF'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             )}
           </div>
-
-          {!isNewChat && (
-            <div className="hidden sm:block px-3 py-1.5 bg-[var(--color-bg-base)] border border-[var(--color-border)] rounded-lg max-w-[300px]">
-              <h1 className="text-[13px] font-medium text-secondary truncate">
-                {session?.title || 'Loading…'}
-              </h1>
-            </div>
-          )}
-        </div>
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6" style={{ backgroundColor: 'var(--color-bg-base)' }}>
         {isNewChat ? (
           <div className="h-full flex flex-col items-center justify-center text-center px-4">
             {user?.profileImageUrl ? (
-              <img
-                src={user.profileImageUrl}
-                alt="Profile"
+              <img 
+                src={user.profileImageUrl} 
+                alt="Profile" 
                 className="w-16 h-16 rounded-full object-cover shadow-sm ring-2 ring-white/10"
               />
             ) : (
@@ -431,7 +640,7 @@ export default function Chat() {
             </div>
           </div>
         ) : (
-          <div className="max-w-2xl mx-auto space-y-5">
+          <div className="max-w-2xl mx-auto space-y-12 pb-8">
             {state.messages.filter(msg => !isUploadAnchorMessage(msg)).map((msg) => {
               const isBot = msg.role === 'ASSISTANT';
               return (
@@ -440,17 +649,19 @@ export default function Chat() {
                   <div className={`flex flex-col gap-1 max-w-[85%] ${isBot ? '' : 'items-end'}`}>
                     <div className={`px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${
                       isBot
-                        ? 'bg-surface border-t rounded-tl-sm text-primary'
+                        ? 'text-primary'
                         : 'bg-blue-600 text-white rounded-tr-sm'
                     } ${msg.status === 'error' ? 'border-red-500/40' : ''}`}
-                    style={isBot ? {
-                      backgroundColor: 'var(--color-bg-surface)',
-                      border: `1px solid var(--color-border)`,
-                      boxShadow: 'var(--shadow-sm)',
-                    } : {}}>
+                    style={isBot ? {} : {}}>
+                      {isBot && msg.progressEvents && msg.progressEvents.length > 0 && (
+                        <ThinkingProcess 
+                          events={msg.progressEvents} 
+                          isComplete={msg.status !== 'streaming' || msg.text.length > 0} 
+                        />
+                      )}
                       {isBot
-                        ? <Streaming
-                            text={msg.text}
+                        ? <Streaming 
+                            text={msg.text} 
                             isStreaming={msg.id === state.streamingMessageId}
                             citations={msg.citations}
                             onCitationClick={setActiveCitation}
@@ -534,9 +745,36 @@ export default function Chat() {
           </div>
         )}
       </div>
-      <div className="shrink-0 px-4 sm:px-6 pb-5 pt-3"
+      <div className="shrink-0 px-4 sm:px-6 pb-5 pt-3 relative"
         style={{ borderTop: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-surface)' }}>
-        <form onSubmit={handleSend} className="max-w-2xl mx-auto">
+        
+        <div className="max-w-2xl mx-auto relative">
+          {isInputOpen && (
+            <button
+              type="button"
+              onClick={() => setIsInputOpen(false)}
+              className="absolute -top-[34px] right-2 p-1.5 rounded-t-lg border-x border-t text-tertiary hover:text-secondary cursor-pointer transition-colors shadow-sm"
+              style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-surface)' }}
+              title="Close input drawer"
+            >
+              <ChevronDownIcon />
+            </button>
+          )}
+
+          {!isInputOpen && (
+            <button
+              type="button"
+              onClick={() => setIsInputOpen(true)}
+              className="fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-2xl border flex items-center justify-center cursor-pointer transition-transform hover:scale-110 active:scale-95 z-50 animate-fade-in-up"
+              style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-text-primary)' }}
+              title="Open input drawer"
+            >
+              <Constellation className="w-14 h-14" invert={false} />
+            </button>
+          )}
+
+          {isInputOpen && (
+            <form onSubmit={handleSend} className="w-full">
           {pendingFiles.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-2 px-1">
               {pendingFiles.map((f, i) => (
@@ -565,26 +803,50 @@ export default function Chat() {
           )}
 
           {showWikiInput && (
-            <div className="mb-2 p-3 rounded-2xl bg-surface border shadow-lg flex items-center gap-2 animate-fade-in-up" style={{ borderColor: 'var(--color-border)' }}>
-              <input
-                type="text"
-                value={wikiUrl}
-                onChange={(e) => setWikiUrl(e.target.value)}
-                placeholder="Paste Wikipedia URL or Title..."
-                className="flex-1 bg-transparent border-0 text-[13px] text-primary outline-none px-2"
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleWikiSubmit(e);
-                  if (e.key === 'Escape') setShowWikiInput(false);
-                }}
-              />
-              <button
-                type="button"
-                onClick={handleWikiSubmit}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-              >
-                Add
-              </button>
+            <div className="mb-2 flex flex-col gap-2 animate-fade-in-up">
+              <div className="p-3 rounded-2xl bg-surface border shadow-lg flex items-center gap-2" style={{ borderColor: 'var(--color-border)' }}>
+                <input
+                  type="text"
+                  value={wikiUrl}
+                  onChange={(e) => {
+                    setWikiUrl(e.target.value);
+                    if (!e.target.value.trim()) {
+                      setWikiSearchResults([]);
+                    }
+                  }}
+                  placeholder="Paste Wikipedia URL or search term..."
+                  className="flex-1 bg-transparent border-0 text-[13px] text-primary outline-none px-2"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleWikiSubmit(e);
+                    if (e.key === 'Escape') { setShowWikiInput(false); setWikiSearchResults([]); }
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={(e) => handleWikiSubmit(e)}
+                  disabled={isWikiSearching}
+                  className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                >
+                  {isWikiSearching ? '...' : 'Search/Add'}
+                </button>
+              </div>
+              
+              {wikiSearchResults.length > 0 && (
+                <div className="p-2 rounded-2xl bg-surface border shadow-lg flex flex-col gap-1" style={{ borderColor: 'var(--color-border)' }}>
+                  <div className="px-2 py-1 text-xs text-secondary font-semibold">Select an article:</div>
+                  {wikiSearchResults.map((title, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={(e) => handleWikiSubmit(e, title)}
+                      className="text-left px-3 py-2 text-[13px] text-primary hover:bg-blue-500/10 hover:text-blue-500 rounded-xl transition-colors interactive"
+                    >
+                      {title}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -595,7 +857,7 @@ export default function Chat() {
               border: '1px solid var(--color-border)',
             }}
             onFocus={(e) => e.currentTarget.style.borderColor = 'var(--color-accent)'}
-            onBlur={(e) => e.currentTarget.style.borderColor = 'var(--color-border)'}
+            onBlur={(e) => e.currentTarget.style.borderColor  = 'var(--color-border)'}
           >
             <div className="flex items-center">
               <button
@@ -644,10 +906,52 @@ export default function Chat() {
           <p className="text-center text-[11px] text-tertiary mt-2 select-none">
             Enter to send &nbsp;·&nbsp; Shift+Enter for new line &nbsp;·&nbsp; Drop files anywhere
           </p>
-        </form>
+            </form>
+          )}
+        </div>
       </div>
 
-      <CitationDrawer citation={activeCitation} onClose={() => setActiveCitation(null)} />
+      <CitationDrawer citations={activeCitation} onClose={() => setActiveCitation(null)} />
+
+      <Modal
+        isOpen={showEmailModal}
+        title="Share Session via Email"
+        onClose={() => setShowEmailModal(false)}
+        footer={
+          <>
+            <button
+              onClick={() => setShowEmailModal(false)}
+              className="px-4 py-2.5 text-xs font-semibold t-text-muted hover:t-text-main t-hover-bg rounded-xl transition-all cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={submitShareEmail}
+              disabled={!shareEmailAddress.trim()}
+              className="px-4 py-2.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 active:scale-95 disabled:scale-100 disabled:opacity-40 rounded-xl shadow-lg shadow-blue-500/20 transition-all cursor-pointer"
+            >
+              Send
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="flex flex-col space-y-1.5">
+            <label className="text-[10px] font-bold text-tertiary uppercase tracking-wider">
+              Email Address
+            </label>
+            <input
+              type="email"
+              value={shareEmailAddress}
+              onChange={e => setShareEmailAddress(e.target.value)}
+              placeholder="user@example.com"
+              className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-sm t-text-main"
+              autoFocus
+              onKeyDown={e => e.key === 'Enter' && shareEmailAddress.trim() && submitShareEmail()}
+            />
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

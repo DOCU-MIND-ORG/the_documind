@@ -1,15 +1,19 @@
 import React, { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import AccentureLoader from './AccentureLoader.jsx';
 
 export default function Streaming({ text, isStreaming, citations, onCitationClick }) {
   const { completedText, streamingLine } = useMemo(() => {
     if (!text) return { completedText: '', streamingLine: '' };
     const parts = text.split(/(```[\s\S]*?```)/g);
     const processedText = parts.map((part, index) => {
-
+      
       if (index % 2 === 0) {
-        return part.replace(/\[CITE:(\d+)\]/g, '[$1](#cite-$1)');
+        return part.replace(/\[CITE:\s*([\d,\s]+)\]/gi, (match, p1) => {
+          const ids = p1.split(',').map(s => s.trim()).filter(Boolean);
+          return ids.map(id => `[${id}](#cite-${id})`).join(' ');
+        });
       }
       return part;
     }).join('');
@@ -60,11 +64,7 @@ export default function Streaming({ text, isStreaming, citations, onCitationClic
         <span className="streaming-line">{streamingLine}</span>
       )}
       {isStreaming && (
-        <span className="inline-block ml-1.5 align-middle animate-pulse" aria-hidden="true" style={{ transform: 'translateY(-1px)' }}>
-          <svg className="w-3.5 h-3.5 text-[#A100FF]" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-            <path d="m.66 16.95 13.242-4.926L.66 6.852V0l22.68 9.132v5.682L.66 24Z"/>
-          </svg>
-        </span>
+        <AccentureLoader className="w-7 h-7 align-middle ml-2" style={{ transform: 'translateY(-3px)' }} />
       )}
     </div>
   );

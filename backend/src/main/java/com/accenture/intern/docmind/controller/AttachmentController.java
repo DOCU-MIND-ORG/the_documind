@@ -75,6 +75,20 @@ public class AttachmentController {
     }
 
     /**
+     * GET /api/sessions/{sessionId}/attachments/wikipedia/search
+     *
+     * Searches Wikipedia via Opensearch API and returns matching article titles.
+     */
+    @GetMapping("/wikipedia/search")
+    public Mono<ResponseEntity<List<String>>> searchWikipedia(
+            @PathVariable Long sessionId,
+            @RequestParam("query") String query
+    ) {
+        return attachmentService.searchWikipedia(query)
+                .map(ResponseEntity::ok);
+    }
+
+    /**
      * GET /api/sessions/{sessionId}/attachments
      *
      * Returns all attachments uploaded across every message in this session.

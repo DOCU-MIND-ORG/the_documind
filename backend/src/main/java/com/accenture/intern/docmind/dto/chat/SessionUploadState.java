@@ -27,6 +27,18 @@ public class SessionUploadState {
      */
     private final List<String> ingestedDocumentTexts = new ArrayList<>();
 
+    /**
+     * Set of active document filenames uploaded in this session.
+     * Used by the Router to resolve references like "the first one" or "all three".
+     */
+    private final List<String> activeDocumentNames = new ArrayList<>();
+
+    /**
+     * Maps temporal/ordinal/topic aliases to their corresponding exact filename.
+     * e.g., "latest" -> "roman_empire.pdf", "physics" -> "theory_of_relativity.pdf"
+     */
+    private final java.util.Map<String, String> aliases = new java.util.HashMap<>();
+
     private volatile SuggestedQuestionsStatus questionsStatus = SuggestedQuestionsStatus.NOT_STARTED;
     private volatile List<String> suggestedQuestions = List.of();
 
@@ -58,6 +70,26 @@ public class SessionUploadState {
 
     public synchronized List<String> getIngestedDocumentTexts() {
         return Collections.unmodifiableList(new ArrayList<>(ingestedDocumentTexts));
+    }
+
+    public synchronized void addActiveDocumentName(String filename) {
+        if (filename != null && !filename.isBlank() && !activeDocumentNames.contains(filename)) {
+            activeDocumentNames.add(filename);
+        }
+    }
+
+    public synchronized List<String> getActiveDocumentNames() {
+        return Collections.unmodifiableList(new ArrayList<>(activeDocumentNames));
+    }
+
+    public synchronized void addAlias(String alias, String filename) {
+        if (alias != null && !alias.isBlank() && filename != null) {
+            aliases.put(alias.toLowerCase(), filename);
+        }
+    }
+
+    public synchronized java.util.Map<String, String> getAliases() {
+        return Collections.unmodifiableMap(new java.util.HashMap<>(aliases));
     }
 
     public SuggestedQuestionsStatus getQuestionsStatus() {

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 const XIcon = () => (
   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
@@ -6,149 +6,216 @@ const XIcon = () => (
   </svg>
 );
 
-const PdfIcon = () => (
-  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-    <path strokeLinecap="round" strokeLinejoin="round" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-    <path strokeLinecap="round" strokeLinejoin="round" d="M14 2v6h6" />
-  </svg>
-);
+export default function CitationDrawer({ citations, onClose }) {
+  const [activeTab, setActiveTab] = useState('all');
+  const [expandedChunks, setExpandedChunks] = useState({});
 
-export default function CitationDrawer({ citation, onClose }) {
   useEffect(() => {
-    if (!citation) return;
+    if (!citations) return;
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [citation, onClose]);
+  }, [citations, onClose]);
 
-  if (!citation) return null;
+  useEffect(() => {
+    // Reset state when citations change
+    setActiveTab('all');
+    setExpandedChunks({});
+  }, [citations]);
 
-  // imageUrl is a relative backend path, so it needs the API origin prepended
+  if (!citations) return null;
+
+  // Handle both single citation (from streaming click) and grouped citations (from badges)
+  const chunksToRender = citations.chunks ? citations.chunks : [citations];
+  const sourceName = citations.sourceName || 'Source';
+
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
-  const resolvedImageUrl = citation.imageUrl
-    ? (citation.imageUrl.startsWith('http') ? citation.imageUrl : `${API_URL}${citation.imageUrl}`)
-    : null;
-  // sourceUrl points at the original PDF this text chunk came from (Cloudinary,
-  // so always absolute) - distinct from imageUrl, which means "render this
-  // inline as an image". A PDF text citation has sourceUrl but no imageUrl.
-  const resolvedSourceUrl = citation.sourceUrl
-    ? (citation.sourceUrl.startsWith('http') ? citation.sourceUrl : `${API_URL}${citation.sourceUrl}`)
-    : null;
+
+  const isWiki = (type) => type && type.toUpperCase().includes('WIKI');
+
+  const counts = {
+    all: chunksToRender.length,
+    docs: chunksToRender.filter(c => !isWiki(c.sourceType) && !c.isImage).length,
+    images: chunksToRender.filter(c => c.isImage).length,
+    wiki: chunksToRender.filter(c => isWiki(c.sourceType)).length,
+  };
+
+  const tabs = [
+    { id: 'all', label: 'All', count: counts.all },
+    { id: 'docs', label: 'Docs', count: counts.docs },
+    { id: 'images', label: 'Images', count: counts.images },
+    { id: 'wiki', label: 'Wiki', count: counts.wiki },
+  ];
+
+  const displayedChunks = chunksToRender.filter(c => {
+    if (activeTab === 'all') return true;
+    if (activeTab === 'docs') return !isWiki(c.sourceType) && !c.isImage;
+    if (activeTab === 'images') return c.isImage;
+    if (activeTab === 'wiki') return isWiki(c.sourceType);
+    return true;
+  });
 
   return (
-    <>
-      <div
-        className="fixed inset-0 z-40 backdrop-blur-[2px] transition-opacity"
-        style={{ backgroundColor: 'rgba(0, 0, 0, 0.2)' }}
-        onClick={onClose}
-      />
-
-      <div
-        className="fixed inset-y-0 right-0 z-50 w-full sm:w-[420px] bg-white shadow-2xl flex flex-col drawer-slide-in"
-        style={{
-          backgroundColor: 'var(--color-bg-base)',
-          borderLeft: '1px solid var(--color-border)',
-        }}
+    <div 
+      className="absolute top-0 right-0 z-50 w-full sm:w-[420px] md:w-[450px] h-full flex flex-col drawer-slide-in shadow-2xl"
+      style={{ 
+        backgroundColor: 'var(--color-bg-base)', 
+        borderLeft: '1px solid var(--color-border)',
+      }}
+    >
+      <div 
+        className="flex items-center justify-between px-5 pt-4 pb-2 shrink-0"
+        style={{ backgroundColor: 'var(--color-bg-surface)' }}
       >
-        <div
-          className="flex items-center justify-between px-5 py-4 shrink-0"
-          style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-surface)' }}
-        >
-          <div className="flex items-center gap-2.5 min-w-0">
-            <h2 className="text-[15px] font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
-              {citation.sourceName}
-            </h2>
-            {citation.sourceType && (
-              <span
-                className="px-2 py-0.5 rounded text-[10px] font-medium tracking-wide uppercase shrink-0"
-                style={{ backgroundColor: 'var(--color-bg-subtle)', color: 'var(--color-text-tertiary)', border: '1px solid var(--color-border)' }}
-              >
-                {citation.sourceType}
-              </span>
-            )}
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg interactive shrink-0 ml-2"
-            style={{ color: 'var(--color-text-tertiary)' }}
-            onMouseEnter={e => e.currentTarget.style.color = 'var(--color-text-secondary)'}
-            onMouseLeave={e => e.currentTarget.style.color = 'var(--color-text-tertiary)'}
-          >
-            <XIcon />
-          </button>
+        <div className="flex flex-col min-w-0 gap-1">
+          <h2 className="text-[17px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
+            Sources
+          </h2>
+          <span className="text-[12px] font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+            {chunksToRender.length} reference{chunksToRender.length !== 1 ? 's' : ''} pulled for this entry
+          </span>
         </div>
-
-        <div
-          className="flex items-center gap-4 px-5 py-2.5 shrink-0 text-[12px] font-medium"
-          style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-subtle)', color: 'var(--color-text-secondary)' }}
+        <button 
+          onClick={onClose}
+          className="p-1.5 rounded-full interactive shrink-0 ml-2 border"
+          style={{ color: 'var(--color-text-secondary)', borderColor: 'var(--color-border)' }}
         >
-          <div className="flex items-center gap-1.5">
-            <span style={{ color: 'var(--color-text-tertiary)' }}>Chunk</span>
-            <span>#{citation.chunkIndex}</span>
-          </div>
-          <div className="w-[1px] h-3 bg-gray-300 dark:bg-gray-700" />
-          <div className="flex items-center gap-1.5">
-            <span style={{ color: 'var(--color-text-tertiary)' }}>Score</span>
-            <span className={citation.score > 0.8 ? 'text-emerald-600 dark:text-emerald-400' : ''}>
-              {citation.score != null ? citation.score : 'N/A'}
-            </span>
-          </div>
-        </div>
+          <XIcon />
+        </button>
+      </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-6">
-          {citation.isImage && resolvedImageUrl && (
-            <div className="mb-5">
-              <p
-                className="text-[11px] font-semibold mb-2 uppercase tracking-wider"
-                style={{ color: 'var(--color-text-tertiary)' }}
-              >
-                Image
-              </p>
-              <img
-                src={resolvedImageUrl}
-                alt={citation.sourceName || 'Cited image'}
-                className="w-full rounded-lg border object-contain max-h-[360px] bg-white"
-                style={{ borderColor: 'var(--color-border)' }}
-                onError={(e) => { e.currentTarget.style.display = 'none'; }}
-              />
-            </div>
-          )}
-
-          {!citation.isImage && resolvedSourceUrl && (
-            <div className="mb-5">
-              <a
-                href={resolvedSourceUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-medium interactive"
-                style={{
-                  border: '1px solid var(--color-border)',
-                  color: 'var(--color-text-primary)',
-                  backgroundColor: 'var(--color-bg-subtle)',
+      <div 
+        className="flex items-center gap-6 px-5 pt-2 shrink-0 overflow-x-auto"
+        style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-surface)' }}
+      >
+        {tabs.map(tab => {
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-1.5 pb-3 pt-1 border-b-2 transition-colors whitespace-nowrap ${isActive ? 'font-bold' : 'font-medium'}`}
+              style={{
+                borderColor: isActive ? 'var(--color-accent)' : 'transparent',
+                color: isActive ? 'var(--color-text-primary)' : 'var(--color-text-secondary)'
+              }}
+            >
+              <span className="text-[13px]">{tab.label}</span>
+              <span 
+                className="flex items-center justify-center min-w-[20px] h-[20px] px-1 rounded-full text-[10px] font-bold"
+                style={{ 
+                  backgroundColor: isActive ? 'var(--color-accent)' : 'var(--color-bg-hover)',
+                  color: isActive ? '#fff' : 'var(--color-text-secondary)',
+                  opacity: isActive ? 1 : 0.8
                 }}
               >
-                <PdfIcon />
-                Open source PDF
-              </a>
-            </div>
-          )}
-
-          <p
-            className="text-[11px] font-semibold mb-3 uppercase tracking-wider"
-            style={{ color: 'var(--color-text-tertiary)' }}
-          >
-            {citation.isImage ? 'Image Description' : 'Source Excerpt'}
-          </p>
-          <div
-            className="text-[14px] leading-relaxed whitespace-pre-wrap font-serif"
-            style={{ color: 'var(--color-text-primary)' }}
-          >
-            {citation.fullExcerpt || citation.excerpt}
-          </div>
-        </div>
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
       </div>
-    </>
+
+      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+        {displayedChunks.map((chunk, idx) => {
+          const resolvedImageUrl = chunk.imageUrl
+            ? (chunk.imageUrl.startsWith('http') ? chunk.imageUrl : `${API_URL}${chunk.imageUrl}`)
+            : null;
+          
+          // Use chunk-specific sourceType if available, otherwise fallback
+          const chunkSourceType = chunk.sourceType || citations.sourceType || '';
+          const chunkSourceName = chunk.sourceName || sourceName;
+          
+          const chunkKey = `${chunkSourceName}-${chunk.chunkIndex}-${idx}`;
+          const isExpanded = !!expandedChunks[chunkKey];
+
+          const toggleExpand = () => {
+            setExpandedChunks(prev => ({ ...prev, [chunkKey]: !prev[chunkKey] }));
+          };
+
+          return (
+            <div 
+              key={`${activeTab}-${idx}`}
+              className="rounded-xl border overflow-hidden shadow-sm"
+              style={{ backgroundColor: 'var(--color-bg-surface)', borderColor: 'var(--color-border)' }}
+            >
+              <div 
+                className="flex items-start justify-between px-4 py-3 shrink-0"
+                style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-subtle)' }}
+              >
+                <div className="flex flex-col min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center justify-center w-6 h-6 rounded-md text-[12px] font-bold text-white bg-blue-600 shrink-0">
+                      {chunk.chunkIndex}
+                    </span>
+                    <h3 className="text-[14px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                      {chunkSourceName}
+                    </h3>
+                  </div>
+                </div>
+                {chunkSourceType && (
+                  <span 
+                    className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase shrink-0 mt-0.5 ml-2 border"
+                    style={{ backgroundColor: 'var(--color-bg-surface)', color: 'var(--color-text-secondary)', borderColor: 'var(--color-border)' }}
+                  >
+                    {chunkSourceType}
+                  </span>
+                )}
+              </div>
+
+              <div className="px-4 py-3">
+                {chunk.isImage && resolvedImageUrl && (
+                  <div className="mb-4">
+                    <img
+                      src={resolvedImageUrl}
+                      alt={chunkSourceName || 'Cited image'}
+                      className="w-full rounded-lg border object-contain max-h-[280px] bg-white"
+                      style={{ borderColor: 'var(--color-border)' }}
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                    />
+                  </div>
+                )}
+                
+                <div 
+                  className={`text-[14px] leading-relaxed whitespace-pre-wrap font-sans ${!isExpanded ? 'line-clamp-3 cursor-pointer' : ''}`}
+                  style={{ color: 'var(--color-text-secondary)' }}
+                  onClick={() => !isExpanded && toggleExpand()}
+                >
+                  {chunk.fullExcerpt || chunk.excerpt}
+                </div>
+                
+                <button 
+                  onClick={toggleExpand}
+                  className="text-[11px] font-bold mt-2 flex items-center gap-1"
+                  style={{ color: 'var(--color-text-tertiary)' }}
+                >
+                  {isExpanded ? (
+                    <>Show less <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg></>
+                  ) : (
+                    <>Show more <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg></>
+                  )}
+                </button>
+                
+                <div className="mt-3 pt-3 flex items-center justify-between text-[11px] font-medium" style={{ borderTop: '1px solid var(--color-border)', color: 'var(--color-text-tertiary)' }}>
+                  <div className="flex items-center gap-1.5">
+                    <span>Score:</span>
+                    <span style={{ color: chunk.score > 0.8 ? 'var(--color-accent)' : 'inherit' }}>
+                      {chunk.score != null ? chunk.score.toFixed(2) : 'N/A'}
+                    </span>
+                  </div>
+                  {chunk.url && (
+                    <a href={chunk.url} target="_blank" rel="noopener noreferrer" className="hover:underline flex items-center gap-1 font-semibold" style={{ color: 'var(--color-accent)' }}>
+                      View Source <span aria-hidden="true">→</span>
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

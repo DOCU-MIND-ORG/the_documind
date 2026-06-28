@@ -3,7 +3,6 @@ import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { attachmentService } from '../services/attachmentService.js';
 import { useSessions } from '../context/SessionsContext.jsx';
 
-
 const ArrowLeftIcon = () => (
   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
     <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
@@ -32,6 +31,11 @@ const FILE_ICONS = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
     </svg>
   ),
+  WIKIPEDIA: (
+    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+    </svg>
+  ),
   OTHER: (
     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
       <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
@@ -40,10 +44,11 @@ const FILE_ICONS = {
 };
 
 const TYPE_COLORS = {
-  PDF:   { bg: 'bg-red-500/10',    border: 'border-red-500/20',    text: 'text-red-400',    dot: 'bg-red-400' },
-  IMAGE: { bg: 'bg-violet-500/10', border: 'border-violet-500/20', text: 'text-violet-400', dot: 'bg-violet-400' },
-  TEXT:  { bg: 'bg-sky-500/10',    border: 'border-sky-500/20',    text: 'text-sky-400',    dot: 'bg-sky-400' },
-  OTHER: { bg: 'bg-slate-500/10',  border: 'border-slate-500/20',  text: 'text-slate-400',  dot: 'bg-slate-400' },
+  PDF:       { bg: 'bg-red-500/10',     border: 'border-red-500/20',     text: 'text-red-400',     dot: 'bg-red-400' },
+  IMAGE:     { bg: 'bg-violet-500/10',  border: 'border-violet-500/20',  text: 'text-violet-400',  dot: 'bg-violet-400' },
+  TEXT:      { bg: 'bg-sky-500/10',     border: 'border-sky-500/20',     text: 'text-sky-400',     dot: 'bg-sky-400' },
+  WIKIPEDIA: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400', dot: 'bg-emerald-400' },
+  OTHER:     { bg: 'bg-slate-500/10',   border: 'border-slate-500/20',   text: 'text-slate-400',   dot: 'bg-slate-400' },
 };
 
 const formatBytes = (bytes) => {
@@ -61,7 +66,6 @@ const formatDate = (iso) => {
   });
 };
 
-
 export default function Attachments() {
   const { sessionId } = useParams();
   const navigate = useNavigate();
@@ -69,20 +73,22 @@ export default function Attachments() {
   const { sessions } = useSessions();
 
   const [attachments, setAttachments] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [filter, setFilter] = useState('ALL');
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState(null);
+  const [filter, setFilter]           = useState('ALL');
 
   const session = sessions.find(s => String(s.sessionId) === String(sessionId));
 
   useEffect(() => {
     setLoading(true);
     setError(null);
+    // getBySession fetches from view_attachments — only files uploaded in THIS session
     attachmentService.getBySession(sessionId)
       .then(data => { setAttachments(data || []); setLoading(false); })
       .catch(err => { setError(err.message || 'Failed to load attachments'); setLoading(false); });
   }, [sessionId]);
 
+  const ALL_TYPES = ['ALL', 'PDF', 'IMAGE', 'TEXT', 'WIKIPEDIA', 'OTHER'];
   const displayed = filter === 'ALL' ? attachments : attachments.filter(a => a.type === filter);
 
   const typeCounts = attachments.reduce((acc, a) => {
@@ -108,7 +114,7 @@ export default function Attachments() {
           <ArrowLeftIcon />
         </button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-[13px] font-medium text-primary truncate">Attachments</h1>
+          <h1 className="text-[13px] font-medium text-primary truncate">Session Attachments</h1>
           {session?.title && (
             <p className="text-[11px] text-tertiary truncate">{session.title}</p>
           )}
@@ -118,9 +124,11 @@ export default function Attachments() {
 
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6">
         <div className="max-w-3xl mx-auto">
+
+          {/* Filter pills — include WIKIPEDIA since URLs are attachments too */}
           {!loading && !error && attachments.length > 0 && (
             <div className="flex items-center gap-1.5 mb-6 flex-wrap">
-              {['ALL', 'PDF', 'IMAGE', 'TEXT', 'OTHER'].map(type => {
+              {ALL_TYPES.map(type => {
                 const count = type === 'ALL' ? attachments.length : (typeCounts[type] || 0);
                 if (type !== 'ALL' && !count) return null;
                 const colors = type !== 'ALL' ? TYPE_COLORS[type] : null;
@@ -139,7 +147,7 @@ export default function Attachments() {
                     {type !== 'ALL' && (
                       <span className={`w-1.5 h-1.5 rounded-full ${filter === type ? colors.dot : 'bg-slate-400/30'}`} />
                     )}
-                    {type === 'ALL' ? 'All' : type.charAt(0) + type.slice(1).toLowerCase()}
+                    {type === 'ALL' ? 'All' : type === 'WIKIPEDIA' ? 'Links' : type.charAt(0) + type.slice(1).toLowerCase()}
                     <span className={filter === type && type !== 'ALL' ? colors.text : 'text-tertiary'}>
                       {count}
                     </span>
@@ -174,7 +182,7 @@ export default function Attachments() {
               </div>
               <div className="text-center">
                 <p className="text-sm font-medium text-secondary">No attachments yet</p>
-                <p className="text-xs text-tertiary mt-1">Upload files in the chat to see them here.</p>
+                <p className="text-xs text-tertiary mt-1">Upload files or add Wikipedia links in the chat to see them here.</p>
               </div>
               <button
                 onClick={() => navigate(`/chat/${sessionId}`)}
@@ -196,6 +204,7 @@ export default function Attachments() {
                 const tagProps = fileUrl
                   ? { href: fileUrl, target: '_blank', rel: 'noopener noreferrer', title: `Open ${att.fileName}` }
                   : {};
+                const isLink  = att.type === 'WIKIPEDIA';
                 return (
                   <Tag
                     key={att.attachmentId}
@@ -213,15 +222,24 @@ export default function Attachments() {
                       <p className="text-[13px] font-medium text-primary truncate" title={att.fileName}>
                         {att.fileName || 'Unnamed file'}
                       </p>
-                      <p className="text-[11px] text-tertiary mt-0.5 truncate" title={att.storagePath}>
-                        {att.storagePath}
-                      </p>
+                      {!isLink && att.storagePath && (
+                        <p className="text-[11px] text-tertiary mt-0.5 truncate" title={att.storagePath}>
+                          {att.storagePath}
+                        </p>
+                      )}
+                      {isLink && (
+                        <p className="text-[11px] text-emerald-400/70 mt-0.5 truncate" title={att.url}>
+                          {att.url}
+                        </p>
+                      )}
                       <div className="flex items-center gap-3 mt-2">
                         <span className={`inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider ${colors.text}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${colors.dot}`} />
-                          {att.type}
+                          {isLink ? 'LINK' : att.type}
                         </span>
-                        <span className="text-[11px] text-tertiary">{formatBytes(att.fileSizeBytes)}</span>
+                        {!isLink && (
+                          <span className="text-[11px] text-tertiary">{formatBytes(att.fileSizeBytes)}</span>
+                        )}
                       </div>
                     </div>
                     <div className="shrink-0 text-right">
@@ -233,9 +251,10 @@ export default function Attachments() {
               })}
             </div>
           )}
+
           {!loading && !error && attachments.length > 0 && displayed.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 gap-3 text-secondary">
-              <p className="text-sm">No {filter.toLowerCase()} files in this session.</p>
+              <p className="text-sm">No {filter === 'WIKIPEDIA' ? 'links' : filter.toLowerCase()} files in this session.</p>
               <button onClick={() => setFilter('ALL')} className="text-xs text-blue-500 hover:text-blue-400">
                 Clear filter
               </button>

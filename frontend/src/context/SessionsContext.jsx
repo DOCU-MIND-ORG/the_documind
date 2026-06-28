@@ -5,7 +5,7 @@ const SessionsContext = createContext(null);
 
 export function SessionsProvider({ children }) {
   const [sessions, setSessions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading]   = useState(true);
 
   useEffect(() => {
     sessionService.getAll()

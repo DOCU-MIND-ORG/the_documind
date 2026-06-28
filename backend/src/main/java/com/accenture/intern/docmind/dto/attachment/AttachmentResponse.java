@@ -10,7 +10,15 @@ import java.time.LocalDateTime;
 @Builder
 public class AttachmentResponse {
     private Long attachmentId;
-    private Long messageId;
+
+    /**
+     * The session this attachment was originally uploaded in (provenance).
+     * May be null if that session was later deleted — the Attachment row
+     * itself survives as part of DocMind's shared corpus, just detached from
+     * any specific session.
+     */
+    private Long sessionId;
+
     private AttachmentType type;
     private String fileName;
     private String storagePath;

@@ -3,11 +3,17 @@ import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-
 import { useAuth } from './context/AuthContext.jsx';
 import { SessionsProvider } from './context/SessionsContext.jsx';
 import AppSidebar from './components/AppSidebar.jsx';
-import Login from './pages/Login.jsx';
-import Register from './pages/Register.jsx';
-import Chat from './pages/Chat.jsx';
-import Settings from './pages/Settings.jsx';
+
+// Pages
+import Login         from './pages/Login.jsx';
+import Register      from './pages/Register.jsx';
+import ResetPassword from './pages/ResetPassword.jsx';
+import Chat          from './pages/Chat.jsx';
+import Settings      from './pages/Settings.jsx';
 import Attachments from './pages/Attachments.jsx';
+import Explore       from './pages/Explore.jsx';
+
+// Loading spinner
 
 function AuthLoading() {
   return (
@@ -20,6 +26,8 @@ function AuthLoading() {
   );
 }
 
+// Guest route to redirect if already logged in
+
 function GuestRoute({ children }) {
   const { isAuthenticated, authReady } = useAuth();
   if (!authReady) return <AuthLoading />;
@@ -29,10 +37,11 @@ function GuestRoute({ children }) {
 
 function ProtectedLayout() {
   const { isAuthenticated, authReady } = useAuth();
-  const [expanded, setExpanded] = useState(true);
-  const [mobileOpen, setMobileOpen] = useState(false);
 
-  if (!authReady) return <AuthLoading />;
+  const [expanded,     setExpanded]     = useState(true);
+  const [mobileOpen,   setMobileOpen]   = useState(false);
+
+  if (!authReady)      return <AuthLoading />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
   return (
@@ -56,6 +65,8 @@ function ProtectedLayout() {
   );
 }
 
+// Starting point of the website
+
 function RootRedirect() {
   const { isAuthenticated, authReady } = useAuth();
   if (!authReady) return <AuthLoading />;
@@ -67,14 +78,17 @@ export default function App() {
     <Router>
       <Routes>
         <Route path="/" element={<RootRedirect />} />
-        <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
-        <Route path="/register" element={<GuestRoute><Register /></GuestRoute>} />
+        <Route path="/login"          element={<GuestRoute><Login /></GuestRoute>} />
+        <Route path="/register"       element={<GuestRoute><Register /></GuestRoute>} />
+        <Route path="/reset-password" element={<GuestRoute><ResetPassword /></GuestRoute>} />
 
+        {/* Protected routes need to be authenticated to access these */}
         <Route element={<ProtectedLayout />}>
-          <Route path="/dashboard" element={<Chat />} />
-          <Route path="/chat/:sessionId" element={<Chat />} />
-          <Route path="/chat/:sessionId/attachments" element={<Attachments />} />
-          <Route path="/settings" element={<Settings />} />
+          <Route path="/dashboard"                          element={<Chat />} />
+          <Route path="/chat/:sessionId"                   element={<Chat />} />
+          <Route path="/chat/:sessionId/attachments"       element={<Attachments />} />
+          <Route path="/explore"                           element={<Explore />} />
+          <Route path="/settings"                          element={<Settings />} />
         </Route>
 
         <Route path="*" element={<RootRedirect />} />

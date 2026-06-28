@@ -42,7 +42,7 @@ public class PreferenceService {
                             .language("en")
                             .citationEnabled(true)
                             .responseStyle(ResponseStyle.BEGINNER)
-                            .modelName(ModelName.GEMINI_3_1_FLASH_LITE)
+                            .modelName(ModelName.GEMINI_2_5_FLASH)
                             .temperature(0.7)
                             .build();
                     return userPreferenceRepository.save(defaultPref);

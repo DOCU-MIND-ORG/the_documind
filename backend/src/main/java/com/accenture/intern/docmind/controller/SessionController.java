@@ -13,6 +13,9 @@ import lombok.RequiredArgsConstructor;
 import java.security.Principal;
 import java.util.List;
 
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
+
 /**
  * Handles session management endpoints.
  * Implementation to be completed by the assigned developer.
@@ -86,5 +89,96 @@ public class SessionController {
     ) {
         SuggestedQuestionsResponse response = sessionService.getSuggestedQuestions(principal.getName(), id);
         return ResponseEntity.ok(response);
+    }
+
+    // GET /api/sessions/{id}/export
+    @GetMapping("/{id}/export")
+    public Mono<ResponseEntity<byte[]>> exportSession(
+            @PathVariable Long id,
+            Principal principal
+    ) {
+        // Markdown export builds the full session and calls the LLM summary service,
+        // which is blocking because Spring AI's ChatClient.call() is synchronous.
+        // In WebFlux, never run that work on the request/event-loop thread.
+        return Mono.fromCallable(() -> {
+                    byte[] markdown = sessionService.exportSessionToMarkdown(principal.getName(), id);
+                    org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+                    headers.add("Content-Disposition", "attachment; filename=\"session-" + id + ".md\"");
+                    headers.add("Content-Type", "text/markdown; charset=UTF-8");
+                    return ResponseEntity.ok()
+                            .headers(headers)
+                            .body(markdown);
+                })
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    // POST /api/sessions/{id}/share/email
+    @PostMapping("/{id}/share/email")
+    public Mono<ResponseEntity<?>> shareSessionViaEmail(
+            @PathVariable Long id,
+            @RequestBody java.util.Map<String, String> payload,
+            Principal principal
+    ) {
+        String targetEmail = payload.get("email");
+        if (targetEmail == null || targetEmail.isBlank()) {
+            return Mono.<ResponseEntity<?>>just(ResponseEntity.badRequest().body("Target email is required"));
+        }
+
+        // Sharing reuses markdown export and sends email, both blocking operations.
+        // Offload them so WebFlux does not throw IllegalStateException for block().
+        return Mono.<ResponseEntity<?>>fromCallable(() -> {
+                    // This will throw if the session doesn't belong to the user
+                    sessionService.shareSessionViaEmail(principal.getName(), id, targetEmail);
+                    return ResponseEntity.ok(java.util.Map.of(
+                            "success", true,
+                            "message", "Email is being sent in the background."
+                    ));
+                })
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    // POST /api/sessions/{id}/export-pdf
+    // Queues a PDF export job onto a Redis stream and returns immediately with
+    // a jobId — PDF generation (LLM summary + rendering) is too heavy to run
+    // inline on the request thread. See PdfExportWorkerService.
+    @PostMapping("/{id}/export-pdf")
+    public ResponseEntity<com.accenture.intern.docmind.dto.session.PdfExportJobResponse> requestPdfExport(
+            @PathVariable Long id,
+            Principal principal
+    ) {
+        return ResponseEntity.ok(sessionService.requestPdfExport(principal.getName(), id));
+    }
+
+    // GET /api/sessions/{id}/export-pdf/{jobId}
+    // Polled by the frontend until status is READY (with a downloadPath) or FAILED.
+    @GetMapping("/{id}/export-pdf/{jobId}")
+    public ResponseEntity<com.accenture.intern.docmind.dto.session.PdfExportStatusResponse> getPdfExportStatus(
+            @PathVariable Long id,
+            @PathVariable String jobId,
+            Principal principal
+    ) {
+        return ResponseEntity.ok(sessionService.getPdfExportStatus(principal.getName(), id, jobId));
+    }
+
+    // GET /api/sessions/{id}/export-pdf/{jobId}/download
+    // Streams the rendered PDF bytes straight from this backend (no cloud
+    // storage involved) once the frontend has seen status == READY. Returns
+    // 404 if the job result has expired or never completed.
+    @GetMapping("/{id}/export-pdf/{jobId}/download")
+    public ResponseEntity<byte[]> downloadPdfExport(
+            @PathVariable Long id,
+            @PathVariable String jobId,
+            Principal principal
+    ) {
+        byte[] pdfBytes = sessionService.downloadPdfExport(principal.getName(), id, jobId);
+        if (pdfBytes == null) {
+            return ResponseEntity.notFound().build();
+        }
+        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+        headers.add("Content-Disposition", "attachment; filename=\"session-" + id + ".pdf\"");
+        headers.add("Content-Type", "application/pdf");
+        return ResponseEntity.ok()
+                .headers(headers)
+                .body(pdfBytes);
     }
 }

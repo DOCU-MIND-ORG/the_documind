@@ -1,27 +1,38 @@
 package com.accenture.intern.docmind.service;
 
+import com.accenture.intern.docmind.aiservices.context.SessionSummaryService;
 import com.accenture.intern.docmind.dto.chat.SessionUploadState;
 import com.accenture.intern.docmind.dto.session.CreateSessionRequest;
+import com.accenture.intern.docmind.dto.session.PdfExportJobResponse;
+import com.accenture.intern.docmind.dto.session.PdfExportStatusResponse;
 import com.accenture.intern.docmind.dto.session.SessionResponse;
 import com.accenture.intern.docmind.dto.session.SuggestedQuestionsResponse;
 import com.accenture.intern.docmind.entity.Session;
 import com.accenture.intern.docmind.entity.User;
 import com.accenture.intern.docmind.entity.Message;
 import com.accenture.intern.docmind.dto.session.MessageResponse;
+import com.accenture.intern.docmind.repository.AttachmentRepository;
 import com.accenture.intern.docmind.repository.SessionRepository;
 import com.accenture.intern.docmind.repository.UserRepository;
 import com.accenture.intern.docmind.repository.MessageRepository;
+import com.accenture.intern.docmind.repository.ViewAttachmentRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.commonmark.parser.Parser;
+import org.commonmark.renderer.html.HtmlRenderer;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * Service for managing chat sessions and message history.
- * Implementation to be completed by the assigned developer.
  */
 @Service
 @RequiredArgsConstructor
@@ -31,7 +42,17 @@ public class SessionService {
     private final SessionRepository sessionRepository;
     private final UserRepository userRepository;
     private final MessageRepository messageRepository;
+    private final AttachmentRepository attachmentRepository;
+    private final ViewAttachmentRepository viewAttachmentRepository;
+    private final EmailService emailService;
     private final SessionCacheService sessionCacheService;
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final ObjectMapper objectMapper;
+    private final SessionSummaryService sessionSummaryService;
+
+    private static final String PDF_EXPORT_STREAM_KEY = "pdf_export_jobs";
+    private static final String PDF_EXPORT_RESULT_PREFIX = "pdf_export_result:";
+    private static final String PDF_EXPORT_BLOB_PREFIX = "pdf_export_blob:";
 
     public SessionResponse createSession(String userEmail, CreateSessionRequest request){
         User user=userRepository.findByEmail(userEmail);
@@ -80,24 +101,44 @@ public class SessionService {
         return response;
     }
 
-    public void deleteSession(String userEmail,Long sessionId){
+    public void deleteSession(String userEmail, Long sessionId) {
+        User user = userRepository.findByEmail(userEmail);
+        if (user == null) throw new RuntimeException("User Not Found 🚫");
 
-        User user=userRepository.findByEmail(userEmail);
-
-        if(user==null) throw new RuntimeException("User Not Found 🚫");
-
-        Session session=sessionRepository.findById(sessionId)
+        Session session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new RuntimeException("Session Not Found"));
 
-        if(!session.getUser().getId().equals(user.getId())){
+        if (!session.getUser().getId().equals(user.getId())) {
             throw new RuntimeException("Access denied");
         }
 
-        // Note: deliberately NOT deleting the session's uploaded documents/chunks.
-        // DocMind's corpus is a shared, persistent company knowledge base — once a
-        // document is uploaded, it stays searchable for everyone even after the
-        // session that introduced it is gone. Deleting a session only removes its
-        // chat history.
+        // 1. Delete view_attachments rows for this session first (FK child of both
+        //    sessions and attachments — must go before either parent is deleted).
+        //    This only removes the session's "View Attachments" membership rows;
+        //    it never touches the Attachment rows themselves.
+        viewAttachmentRepository.deleteBySession_SessionId(sessionId);
+
+        // 2. Detach (do NOT delete) the attachments originally uploaded in this
+        //    session. Attachment.session is a real FK column, so simply deleting
+        //    the session while attachments still point at it would fail with a
+        //    foreign-key violation — but the row itself must survive regardless:
+        //    DocMind's corpus is a shared company knowledge base, and once a
+        //    document is uploaded it stays searchable (and visible in the global
+        //    Explore page) for everyone even after the session that introduced it
+        //    is gone. Setting session -> null breaks the FK link cleanly without
+        //    deleting the row, the Cloudinary file, or the indexed chunks.
+        List<com.accenture.intern.docmind.entity.Attachment> attachments =
+                attachmentRepository.findBySessionSessionId(sessionId);
+        for (com.accenture.intern.docmind.entity.Attachment attachment : attachments) {
+            attachment.setSession(null);
+        }
+        attachmentRepository.saveAll(attachments);
+
+        // 3. Clear the in-memory upload/processing cache for this session so the
+        //    frontend never sees a stale "processing" state after deletion.
+        sessionCacheService.invalidateState(sessionId);
+
+        // 4. Delete the session (cascades to messages via Session.messages CascadeType.ALL).
         sessionRepository.delete(session);
     }
 
@@ -135,10 +176,7 @@ public class SessionService {
 
     /**
      * Polled by the frontend after a document/Wikipedia upload to find out when
-     * the 3 suggested starter questions are ready. Reads from the same in-memory
-     * SessionUploadState cache used to track ingestion progress (see
-     * EmbeddingService / SessionCacheService) — no DB round trip needed since this
-     * is short-lived, per-session state.
+     * the 3 suggested starter questions are ready.
      */
     public SuggestedQuestionsResponse getSuggestedQuestions(String userEmail, Long sessionId) {
         User user = userRepository.findByEmail(userEmail);
@@ -197,5 +235,152 @@ public class SessionService {
                 .createdAt(session.getCreatedAt())
                 .updatedAt(session.getUpdatedAt())
                 .build();
+    }
+
+    public byte[] exportSessionToMarkdown(String userEmail, Long sessionId) {
+        User user = userRepository.findByEmail(userEmail);
+        if (user == null) throw new RuntimeException("User Not Found 🚫");
+
+        Session session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new RuntimeException("No Session found 🚫"));
+
+        if (!session.getUser().getId().equals(user.getId())) {
+            throw new RuntimeException("Access Denied !! You seems to be 👽");
+        }
+
+        List<Message> messages = messageRepository.findBySessionOrderByCreatedAtAsc(session);
+        StringBuilder sb = new StringBuilder();
+        sb.append("# ").append(session.getTitle() != null ? session.getTitle() : "Chat Session").append("\n\n");
+
+        java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        sb.append("**Created:** ").append(session.getCreatedAt().format(formatter)).append("\n\n");
+        sb.append("---\n\n");
+
+        // Same LLM-generated executive summary PdfGeneratorService renders under
+        // "Session summary" in the PDF export — kept here too so the two export
+        // formats give equivalent content. SessionSummaryService.summarize()
+        // never throws (it falls back to a generic line internally), so a slow
+        // or failed LLM call degrades gracefully instead of breaking the export.
+        String summary = sessionSummaryService.summarize(messages).block();
+        sb.append("## Session Summary\n\n");
+        sb.append(summary == null || summary.isBlank() ? "No summary available for this session." : summary).append("\n\n");
+        sb.append("---\n\n");
+
+        for (Message m : messages) {
+            if (m.getContent() == null || m.getContent().isBlank()) continue;
+
+            String role = m.getRole().name();
+            if (role.equalsIgnoreCase("USER")) {
+                if (m.getContent().startsWith("[file upload:") || m.getContent().startsWith("[wikipedia link:")) {
+                    sb.append("📎 *").append(m.getContent()).append("*\n\n");
+                } else {
+                    sb.append("### You\n").append(m.getContent()).append("\n\n");
+                }
+            } else if (role.equalsIgnoreCase("ASSISTANT") || role.equalsIgnoreCase("MODEL")) {
+                sb.append("### DocMind\n").append(m.getContent()).append("\n\n");
+            } else {
+                sb.append("### ").append(role).append("\n").append(m.getContent()).append("\n\n");
+            }
+        }
+
+        return sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    public void shareSessionViaEmail(String userEmail, Long sessionId, String targetEmail) {
+        byte[] mdBytes = exportSessionToMarkdown(userEmail, sessionId);
+        String markdown = new String(mdBytes, java.nio.charset.StandardCharsets.UTF_8);
+
+        Parser parser = Parser.builder().build();
+        org.commonmark.node.Node document = parser.parse(markdown);
+        HtmlRenderer renderer = HtmlRenderer.builder().build();
+        String htmlBody = renderer.render(document);
+
+        Session session = sessionRepository.findById(sessionId).orElseThrow();
+        String subject = "DocMind Chat Session: " + (session.getTitle() != null ? session.getTitle() : "Untitled");
+
+        String fullHtml = "<html><body style='font-family: sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto;'>" +
+                          htmlBody +
+                          "</body></html>";
+
+        emailService.sendHtmlEmail(targetEmail, subject, fullHtml);
+    }
+
+    public PdfExportJobResponse requestPdfExport(String userEmail, Long sessionId) {
+        User user = userRepository.findByEmail(userEmail);
+        if (user == null) throw new RuntimeException("User Not Found 🚫");
+
+        Session session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new RuntimeException("No Session found 🚫"));
+
+        if (!session.getUser().getId().equals(user.getId())) {
+            throw new RuntimeException("Access Denied !! You seems to be 👽");
+        }
+
+        String jobId = UUID.randomUUID().toString();
+
+        Map<String, Object> recordMap = new HashMap<>();
+        recordMap.put("jobId", jobId);
+        recordMap.put("sessionId", sessionId.toString());
+        recordMap.put("userEmail", userEmail);
+        recordMap.put("timestamp", String.valueOf(System.currentTimeMillis()));
+
+        redisTemplate.opsForStream().add(PDF_EXPORT_STREAM_KEY, recordMap);
+
+        return PdfExportJobResponse.builder()
+                .jobId(jobId)
+                .status("QUEUED")
+                .build();
+    }
+
+    public PdfExportStatusResponse getPdfExportStatus(String userEmail, Long sessionId, String jobId) {
+        User user = userRepository.findByEmail(userEmail);
+        if (user == null) throw new RuntimeException("User Not Found 🚫");
+
+        Object raw = redisTemplate.opsForValue().get(PDF_EXPORT_RESULT_PREFIX + jobId);
+        if (raw == null) {
+            return PdfExportStatusResponse.builder().status("QUEUED").build();
+        }
+
+        try {
+            String json = raw.toString();
+            Map<?, ?> payload = objectMapper.readValue(json, Map.class);
+            String status = (String) payload.get("status");
+            return PdfExportStatusResponse.builder()
+                    .status(status)
+                    .downloadPath("READY".equals(status)
+                            ? "/api/sessions/" + sessionId + "/export-pdf/" + jobId + "/download"
+                            : null)
+                    .fileName((String) payload.get("fileName"))
+                    .errorMessage((String) payload.get("errorMessage"))
+                    .build();
+        } catch (Exception e) {
+            return PdfExportStatusResponse.builder()
+                    .status("FAILED")
+                    .errorMessage("Could not read export status")
+                    .build();
+        }
+    }
+
+    /**
+     * Reads the rendered PDF bytes for a completed export job back out of
+     * Redis (no cloud storage involved — see PdfExportWorkerService). Returns
+     * null if the job isn't ready/found/expired — the caller (SessionController)
+     * maps that to a 404.
+     */
+    public byte[] downloadPdfExport(String userEmail, Long sessionId, String jobId) {
+        User user = userRepository.findByEmail(userEmail);
+        if (user == null) throw new RuntimeException("User Not Found 🚫");
+
+        Session session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new RuntimeException("No Session found 🚫"));
+
+        if (!session.getUser().getId().equals(user.getId())) {
+            throw new RuntimeException("Access Denied !! You seems to be 👽");
+        }
+
+        Object raw = redisTemplate.opsForValue().get(PDF_EXPORT_BLOB_PREFIX + jobId);
+        if (raw == null) return null;
+
+        return java.util.Base64.getDecoder().decode(raw.toString());
     }
 }

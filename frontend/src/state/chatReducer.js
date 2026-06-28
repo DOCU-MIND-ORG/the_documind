@@ -1,6 +1,7 @@
+
 export const initialChatState = {
-  sessionId: null,
-  messages: [],
+  sessionId: null,        
+  messages: [],           
   streamingMessageId: null,
   isStreaming: false,
   messagesLoading: false,
@@ -23,7 +24,7 @@ export function chatReducer(state, action) {
       const paramId = action.payload.sessionId ? String(action.payload.sessionId) : null;
       const stateId = state.sessionId ? String(state.sessionId) : null;
       if (paramId === stateId) return state;
-
+      
       return {
         ...initialChatState,
         sessionId: action.payload.sessionId,
@@ -41,11 +42,15 @@ export function chatReducer(state, action) {
 
     case 'SEND_MESSAGE_OPTIMISTIC': {
       const { userMessage, assistantPlaceholder } = action.payload;
+      const newMessages = [...state.messages];
+      if (userMessage) newMessages.push(userMessage);
+      if (assistantPlaceholder) newMessages.push({ ...assistantPlaceholder, progressEvents: [] });
+      
       return {
         ...state,
-        messages: [...state.messages, userMessage, assistantPlaceholder],
+        messages: newMessages,
         isStreaming: true,
-        streamingMessageId: assistantPlaceholder.id,
+        streamingMessageId: assistantPlaceholder ? assistantPlaceholder.id : state.streamingMessageId,
         suggestedQuestions: [],
       };
     }
@@ -56,6 +61,30 @@ export function chatReducer(state, action) {
         messages: state.messages.map(m =>
           m.id === action.payload.messageId
             ? { ...m, text: m.text + action.payload.chunk }
+            : m
+        ),
+      };
+
+    case 'RESET_STREAM_TEXT':
+      // Sent when the backend discards a first-pass "couldn't find relevant
+      // information" answer and retries retrieval with the adaptive method —
+      // clears the stale text so the retried answer's tokens don't render
+      // glued onto the end of the discarded one.
+      return {
+        ...state,
+        messages: state.messages.map(m =>
+          m.id === action.payload.messageId
+            ? { ...m, text: '' }
+            : m
+        ),
+      };
+
+    case 'UPDATE_PROGRESS':
+      return {
+        ...state,
+        messages: state.messages.map(m =>
+          m.id === action.payload.messageId
+            ? { ...m, progressEvents: [...(m.progressEvents || []), action.payload.progress] }
             : m
         ),
       };

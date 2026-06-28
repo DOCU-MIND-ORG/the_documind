@@ -1,72 +1,59 @@
 const BASE_URL = import.meta.env.VITE_API_URL || '';
 
-// Parses one SSE block ("event: ...\ndata: ...") into { eventType, eventData }
-function parseEventBlock(block) {
-  let eventType = 'message';
-  const eventData = [];
-  for (const line of block.split('\n')) {
-    if (line.startsWith('event:')) {
-      eventType = line.substring(6).trim();
-    } else if (line.startsWith('data:')) {
-      const dataStr = line.substring(5);
-      eventData.push(dataStr.startsWith(' ') ? dataStr.substring(1) : dataStr);
-    }
-  }
-  return { eventType, eventData };
-}
-
-function dispatchEvent(block, onChunk, onCitations) {
-  const { eventType, eventData } = parseEventBlock(block);
-  if (eventData.length === 0) return;
-
-  if (eventType === 'citations') {
-    try {
-      const citations = JSON.parse(eventData.join('\n'));
-      if (onCitations) onCitations(citations);
-    } catch (e) {
-      console.error('Failed to parse citations', e);
-    }
-  } else {
-    onChunk(eventData.join('\n'));
-  }
-}
-
 export const chatService = {
-  streamMessage: async (sessionId, message, model, onChunk, onCitations, onError, onComplete) => {
-    const streamUrl = `${BASE_URL}/api/chat/${sessionId}/stream`;
-    const buildRequest = () => fetch(streamUrl, {
+  submitMessage: async (sessionId, message, model) => {
+    const response = await fetch(`${BASE_URL}/api/chat/${sessionId}/message`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'text/event-stream',
       },
       credentials: 'include',
       body: JSON.stringify({ message, model }),
     });
 
-    try {
-      let response = await buildRequest();
-
-      if (!response.ok) {
-        if (response.status !== 401) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
+    if (!response.ok) {
+      if (response.status === 401) {
         const refreshRes = await fetch(`${BASE_URL}/auth/refresh`, {
           method: 'POST',
-          credentials: 'include',
+          credentials: 'include'
         });
-
-        if (!refreshRes.ok) {
+        if (refreshRes.ok) {
+          const retryRes = await fetch(`${BASE_URL}/api/chat/${sessionId}/message`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({ message, model }),
+          });
+          if (!retryRes.ok) {
+            window.dispatchEvent(new Event('auth-expired'));
+            throw new Error('UNAUTHORIZED');
+          }
+          return retryRes.json();
+        } else {
           window.dispatchEvent(new Event('auth-expired'));
           throw new Error('UNAUTHORIZED');
         }
+      }
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return response.json();
+  },
 
-        response = await buildRequest();
-        if (!response.ok) {
-          window.dispatchEvent(new Event('auth-expired'));
-          throw new Error('UNAUTHORIZED');
-        }
+  consumeStream: async (sessionId, messageId, onChunk, onCitations, onProgress, onError, onComplete, onRetry) => {
+    const streamUrl = `${BASE_URL}/api/chat/${sessionId}/stream/${messageId}`;
+    try {
+      const response = await fetch(streamUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'text/event-stream',
+        },
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const reader = response.body.getReader();
@@ -76,25 +63,54 @@ export const chatService = {
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-
+        
         buffer += decoder.decode(value, { stream: true });
         const parts = buffer.split('\n\n');
         buffer = parts.pop() || '';
-
+        
         for (const part of parts) {
-          dispatchEvent(part, onChunk, onCitations);
+          const lines = part.split('\n');
+          let eventType = 'message';
+          let eventData = [];
+          for (const line of lines) {
+            if (line.startsWith('event:')) {
+              eventType = line.substring(6).trim();
+            } else if (line.startsWith('data:')) {
+              eventData.push(line.substring(5));
+            }
+          }
+          if (eventData.length > 0) {
+            if (eventType === 'citations') {
+              try {
+                const citations = JSON.parse(eventData.join('\n'));
+                if (onCitations) onCitations(citations);
+              } catch (e) {
+                console.error('Failed to parse citations', e);
+              }
+            } else if (eventType === 'progress') {
+              try {
+                const progressData = JSON.parse(eventData.join('\n'));
+                if (onProgress) onProgress(progressData);
+              } catch (e) {
+                console.error('Failed to parse progress', e);
+              }
+            } else if (eventType === 'done') {
+                if (onComplete) onComplete();
+                return; // End stream
+            } else if (eventType === 'retry') {
+                if (onRetry) onRetry();
+            } else {
+              onChunk(eventData.join('\n'));
+            }
+          }
         }
       }
-
-      if (buffer.trim()) {
-        dispatchEvent(buffer, onChunk, onCitations);
-      }
-
+      
       if (onComplete) onComplete();
     } catch (error) {
-      console.error('Error in streamMessage:', error);
+      console.error('Error in consumeStream:', error);
       if (onError) onError(error);
       throw error;
     }
-  },
+  }
 };

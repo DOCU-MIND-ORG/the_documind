@@ -34,26 +34,27 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState('profile');
   const { theme, toggle } = useTheme();
 
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [picture, setPicture] = useState('');
-  const [gender, setGender] = useState('');
-  const [occupation, setOccupation] = useState('');
+  const [name,         setName]         = useState('');
+  const [email,        setEmail]        = useState('');
+  const [phone,        setPhone]        = useState('');
+  const [picture,      setPicture]      = useState('');
+  const [gender,       setGender]       = useState('');
+  const [occupation,   setOccupation]   = useState('');
   const [organization, setOrganization] = useState('');
-  const [jobTitle, setJobTitle] = useState('');
-  const [education, setEducation] = useState('');
-  const [interests, setInterests] = useState('');
-  const [industry, setIndustry] = useState('');
-  const [bio, setBio] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [errors, setErrors] = useState({});
-  const [savedMsg, setSavedMsg] = useState('');
+  const [jobTitle,     setJobTitle]     = useState('');
+  const [education,    setEducation]    = useState('');
+  const [interests,    setInterests]    = useState('');
+  const [industry,     setIndustry]     = useState('');
+  const [bio,          setBio]          = useState('');
+  const [isSaving,     setIsSaving]     = useState(false);
+  const [isUploading,  setIsUploading]  = useState(false);
+  const [errors,       setErrors]       = useState({});
+  const [savedMsg,     setSavedMsg]     = useState('');
 
-  const [model, setModel] = useState('GEMINI_2_5_FLASH');
+  const [model,         setModel]         = useState('GEMINI_2_5_FLASH');
+  const [language,      setLanguage]      = useState('en');
   const [responseStyle, setResponseStyle] = useState('BALANCED');
-  const [prefSaved, setPrefSaved] = useState(false);
+  const [prefSaved,     setPrefSaved]     = useState(false);
   const [availableModels, setAvailableModels] = useState([]);
 
   useEffect(() => {
@@ -88,7 +89,11 @@ export default function Settings() {
         if (modelsRes) setAvailableModels(modelsRes);
         if (prefsRes) {
           if (prefsRes.modelName) setModel(prefsRes.modelName);
+          if (prefsRes.language) setLanguage(prefsRes.language);
           if (prefsRes.responseStyle) setResponseStyle(prefsRes.responseStyle);
+          if (prefsRes.theme && prefsRes.theme !== theme) {
+            // If different theme then toggle the current one
+          }
         }
       } catch (err) {
         console.error("Failed to load preferences", err);
@@ -113,10 +118,29 @@ export default function Settings() {
     if (!file) return;
     setIsUploading(true);
     try {
-      // Upload goes straight to our backend, which uploads to Cloudinary
-      // (signed, server-side) under assets/profile_images and persists the
-      // resulting url/public_id - the browser never talks to Cloudinary directly.
-      const res = await authService.updateProfileImage(file);
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", "Documind");
+      formData.append("quality", "100");
+
+      const response = await fetch(
+        "https://api.cloudinary.com/v1_1/dinp3cp9p/image/upload",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      const result = await response.json();
+
+      if (!result.secure_url || !result.public_id) {
+        throw new Error("Upload to Cloudinary failed");
+      }
+
+      const res = await authService.updateProfileImage({
+        link: result.secure_url,
+        public_id: result.public_id,
+      });
 
       if (res?.user) {
         try { updateUser(res.user); } catch (_) { /* ignore */ }
@@ -172,6 +196,7 @@ export default function Settings() {
     try {
       await preferenceService.updateModel({
         modelName: model,
+        language: language,
         responseStyle: responseStyle,
         theme: theme
       });
@@ -187,18 +212,18 @@ export default function Settings() {
 
   const inputStyle = {
     backgroundColor: 'var(--color-bg-input)',
-    color: 'var(--color-text-primary)',
-    border: '1px solid var(--color-border)',
-    borderRadius: '0.5rem',
-    padding: '0.625rem 0.875rem',
-    fontSize: '0.875rem',
-    outline: 'none',
-    width: '100%',
-    transition: 'border-color 0.15s',
+    color:           'var(--color-text-primary)',
+    border:          '1px solid var(--color-border)',
+    borderRadius:    '0.5rem',
+    padding:         '0.625rem 0.875rem',
+    fontSize:        '0.875rem',
+    outline:         'none',
+    width:           '100%',
+    transition:      'border-color 0.15s',
   };
 
   const tabs = [
-    { id: 'profile', label: 'Profile' },
+    { id: 'profile',     label: 'Profile' },
     { id: 'preferences', label: 'Preferences' },
   ];
 
@@ -229,7 +254,7 @@ export default function Settings() {
                 className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
                 style={{
                   backgroundColor: activeTab === t.id ? 'var(--color-bg-active)' : 'transparent',
-                  color: activeTab === t.id ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                  color:           activeTab === t.id ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
                 }}
               >
                 {t.label}
@@ -264,8 +289,8 @@ export default function Settings() {
                     className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors"
                     style={{
                       backgroundColor: 'var(--color-bg-active)',
-                      color: 'var(--color-text-primary)',
-                      border: '1px solid var(--color-border)',
+                      color:           'var(--color-text-primary)',
+                      border:          '1px solid var(--color-border)',
                     }}
                   >
                     {isUploading ? 'Uploading…' : 'Upload photo'}
@@ -393,8 +418,8 @@ export default function Settings() {
                   className="px-5 py-2 rounded-lg text-sm font-medium transition-colors"
                   style={{
                     backgroundColor: 'var(--color-bg-active)',
-                    color: 'var(--color-text-primary)',
-                    border: '1px solid var(--color-border)',
+                    color:           'var(--color-text-primary)',
+                    border:          '1px solid var(--color-border)',
                   }}
                 >
                   Sign out
@@ -431,18 +456,16 @@ export default function Settings() {
 
             <Section title="AI Configuration">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 max-w-lg">
-                <Field label="Default AI Model" hint="Used for new chat sessions">
-                  <select value={model} onChange={e => setModel(e.target.value)} style={inputStyle}
+                <Field label="System Language" hint="AI will respond in the selected language">
+                  <select value={language} onChange={e => setLanguage(e.target.value)} style={inputStyle}
                     onFocus={e => e.target.style.borderColor = 'var(--color-accent)'}
                     onBlur={e  => e.target.style.borderColor = 'var(--color-border)'}>
-                    {availableModels.length > 0 ? (
-                      availableModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)
-                    ) : (
-                      <>
-                        <option value="GEMINI_2_5_FLASH">Gemini 2.5 Flash</option>
-                        <option value="GEMINI_2_5_PRO">Gemini 2.5 Pro</option>
-                      </>
-                    )}
+                    <option value="en">English</option>
+                    <option value="hi">Hindi</option>
+                    <option value="te">Telugu</option>
+                    <option value="es">Spanish</option>
+                    <option value="fr">French</option>
+                    <option value="de">German</option>
                   </select>
                 </Field>
                 <Field label="Response Style" hint="How verbose the AI should be">
