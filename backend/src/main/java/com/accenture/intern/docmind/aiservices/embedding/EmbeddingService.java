@@ -131,6 +131,100 @@ public class EmbeddingService {
                 });
     }
 
+    public Mono<Void> processAndIngestSemanticChunks(List<com.accenture.intern.docmind.dto.context.SemanticChunk> chunks, String originalFileName, String sourceUrl, Long sessionId) {
+        log.info("=== SEMANTIC INGESTION STARTED ===");
+        log.info("SessionId={}", sessionId);
+        log.info("OriginalFileName={}", originalFileName);
+        log.info("ChunksCount={}", chunks == null ? 0 : chunks.size());
+
+        if (chunks == null || chunks.isEmpty()) {
+            return Mono.empty();
+        }
+
+        SessionUploadState state = sessionCacheService.getOrCreateState(sessionId);
+        state.setState(UploadState.EMBEDDING);
+        state.addActiveDocumentName(originalFileName);
+
+        int docCount = state.getActiveDocumentNames().size();
+        String[] ordinals = {"first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"};
+        if (docCount > 0 && docCount <= ordinals.length) {
+            state.addAlias(ordinals[docCount - 1], originalFileName);
+        }
+        state.addAlias("latest", originalFileName);
+        state.addAlias("last", originalFileName);
+
+        String normalizedName = FilenameNormalizer.normalize(originalFileName);
+        for (String token : normalizedName.split("\\s+")) {
+            if (!token.isBlank()) {
+                state.addAlias(token, originalFileName);
+            }
+        }
+
+        StringBuilder fullText = new StringBuilder();
+        for (com.accenture.intern.docmind.dto.context.SemanticChunk chunk : chunks) {
+            fullText.append(chunk.text()).append("\n");
+            state.addIngestedDocumentText(chunk.text());
+        }
+        String contentHash = hashContent(fullText.toString());
+
+        return Mono.fromCallable(() -> documentChunkRepository.findByContentHash(contentHash))
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMap(existingChunks -> {
+                    if (!existingChunks.isEmpty()) {
+                        return reboostExistingChunks(existingChunks, originalFileName, sessionId, state);
+                    }
+                    return doIngestSemantic(chunks, originalFileName, normalizedName, sourceUrl, sessionId, contentHash, state);
+                });
+    }
+
+    private Mono<Void> doIngestSemantic(List<com.accenture.intern.docmind.dto.context.SemanticChunk> chunks, String originalFileName, String normalizedName, String sourceUrl, Long sessionId, String contentHash, SessionUploadState state) {
+        List<Document> documents = chunks.stream().map(chunk -> {
+            String content = "Page: " + chunk.page() + "\nSection: " + chunk.sectionPath() + "\n\n" + chunk.text();
+            
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("sourceName", normalizedName);
+            metadata.put("originalFileName", originalFileName);
+            metadata.put("sourceType", chunk.sourceType().name());
+            metadata.put("semanticId", chunk.semanticId());
+            metadata.put("type", chunk.type().name());
+            metadata.put("sectionPath", chunk.sectionPath());
+            metadata.put("page", chunk.page());
+            metadata.put("chunkIndex", chunk.order());
+            metadata.put("sessionId", sessionId);
+            if (sourceUrl != null) metadata.put("sourceUrl", sourceUrl);
+            
+            if (chunk.metadata() != null) {
+                metadata.putAll(chunk.metadata());
+            }
+            if (metadata.containsKey("imageUrl")) {
+                metadata.put("isImage", true);
+            }
+
+            return new Document(UUID.randomUUID().toString(), content, metadata);
+        }).toList();
+
+        List<EmbeddedDocument> embeddedDocs = documents.stream()
+                .map(doc -> new EmbeddedDocument(doc, new float[0]))
+                .toList();
+
+        state.setEmbeddedDocuments(embeddedDocs);
+        state.setState(UploadState.INGESTING);
+
+        Mono<Void> pineconeIngest = vectorStoreService.ingestDocuments(documents);
+        Mono<Void> postgresIngest = saveChunksForKeywordSearch(documents, sessionId, chunks.get(0).sourceType().name(), originalFileName, originalFileName, null, null, contentHash);
+
+        return Mono.when(pineconeIngest, postgresIngest)
+                .doOnSuccess(v -> {
+                    log.info("SEMANTIC INGESTION SUCCESS");
+                    state.setState(UploadState.READY);
+                    triggerSuggestedQuestionGeneration(sessionId, state);
+                })
+                .doOnError(e -> {
+                    log.error("=== SEMANTIC INGESTION FAILED ===", e);
+                    state.setState(UploadState.FAILED);
+                });
+    }
+
     /**
      * The exact same content already exists in the corpus (possibly uploaded
      * into a different session entirely). Rather than re-chunk and re-embed it

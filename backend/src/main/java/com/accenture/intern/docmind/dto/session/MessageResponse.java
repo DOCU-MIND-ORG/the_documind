@@ -19,4 +19,5 @@ public class MessageResponse {
     private String text;
     private LocalDateTime createdAt;
     private Object citations;
+    private Object visuals;
 }

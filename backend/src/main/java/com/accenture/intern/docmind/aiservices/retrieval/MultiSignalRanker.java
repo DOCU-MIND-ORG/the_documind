@@ -23,13 +23,15 @@ public class MultiSignalRanker {
      * Applies business logic signals (Entities, Metadata, Session) on top of the
      * semantic score from the Cross-Encoder.
      */
-    public List<RetrievalCandidate> rank(List<RetrievalCandidate> candidates, RetrievalPlan plan, Long currentSessionId) {
+    public List<RetrievalCandidate> rank(List<RetrievalCandidate> candidates, RetrievalPlan plan, List<EntityResolution> requestedEntities, Long currentSessionId) {
         if (candidates == null || candidates.isEmpty()) {
             return Collections.emptyList();
         }
 
         List<RetrievalCandidate> rankedCandidates = new ArrayList<>();
-        List<EntityResolution> requestedEntities = plan.entities() != null ? plan.entities() : List.of();
+        if (requestedEntities == null) {
+            requestedEntities = List.of();
+        }
         List<String> targetDocuments = plan.targetDocuments() != null ? plan.targetDocuments() : List.of();
 
         for (RetrievalCandidate candidate : candidates) {
@@ -80,6 +82,16 @@ public class MultiSignalRanker {
 
         // Sort descending by finalScore
         rankedCandidates.sort((a, b) -> Double.compare(b.finalScore(), a.finalScore()));
+
+        if (!rankedCandidates.isEmpty()) {
+            double bestScore = rankedCandidates.get(0).finalScore();
+            double threshold = Math.max(bestScore * 0.8, 0.1);
+            
+            // Filter out highly irrelevant candidates to avoid polluting the LLM context
+            rankedCandidates = rankedCandidates.stream()
+                    .filter(c -> c.finalScore() >= threshold)
+                    .collect(Collectors.toList());
+        }
 
         // Log top results for debugging
         log.info("MultiSignalRanker completed for {} candidates.", rankedCandidates.size());

@@ -96,7 +96,8 @@ public class LlmWorkerService {
         }
     }
 
-    @Scheduled(fixedDelay = 100)
+    @Scheduled(fixedDelay = 1000)
+    @org.springframework.transaction.annotation.Transactional
     public void pollJobs() {
         try {
             List<MapRecord<String, Object, Object>> records = streamOps.read(
@@ -111,7 +112,14 @@ public class LlmWorkerService {
                 processJob(record);
             }
         } catch (Exception e) {
-            log.error("Error polling jobs from Redis stream", e);
+            if (e.getMessage() != null && e.getMessage().contains("NOGROUP")) {
+                try {
+                    streamOps.createGroup(STREAM_KEY, CONSUMER_GROUP);
+                } catch (Exception ignored) {
+                }
+            } else {
+                log.error("Error polling jobs from Redis stream", e);
+            }
         }
     }
 
@@ -140,24 +148,22 @@ public class LlmWorkerService {
         }
     }
 
-    /**
-     * The exact sentinel phrase the rag prompt instructs the model to return
-     * verbatim when retrieval came back empty/irrelevant (see
-     * prompts/ragprompt.st). We match on a stable, distinctive prefix rather
-     * than the full sentence so minor wording drift in the prompt doesn't
-     * silently break the retry path.
-     */
-    private static final String RETRIEVAL_FAILURE_SENTINEL = "I couldn't find relevant information in the uploaded documents";
-
+    @org.springframework.transaction.annotation.Transactional
     private void executeLlmGeneration(Long messageId, Long sessionId, String query, String model) {
         Session session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new RuntimeException("Session not found"));
         
         SessionUploadState state = sessionCacheService.getState(sessionId);
         boolean stillIndexing = state != null && (state.getState() == UploadState.EMBEDDING || state.getState() == UploadState.INGESTING);
-        List<DocumentReference> uploadedDocs = state != null && state.getActiveDocumentNames() != null 
-                ? state.getActiveDocumentNames().stream().map(name -> new DocumentReference(name, System.currentTimeMillis())).toList() 
-                : List.of();
+        List<DocumentReference> uploadedDocs;
+        if (state != null && state.getActiveDocumentNames() != null) {
+            uploadedDocs = state.getActiveDocumentNames().stream()
+                    .map(name -> new DocumentReference(name, System.currentTimeMillis())).toList();
+        } else {
+            uploadedDocs = session.getAttachments().stream()
+                    .filter(a -> a.getType() != com.accenture.intern.docmind.entity.AttachmentType.IMAGE)
+                    .map(a -> new DocumentReference(a.getFileName(), System.currentTimeMillis())).toList();
+        }
         String activeDoc = uploadedDocs.isEmpty() ? null : uploadedDocs.get(0).filename();
         SessionContext sessionContext = new SessionContext(sessionId, uploadedDocs, activeDoc, state != null ? state.getAliases() : Map.of());
 
@@ -175,51 +181,9 @@ public class LlmWorkerService {
         org.springframework.ai.google.genai.GoogleGenAiChatOptions options = modelFactory.getChatOptions(session.getUser(), model);
         String finalSystemPrompt = modelFactory.injectResponseStyle(session.getUser(), contextResult.systemPrompt());
 
-        String firstPassText = streamAnswer(messageId, finalSystemPrompt, contextResult.prompt(), options);
-        String finalText = firstPassText;
+        String fullResponse = streamAnswer(messageId, finalSystemPrompt, contextResult.prompt(), options);
+        progressSink.tryEmitComplete();
 
-        // Adaptive RAG retry: a single-pass retrieval miss doesn't necessarily
-        // mean the answer truly isn't in the corpus — it may just mean the
-        // planner's chosen retrieval strategy didn't dig deep enough. Before
-        // surfacing the "couldn't find" message to the user, retry once with
-        // the adaptive multi-iteration search-and-refine loop (the same one
-        // PlannerService reserves for queries it flags as hard) and only fall
-        // back to the original failure message if that retry also comes up
-        // empty.
-        if (isRetrievalFailure(firstPassText)) {
-            log.info("First-pass retrieval miss for message {}, retrying with adaptive RAG", messageId);
-
-            // Tell the frontend to clear the failure text it just rendered —
-            // it only ever appends streamed chunks, so without this reset the
-            // retry's tokens would render glued onto the end of the discarded
-            // first-pass answer instead of replacing it.
-            publishToken(messageId, "retry", "");
-            try {
-                publishToken(messageId, "progress", new com.accenture.intern.docmind.dto.chat.ProgressEvent(
-                        com.accenture.intern.docmind.dto.chat.ProgressStage.ADAPTIVE,
-                        com.accenture.intern.docmind.dto.chat.ProgressStatus.RUNNING,
-                        "Initial search came up empty, trying a deeper adaptive search...", null, null, null).toJson(objectMapper));
-            } catch (Exception ignored) {}
-
-            ContextResult adaptiveResult = contextBuilderService.buildContextAdaptive(query, sessionId, sessionContext).block();
-            String adaptiveSystemPrompt = modelFactory.injectResponseStyle(session.getUser(), adaptiveResult.systemPrompt());
-
-            String adaptiveText = streamAnswer(messageId, adaptiveSystemPrompt, adaptiveResult.prompt(), options);
-
-            if (!isRetrievalFailure(adaptiveText)) {
-                // The adaptive retry actually found something — commit to its
-                // result (and its citations/top score) instead of the original miss.
-                contextResult = adaptiveResult;
-                finalText = adaptiveText;
-            } else {
-                // Adaptive retry also failed to find anything. We already told
-                // the frontend to clear the screen for the retry attempt, so
-                // re-publish the original failure text (instead of leaving the
-                // message blank) before finalizing.
-                publishToken(messageId, "message", firstPassText);
-                finalText = firstPassText;
-            }
-        }
 
         List<Map<String, Object>> citations = citationService.extractCitations(contextResult.documents());
         String citationsJson = null;
@@ -228,13 +192,20 @@ public class LlmWorkerService {
             publishToken(messageId, "citations", citationsJson);
         } catch (Exception ignored) {}
 
-        String fullResponse = finalText;
+        String visualsJson = null;
+        if (contextResult.visuals() != null && !contextResult.visuals().isEmpty()) {
+            try {
+                visualsJson = objectMapper.writeValueAsString(contextResult.visuals());
+                publishToken(messageId, "visuals", visualsJson);
+            } catch (Exception ignored) {}
+        }
 
         // Finalize
         Message msg = messageRepository.findById(messageId).orElseThrow();
         msg.setContent(fullResponse);
         msg.setStatus(MessageStatus.COMPLETED);
         msg.setCitationsJson(citationsJson);
+        msg.setVisualsJson(visualsJson);
         messageRepository.save(msg);
 
         publishToken(messageId, "done", "");
@@ -256,10 +227,6 @@ public class LlmWorkerService {
             metadata.put("timestamp", System.currentTimeMillis());
             messagesVectorStore.add(List.of(new org.springframework.ai.document.Document(pairContent, metadata)));
         }
-    }
-
-    private boolean isRetrievalFailure(String text) {
-        return text != null && text.contains(RETRIEVAL_FAILURE_SENTINEL);
     }
 
     /**

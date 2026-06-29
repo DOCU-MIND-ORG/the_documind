@@ -100,7 +100,14 @@ public class PdfExportWorkerService {
                 processJob(record);
             }
         } catch (Exception e) {
-            log.error("Error polling jobs from Redis stream {}", STREAM_KEY, e);
+            if (e.getMessage() != null && e.getMessage().contains("NOGROUP")) {
+                try {
+                    streamOps.createGroup(STREAM_KEY, CONSUMER_GROUP);
+                } catch (Exception ignored) {
+                }
+            } else {
+                log.error("Error polling jobs from Redis stream {}", STREAM_KEY, e);
+            }
         }
     }
 

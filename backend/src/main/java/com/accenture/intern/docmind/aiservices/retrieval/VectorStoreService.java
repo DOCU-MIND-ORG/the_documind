@@ -49,18 +49,33 @@ public class VectorStoreService {
      * DocMind, company-wide. similarityThreshold is left at 0.0 so the cross-encoder
      * reranker — not a raw cosine cutoff — decides what's actually relevant.
      */
-    public Mono<List<Document>> retrieve(String query, int topK, List<String> targetDocuments) {
+    public Mono<List<Document>> retrieve(String query, int topK, List<String> targetDocuments, boolean imageOnly) {
         return Mono.fromCallable(() -> {
                     SearchRequest.Builder builder = SearchRequest.builder()
                             .query(query)
                             .topK(topK)
                             .similarityThreshold(0.0);
 
+                    org.springframework.ai.vectorstore.filter.Filter.Expression filter = null;
+                    
                     if (targetDocuments != null && !targetDocuments.isEmpty()) {
                         List<String> normalizedTargets = targetDocuments.stream()
                                 .map(com.accenture.intern.docmind.util.FilenameNormalizer::normalize)
                                 .collect(java.util.stream.Collectors.toList());
-                        builder.filterExpression(new org.springframework.ai.vectorstore.filter.FilterExpressionBuilder().in("sourceName", normalizedTargets.toArray()).build());
+                        filter = new org.springframework.ai.vectorstore.filter.FilterExpressionBuilder().in("sourceName", normalizedTargets.toArray()).build();
+                    }
+
+                    if (imageOnly) {
+                        org.springframework.ai.vectorstore.filter.Filter.Expression imgFilter = new org.springframework.ai.vectorstore.filter.FilterExpressionBuilder().eq("type", "IMAGE").build();
+                        if (filter != null) {
+                            filter = new org.springframework.ai.vectorstore.filter.Filter.Expression(org.springframework.ai.vectorstore.filter.Filter.ExpressionType.AND, filter, imgFilter);
+                        } else {
+                            filter = imgFilter;
+                        }
+                    }
+
+                    if (filter != null) {
+                        builder.filterExpression(filter);
                     }
 
                     return vectorStore.similaritySearch(builder.build());

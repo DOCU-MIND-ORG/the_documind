@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { authService } from '../services/authService.js';
 import { preferenceService } from '../services/preferenceService.js';
+import { HexColorPicker } from "react-colorful";
 
 function Field({ label, hint, error, children }) {
   return (
@@ -32,7 +33,8 @@ export default function Settings() {
   const location = useLocation();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('profile');
-  const { theme, toggle } = useTheme();
+  const { theme, toggle, setTheme } = useTheme();
+  const [customColor, setCustomColor] = useState(theme.startsWith('custom:') ? theme.split(':')[1] : '#6366f1');
 
   const [name,         setName]         = useState('');
   const [email,        setEmail]        = useState('');
@@ -482,25 +484,49 @@ export default function Settings() {
             </Section>
 
             <Section title="Appearance">
-              <div className="flex items-center justify-between max-w-lg">
+              <div className="flex flex-col gap-4 max-w-lg">
                 <div>
                   <p className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>Theme</p>
                   <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
-                    Switch between dark and light appearance
+                    Choose your preferred appearance
                   </p>
                 </div>
-                <button
-                  onClick={toggle}
-                  role="switch"
-                  aria-checked={theme === 'dark'}
-                  className="relative w-12 h-6 rounded-full transition-colors duration-200 focus:outline-none shrink-0"
-                  style={{ backgroundColor: theme === 'dark' ? 'var(--color-accent)' : 'var(--color-bg-active)', border: '1px solid var(--color-border)' }}
-                >
-                  <span
-                    className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200"
-                    style={{ transform: theme === 'dark' ? 'translateX(24px)' : 'translateX(0)' }}
-                  />
-                </button>
+                
+                <div className="flex items-center gap-2">
+                  {['light', 'dark', 'custom'].map(t => {
+                    const isSelected = t === 'custom' ? theme.startsWith('custom:') : theme === t;
+                    return (
+                      <button
+                        key={t}
+                        onClick={() => {
+                          if (t === 'custom') setTheme(`custom:${customColor}`);
+                          else setTheme(t);
+                        }}
+                        className="px-4 py-2 rounded-lg text-sm font-medium capitalize transition-all"
+                        style={{
+                          backgroundColor: isSelected ? 'var(--color-bg-active)' : 'transparent',
+                          color: isSelected ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                          border: `1px solid ${isSelected ? 'var(--color-border-strong)' : 'transparent'}`
+                        }}
+                      >
+                        {t}
+                      </button>
+                    );
+                  })}
+                </div>
+                
+                {theme.startsWith('custom:') && (
+                  <div className="mt-4 flex flex-col gap-3">
+                    <p className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>Custom UI Color</p>
+                    <HexColorPicker 
+                      color={customColor} 
+                      onChange={(newColor) => {
+                        setCustomColor(newColor);
+                        setTheme(`custom:${newColor}`);
+                      }} 
+                    />
+                  </div>
+                )}
               </div>
 
             </Section>

@@ -99,6 +99,16 @@ export function chatReducer(state, action) {
         ),
       };
 
+    case 'SET_VISUALS':
+      return {
+        ...state,
+        messages: state.messages.map(m =>
+          m.id === action.payload.messageId
+            ? { ...m, visuals: action.payload.visuals }
+            : m
+        ),
+      };
+
     case 'STREAM_DONE':
       return {
         ...state,

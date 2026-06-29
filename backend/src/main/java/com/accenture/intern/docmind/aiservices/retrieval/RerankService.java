@@ -108,8 +108,7 @@ public class RerankService {
         }
     }
 
-    public List<RetrievalCandidate> rerank(String query, List<RetrievalCandidate> candidates, int topN, Long sessionId,
-                                   RetrievalStrategy strategy) {
+    public List<RetrievalCandidate> rerank(String query, List<RetrievalCandidate> candidates, int topN, Long sessionId) {
         if (session == null || candidates.isEmpty()) {
             return candidates.stream().limit(topN).collect(Collectors.toList());
         }
@@ -117,12 +116,6 @@ public class RerankService {
         try {
             long startTime = System.currentTimeMillis();
 
-            // Tokenize every (query, chunk) pair up front, then pad to a common length
-            // so the whole batch can go through the ONNX graph in a single session.run()
-            // call instead of one run() per document. Cross-encoders are far more
-            // efficient batched - this turns N sequential inferences (each paying its
-            // own tensor-allocation + graph-execution overhead) into one inference over
-            // an [N, maxLen] tensor, which is the main thing making rerank slow today.
             List<Encoding> encodings = new ArrayList<>(candidates.size());
             int maxLen = 0;
             for (RetrievalCandidate cand : candidates) {
@@ -141,8 +134,6 @@ public class RerankService {
                 long[] ids = e.getIds();
                 long[] mask = e.getAttentionMask();
                 long[] types = e.getTypeIds();
-                // Right-pad with 0s (attention_mask=0 tells the model to ignore the
-                // padding, which is the standard BERT-family padding convention).
                 System.arraycopy(ids, 0, batchInputIds[i], 0, ids.length);
                 System.arraycopy(mask, 0, batchAttentionMask[i], 0, mask.length);
                 System.arraycopy(types, 0, batchTokenTypeIds[i], 0, types.length);
@@ -159,10 +150,8 @@ public class RerankService {
                 float[][] logits = (float[][]) results.get(0).getValue();
                 for (int i = 0; i < batchSize; i++) {
                     RetrievalCandidate cand = candidates.get(i);
-                    float score = logits[i][0]; // cross-encoder outputs a single logit per pair
-                    // Absolute Sigmoid mapping - crucial for cross-tier comparability in Context Fusion
+                    float score = logits[i][0]; 
                     float sigmoidScore = (float) (1.0 / (1.0 + Math.exp(-score)));
-
                     RetrievalCandidate updatedCand = cand.withSemanticScore(sigmoidScore);
                     scoredCandidates.add(updatedCand);
                 }
@@ -172,26 +161,10 @@ public class RerankService {
                 }
             }
 
-            // Sort descending by semanticScore
             scoredCandidates.sort((a, b) -> Double.compare(b.semanticScore(), a.semanticScore()));
-
             log.info("Reranked {} docs in {}ms (batched)", candidates.size(), (System.currentTimeMillis() - startTime));
 
-            // MMR is only meaningful for SINGLE_SOURCE queries — it diversifies chunks
-            // from within one topical pool. For MULTI_SOURCE (comparison) queries, MMR
-            // would penalize Amazon/Zomato chunks for sharing structural vocabulary with
-            // Walmart chunks, throwing out exactly the content the user asked for.
-            List<RetrievalCandidate> finalSelection;
-            if (strategy == RetrievalStrategy.SINGLE_SOURCE) {
-                finalSelection = selectDiverse(scoredCandidates, topN);
-            } else {
-                log.info("RERANKER: MMR skipped (strategy={})", strategy);
-                finalSelection = scoredCandidates.stream()
-                        .limit(topN)
-                        .collect(Collectors.toList());
-            }
-
-            return finalSelection;
+            return selectDiverse(scoredCandidates, topN);
 
         } catch (Exception e) {
             log.error("Error during reranking. Falling back to original retrieval.", e);

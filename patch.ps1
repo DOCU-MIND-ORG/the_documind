@@ -1,0 +1,15 @@
+ = Get-Content c:\Users\bunny\Downloads\Pluto\backend\src\main\java\com\accenture\intern\docmind\aiservices\context\ContextBuilderService.java -Raw
+ =  -replace 'decision\.intent\(\) == Intent\.GREETING_ACK || decision\.intent\(\) == Intent\.BOT_QA', 'decision.scope() == Scope.NONE && (decision.purpose().contains("GREETING_ACK") || decision.purpose().contains("BOT_QA"))'
+ =  -replace 'decision\.intent\(\) == Intent\.META_HISTORY || decision\.intent\(\) == Intent\.CLARIFICATION', 'decision.scope() == Scope.NONE && (decision.purpose().contains("META_HISTORY") || decision.purpose().contains("CLARIFICATION"))'
+ =  -replace 'decision\.intent\(\) == Intent\.SESSION_INFO', 'decision.scope() == Scope.NONE && decision.purpose().contains("SESSION_INFO")'
+ =  -replace 'finalDecision\.retrievalStrategy\(\)', '""'
+ =  -replace 'execPlan\.plans\(\)\.isEmpty\(\) \? RetrievalStrategy\.SINGLE_SOURCE : execPlan\.plans\(\)\.get\(0\)\.retrievalStrategy\(\)', '""'
+ =  -replace 'RetrievalStrategy primaryStrategy = "";', 'String primaryStrategy = "";'
+ =  -replace 'getSystemPrompt\(result, primaryStrategy, historyBlock, sessionContext\)', 'getSystemPrompt(result, "", historyBlock, sessionContext)'
+ =  -replace 'getSystemPrompt\(candidates\.isEmpty\(\), RetrievalStrategy\.SINGLE_SOURCE, historyBlock, sessionContext\)', 'getSystemPrompt(candidates.isEmpty(), "", historyBlock, sessionContext)'
+ =  -replace 'getSystemPrompt\(selectedDocs\.isEmpty\(\), "", historyBlock, sessionContext\)', 'getSystemPrompt(selectedDocs.isEmpty(), "", historyBlock, sessionContext)'
+ =  -replace 'new StaticExecutionPlan\(plans, mergeOperation\)', 'new StaticExecutionPlan(plans, mergeOperation, java.util.Collections.emptyList(), false)'
+ =  -replace 'new StaticExecutionPlan\(List\.of\(currentPlan\), MergeOperation\.UNION\)', 'new StaticExecutionPlan(List.of(currentPlan), MergeOperation.UNION, java.util.Collections.emptyList(), false)'
+ =  -replace 'RetrievalPlan initialPlan = new RetrievalPlan\([^;]+;', 'RetrievalPlan initialPlan = new RetrievalPlan("Adaptive Search", question, java.util.Collections.emptyList(), com.accenture.intern.docmind.aiservices.understanding.RetrievalExecutionMode.RANKED_RETRIEVAL, Scope.CORPUS);'
+ =  -replace 'action\.nextPlan\(\)\.get\(\)\.entities\(\)', 'java.util.Collections.emptyList()'
+Set-Content -Path c:\Users\bunny\Downloads\Pluto\backend\src\main\java\com\accenture\intern\docmind\aiservices\context\ContextBuilderService.java -Value  -NoNewline

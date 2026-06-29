@@ -1,0 +1,257 @@
+package com.accenture.intern.docmind.service;
+
+import com.accenture.intern.docmind.aiservices.embedding.DocumentParserService;
+import com.accenture.intern.docmind.aiservices.embedding.EmbeddingService;
+import com.accenture.intern.docmind.aiservices.embedding.WikipediaIngestionService;
+import com.accenture.intern.docmind.aiservices.vision.ImageVisionResponse;
+import com.accenture.intern.docmind.aiservices.vision.ImageVisionService;
+import com.accenture.intern.docmind.dto.job.IngestionJobPayload;
+import com.accenture.intern.docmind.entity.Job;
+import com.accenture.intern.docmind.entity.JobStatus;
+import com.accenture.intern.docmind.entity.SourceType;
+import com.accenture.intern.docmind.repository.JobRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.connection.stream.Consumer;
+import org.springframework.data.redis.connection.stream.MapRecord;
+import org.springframework.data.redis.connection.stream.ReadOffset;
+import org.springframework.data.redis.connection.stream.StreamOffset;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StreamOperations;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
+import jakarta.annotation.PreDestroy;
+import java.time.Duration;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+@Slf4j
+@Service
+public class IngestionWorkerService {
+
+    private final JobRepository jobRepository;
+    private final DocumentParserService parserService;
+    private final EmbeddingService embeddingService;
+    private final ImageVisionService imageVisionService;
+    private final WikipediaIngestionService wikipediaIngestionService;
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final RedisConnectionFactory redisConnectionFactory;
+    private final ObjectMapper objectMapper;
+    private final CloudinaryService cloudinaryService;
+
+    private StreamOperations<String, Object, Object> streamOps;
+    private static final String CONSUMER_GROUP = "ingestion-workers";
+    private static final String CONSUMER_NAME = "worker-1";
+    private static final String STREAM_KEY = "ingestion_jobs";
+
+    public IngestionWorkerService(JobRepository jobRepository,
+                                  DocumentParserService parserService,
+                                  EmbeddingService embeddingService,
+                                  ImageVisionService imageVisionService,
+                                  WikipediaIngestionService wikipediaIngestionService,
+                                  RedisTemplate<String, Object> redisTemplate,
+                                  RedisConnectionFactory redisConnectionFactory,
+                                  ObjectMapper objectMapper,
+                                  CloudinaryService cloudinaryService) {
+        this.jobRepository = jobRepository;
+        this.parserService = parserService;
+        this.embeddingService = embeddingService;
+        this.imageVisionService = imageVisionService;
+        this.wikipediaIngestionService = wikipediaIngestionService;
+        this.redisTemplate = redisTemplate;
+        this.redisConnectionFactory = redisConnectionFactory;
+        this.objectMapper = objectMapper;
+        this.cloudinaryService = cloudinaryService;
+    }
+
+    @PostConstruct
+    public void init() {
+        streamOps = redisTemplate.opsForStream();
+        try {
+            streamOps.createGroup(STREAM_KEY, CONSUMER_GROUP);
+        } catch (Exception e) {
+            log.info("Ingestion consumer group likely exists already");
+        }
+    }
+
+    @PreDestroy
+    public void destroy() {
+        // No-op for @Scheduled
+    }
+
+    @Scheduled(fixedDelay = 1000)
+    public void pollJobs() {
+        try {
+            List<MapRecord<String, Object, Object>> records = streamOps.read(
+                    Consumer.from(CONSUMER_GROUP, CONSUMER_NAME),
+                    org.springframework.data.redis.connection.stream.StreamReadOptions.empty().count(1),
+                    StreamOffset.create(STREAM_KEY, ReadOffset.lastConsumed())
+            );
+
+            if (records != null && !records.isEmpty()) {
+                for (MapRecord<String, Object, Object> record : records) {
+                    processJob(record);
+                }
+            } else {
+                // Try PEL if no new messages
+                records = streamOps.read(
+                        Consumer.from(CONSUMER_GROUP, CONSUMER_NAME),
+                        org.springframework.data.redis.connection.stream.StreamReadOptions.empty().count(10),
+                        StreamOffset.create(STREAM_KEY, ReadOffset.from("0"))
+                );
+                if (records != null) {
+                    for (MapRecord<String, Object, Object> record : records) {
+                        processJob(record);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            if (e.getMessage() != null && e.getMessage().contains("NOGROUP")) {
+                try {
+                    streamOps.createGroup(STREAM_KEY, CONSUMER_GROUP);
+                } catch (Exception ignored) {
+                }
+            } else {
+                log.error("Error polling ingestion jobs from Redis stream", e);
+            }
+        }
+    }
+
+    private void processJob(MapRecord<String, Object, Object> record) {
+        Map<Object, Object> value = record.getValue();
+        Object payloadObj = value.get("payload");
+        if (payloadObj == null) {
+            log.warn("Missing payload field in ingestion job");
+            streamOps.acknowledge(STREAM_KEY, CONSUMER_GROUP, record.getId());
+            return;
+        }
+
+        IngestionJobPayload payload;
+        try {
+            if (payloadObj instanceof IngestionJobPayload) {
+                payload = (IngestionJobPayload) payloadObj;
+            } else if (payloadObj instanceof String) {
+                payload = objectMapper.readValue((String) payloadObj, IngestionJobPayload.class);
+            } else {
+                payload = objectMapper.convertValue(payloadObj, IngestionJobPayload.class);
+            }
+        } catch (Exception e) {
+            log.error("Failed to parse ingestion payload: " + payloadObj, e);
+            streamOps.acknowledge(STREAM_KEY, CONSUMER_GROUP, record.getId());
+            return;
+        }
+
+        String lockKey = "ingestion_lock:" + payload.getJobId();
+        Boolean acquired = redisTemplate.opsForValue().setIfAbsent(lockKey, "1", 10, TimeUnit.MINUTES);
+        if (Boolean.FALSE.equals(acquired)) {
+            log.info("Ingestion Job {} already being processed", payload.getJobId());
+            return;
+        }
+
+        Job job = jobRepository.findById(payload.getJobId()).orElse(null);
+        if (job == null) {
+            log.warn("Job {} not found in database", payload.getJobId());
+            streamOps.acknowledge(STREAM_KEY, CONSUMER_GROUP, record.getId());
+            return;
+        }
+
+        job.setStatus(JobStatus.PROCESSING);
+        jobRepository.save(job);
+
+        try {
+            executeIngestion(payload, job);
+            
+            job.setStatus(JobStatus.COMPLETED);
+            job.setProgress(100);
+            jobRepository.save(job);
+            streamOps.acknowledge(STREAM_KEY, CONSUMER_GROUP, record.getId());
+            log.info("Successfully completed ingestion job {}", job.getId());
+        } catch (Exception e) {
+            log.error("Failed to process ingestion job {}", payload.getJobId(), e);
+            job.setStatus(JobStatus.FAILED);
+            job.setError(e.getMessage());
+            jobRepository.save(job);
+            streamOps.acknowledge(STREAM_KEY, CONSUMER_GROUP, record.getId()); // ACK so it doesn't loop forever if poison pill
+        } finally {
+            // Cleanup local file if it's a file-based source
+            if (payload.getSourceType() != SourceType.WIKIPEDIA && payload.getSourceLocation() != null) {
+                try {
+                    Files.deleteIfExists(Paths.get(payload.getSourceLocation()));
+                } catch (IOException ignored) {}
+            }
+        }
+    }
+
+    private void executeIngestion(IngestionJobPayload payload, Job job) throws Exception {
+        String originalName = ""; // Can be passed in payload or derived
+        Path dest = null;
+        if (payload.getSourceType() != SourceType.WIKIPEDIA) {
+            dest = Paths.get(payload.getSourceLocation());
+            originalName = dest.getFileName().toString();
+            // strip uuid prefix from original name if needed, but for now we just use it
+        }
+
+        List<Mono<Void>> ingestionMonos = new ArrayList<>();
+
+        switch (payload.getSourceType()) {
+            case PDF:
+                DocumentParserService.PdfParseResult parsed = parserService.parsePdfWithImages(dest);
+                if (parsed.text() != null && !parsed.text().isBlank()) {
+                    ingestionMonos.add(embeddingService.processAndIngest(parsed.text(), "PDF", originalName, "local", payload.getSessionId()));
+                }
+                
+                int imgIndex = 0;
+                for (DocumentParserService.ExtractedImage img : parsed.images()) {
+                    imgIndex++;
+                    // In a real app we'd upload the extracted image to Cloudinary and get a public URL
+                    // Since this is a background worker, we'd need to recreate the saveExtractedPdfImage logic
+                    // We'll skip the URL for now or just ingest the text
+                    ImageVisionResponse vr = img.visionResponse();
+                    String tags = vr.tags() != null ? String.join(",", vr.tags()) : null;
+                    String imageSourceName = originalName + " (page " + img.pageNumber() + " image)";
+                    ingestionMonos.add(embeddingService.processAndIngest(
+                            vr.denseDescription(), "PDF_IMAGE", imageSourceName, vr.suggestedFilename(), vr.assetClassification(), tags, payload.getSessionId(), null, null));
+                }
+                break;
+
+            case TEXT:
+            case MARKDOWN:
+            case HTML:
+                String parsedText = parserService.parseTextFile(dest);
+                if (parsedText != null && !parsedText.isBlank()) {
+                    ingestionMonos.add(embeddingService.processAndIngest(parsedText, payload.getSourceType().name(), originalName, "local", payload.getSessionId()));
+                }
+                break;
+                
+            case WIKIPEDIA:
+                originalName = payload.getSourceLocation();
+                List<com.accenture.intern.docmind.dto.context.SemanticChunk> chunks = wikipediaIngestionService.fetchAndParse(originalName);
+                if (chunks != null && !chunks.isEmpty()) {
+                    String wikipediaUrl = "https://en.wikipedia.org/wiki/" + originalName.replace(" ", "_");
+                    ingestionMonos.add(embeddingService.processAndIngestSemanticChunks(chunks, originalName, wikipediaUrl, payload.getSessionId()));
+                } else {
+                    throw new RuntimeException("Could not extract semantic chunks from Wikipedia page.");
+                }
+                break;
+
+            default:
+                // Image processing could go here if needed
+                break;
+        }
+
+        if (!ingestionMonos.isEmpty()) {
+            Mono.when(ingestionMonos).block();
+        }
+    }
+}

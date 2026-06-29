@@ -216,12 +216,22 @@ public class SessionService {
                     // Ignore parsing error and leave as null
                 }
             }
+            
+            Object visuals = null;
+            if (m.getVisualsJson() != null && !m.getVisualsJson().isEmpty()) {
+                try {
+                    visuals = mapper.readValue(m.getVisualsJson(), Object.class);
+                } catch (Exception e) {
+                    // Ignore parsing error and leave as null
+                }
+            }
             messageResponses.add(MessageResponse.builder()
                     .id(String.valueOf(m.getMessageId()))
                     .role(m.getRole())
                     .text(m.getContent())
                     .createdAt(m.getCreatedAt())
                     .citations(citations)
+                    .visuals(visuals)
                     .build());
         }
         return messageResponses;

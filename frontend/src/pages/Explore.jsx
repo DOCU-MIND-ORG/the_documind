@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { attachmentService } from '../services/attachmentService.js';
+import AccentureLoader from '../components/AccentureLoader.jsx';
 
 const MenuIcon = () => (
   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -180,7 +181,7 @@ export default function Explore() {
 
           {loading && (
             <div className="flex flex-col items-center justify-center py-24 gap-3 text-secondary">
-              <div className="w-6 h-6 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+             <AccentureLoader/>
               <span className="text-sm">Loading global documents…</span>
             </div>
           )}

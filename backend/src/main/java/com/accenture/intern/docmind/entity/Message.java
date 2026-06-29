@@ -37,6 +37,9 @@ public class Message {
     @Column(columnDefinition = "TEXT")
     private String citationsJson;
 
+    @Column(columnDefinition = "TEXT")
+    private String visualsJson;
+
     // Removed: attachments collection — Attachment is now linked directly to
     // Session (not Message). The message_id column has been dropped from the
     // attachments table; see Attachment.java and the V2 migration script.

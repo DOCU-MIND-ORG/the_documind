@@ -9,9 +9,18 @@ import com.accenture.intern.docmind.repository.SessionRepository;
 import lombok.extern.slf4j.Slf4j;
 import com.accenture.intern.docmind.aiservices.embedding.DocumentParserService;
 import com.accenture.intern.docmind.aiservices.embedding.EmbeddingService;
+import com.accenture.intern.docmind.aiservices.embedding.WikipediaIngestionService;
 import com.accenture.intern.docmind.aiservices.vision.ImageVisionService;
 import com.accenture.intern.docmind.aiservices.vision.ImageVisionResponse;
+import com.accenture.intern.docmind.dto.job.IngestionJobPayload;
+import com.accenture.intern.docmind.entity.Job;
+import com.accenture.intern.docmind.entity.JobStatus;
+import com.accenture.intern.docmind.entity.JobType;
+import com.accenture.intern.docmind.entity.SourceType;
+import com.accenture.intern.docmind.repository.JobRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +34,7 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -41,6 +51,10 @@ public class AttachmentService {
     private final EmbeddingService embeddingService;
     private final ImageVisionService imageVisionService;
     private final CloudinaryService cloudinaryService;
+    private final WikipediaIngestionService wikipediaIngestionService;
+    private final JobRepository jobRepository;
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final ObjectMapper objectMapper;
 
     /** Root storage dir — always resolved to absolute path at startup */
     @Value("${app.storage.root:storage}")
@@ -55,7 +69,11 @@ public class AttachmentService {
                              DocumentParserService parserService,
                              EmbeddingService embeddingService,
                              ImageVisionService imageVisionService,
-                             CloudinaryService cloudinaryService) {
+                             CloudinaryService cloudinaryService,
+                             WikipediaIngestionService wikipediaIngestionService,
+                             JobRepository jobRepository,
+                             RedisTemplate<String, Object> redisTemplate,
+                             ObjectMapper objectMapper) {
         this.attachmentRepository = attachmentRepository;
         this.viewAttachmentRepository = viewAttachmentRepository;
         this.messageRepository = messageRepository;
@@ -64,6 +82,10 @@ public class AttachmentService {
         this.embeddingService = embeddingService;
         this.imageVisionService = imageVisionService;
         this.cloudinaryService = cloudinaryService;
+        this.wikipediaIngestionService = wikipediaIngestionService;
+        this.jobRepository = jobRepository;
+        this.redisTemplate = redisTemplate;
+        this.objectMapper = objectMapper;
     }
 
     @jakarta.annotation.PostConstruct
@@ -234,13 +256,39 @@ public class AttachmentService {
                     }
                 }
             } catch (Exception e) {
-                log.error("Failed to parse/ingest '{}': {}", originalName, e.getMessage());
-                // We proceed even if parsing fails so the attachment is still recorded
+                log.error("Failed pre-upload parse for '{}': {}", originalName, e.getMessage());
             }
 
-            Mono<Void> ingestionMono = ingestionMonos.isEmpty()
-                    ? Mono.empty()
-                    : Mono.when(ingestionMonos);
+            // Create background Job for ingestion
+            Job job = Job.builder()
+                    .type(JobType.DOCUMENT_INGESTION)
+                    .status(JobStatus.QUEUED)
+                    .build();
+            jobRepository.save(job);
+
+            SourceType sourceTypeEnum = switch (type) {
+                case PDF -> SourceType.PDF;
+                case IMAGE -> SourceType.PDF; // images handled in PDF pipeline in worker or OTHER
+                case TEXT -> SourceType.TEXT;
+                default -> SourceType.OTHER; // Note: OTHER might need to be added to SourceType enum
+            };
+
+            IngestionJobPayload payload = IngestionJobPayload.builder()
+                    .jobId(job.getId())
+                    .sourceType(sourceTypeEnum)
+                    .sourceLocation(dest.toAbsolutePath().toString())
+                    .sessionId(sessionId)
+                    .userId(session.getUser().getId())
+                    .build();
+
+            // Push to Redis Stream
+            try {
+                redisTemplate.opsForStream().add("ingestion_jobs", Map.of("payload", payload));
+            } catch (Exception e) {
+                log.error("Failed to serialize job payload for PDF", e);
+            }
+
+            Mono<Void> ingestionMono = Mono.empty(); // Now handled async via Redis
 
             long sizeBytes;
             try {
@@ -248,11 +296,6 @@ public class AttachmentService {
             } catch (IOException e) {
                 sizeBytes = -1L;
             }
-
-            // Cleanup local temp file since we have it in Cloudinary now
-            try {
-                Files.deleteIfExists(dest);
-            } catch (IOException ignored) {}
 
             // 5. Create a system Message so the upload shows up in chat history/transcript
             Message systemMsg = Message.builder()
@@ -361,21 +404,31 @@ public class AttachmentService {
                 wikipediaUrl = "https://en.wikipedia.org/wiki/" + originalName.replace(" ", "_");
             }
 
-            // Fetch the text from Wikipedia
-            String parsedText = null;
+            // We don't fetch chunks here anymore, just queue the job.
+
+            // Create background Job for ingestion
+            Job job = Job.builder()
+                    .type(JobType.DOCUMENT_INGESTION)
+                    .status(JobStatus.QUEUED)
+                    .build();
+            jobRepository.save(job);
+
+            IngestionJobPayload payload = IngestionJobPayload.builder()
+                    .jobId(job.getId())
+                    .sourceType(SourceType.WIKIPEDIA)
+                    .sourceLocation(originalName) // For wikipedia, location is the title/url
+                    .sessionId(sessionId)
+                    .userId(session.getUser().getId())
+                    .build();
+
+            // Push to Redis Stream
             try {
-                parsedText = parserService.fetchWikipedia(originalName);
+                redisTemplate.opsForStream().add("ingestion_jobs", Map.of("payload", payload));
             } catch (Exception e) {
-                log.error("Failed to fetch Wikipedia page '{}': {}", originalName, e.getMessage());
+                log.error("Failed to serialize job payload for Wikipedia", e);
             }
 
-            Mono<Void> ingestionMono = Mono.empty();
-            if (parsedText != null && !parsedText.isBlank()) {
-                ingestionMono = embeddingService.processAndIngest(parsedText, AttachmentType.WIKIPEDIA.name(), originalName, wikipediaUrl, sessionId);
-                log.info("Successfully fetched and started ingestion for '{}'", originalName);
-            } else {
-                throw new RuntimeException("Could not extract text from Wikipedia page.");
-            }
+            Mono<Void> ingestionMono = Mono.empty(); // Handled async in worker
 
             // 5. Create a system Message so the link shows up in chat history/transcript
             Message systemMsg = Message.builder()
@@ -387,6 +440,8 @@ public class AttachmentService {
                     .build();
             messageRepository.save(systemMsg);
 
+            long sizeBytes = 0L;
+
             // 6. Persist the Attachment record, linked directly to the session
             // it was added in (provenance) — survives even if that session is
             // later deleted (see SessionService#deleteSession).
@@ -397,7 +452,7 @@ public class AttachmentService {
                     .storagePath(wikipediaUrl)
                     .url(wikipediaUrl)
                     .mimeType("text/html")
-                    .fileSizeBytes((long) parsedText.length())
+                    .fileSizeBytes(sizeBytes)
                     .uploadedAt(LocalDateTime.now())
                     .build();
             attachmentRepository.save(attachment);

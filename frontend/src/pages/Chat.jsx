@@ -16,6 +16,8 @@ import Constellation from '../components/Constellation.jsx';
 import Modal from '../components/Modal.jsx';
 import { chatReducer, initialChatState } from '../state/chatReducer.js';
 import { useTheme } from '../context/ThemeContext.jsx';
+import AccentureLoader from '../components/AccentureLoader.jsx';
+import ImageDeck from '../components/ImageDeck.jsx';
 
 
 const SendIcon = () => (
@@ -362,6 +364,7 @@ export default function Chat() {
           activeSessionId, jobResponse.messageId,
           (chunk) => dispatch({ type: 'APPEND_STREAM_CHUNK', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id, chunk } }),
           (citations) => dispatch({ type: 'SET_CITATIONS', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id, citations } }),
+          (visuals) => dispatch({ type: 'SET_VISUALS', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id, visuals } }),
           (progress) => dispatch({ type: 'UPDATE_PROGRESS', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id, progress } }),
           (err)   => { dispatch({ type: 'STREAM_ERROR', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } }); showToast(err.message || 'Stream error', 'error'); },
           ()      => {
@@ -642,7 +645,7 @@ export default function Chat() {
         ) : state.messagesLoading ? (
           <div className="h-full flex items-center justify-center">
             <div className="flex flex-col items-center gap-3 text-secondary">
-              <div className="w-5 h-5 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+             <AccentureLoader/>
               <span className="text-xs">Loading messages…</span>
             </div>
           </div>
@@ -665,6 +668,9 @@ export default function Chat() {
                           events={msg.progressEvents} 
                           isComplete={msg.status !== 'streaming' || msg.text.length > 0} 
                         />
+                      )}
+                      {isBot && msg.visuals && msg.visuals.length > 0 && (
+                        <ImageDeck images={msg.visuals} />
                       )}
                       {isBot
                         ? <Streaming 

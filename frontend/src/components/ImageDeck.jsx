@@ -1,0 +1,176 @@
+import { useState, useCallback } from "react";
+
+/**
+ * ImageDeck — stacked card UI for DocuMind extracted images/charts.
+ *
+ * Props:
+ *   images  — array of { semanticId, imageUrl, thumbnailUrl, caption, sourceDocument }
+ *   maxStack — how many cards show in the stacked view (default: 3)
+ */
+export default function ImageDeck({ images = [], maxStack = 3 }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [hoveredId, setHoveredId] = useState(null);
+
+  const expand = useCallback(() => setIsExpanded(true), []);
+  const collapse = useCallback(() => setIsExpanded(false), []);
+
+  const handleStackKeyDown = useCallback((e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      setIsExpanded(true);
+    }
+  }, []);
+
+  if (images.length === 0) return null;
+
+  return (
+    <div className="mt-3 mb-1 font-sans">
+      {isExpanded ? (
+        <ExpandedGrid
+          images={images}
+          hoveredId={hoveredId}
+          onHover={setHoveredId}
+          onCollapse={collapse}
+        />
+      ) : (
+        <StackedDeck
+          images={images}
+          maxStack={maxStack}
+          onExpand={expand}
+          onKeyDown={handleStackKeyDown}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─── Stacked state ─────────────────────────────────────────────────────────── */
+
+function StackedDeck({ images, maxStack, onExpand, onKeyDown }) {
+  const visibleCards = images.slice(0, maxStack);
+
+  return (
+    <div className="inline-flex flex-col gap-1.5 group">
+      <div
+        className="relative w-[140px] h-[108px] cursor-pointer outline-none active:scale-97 transition-transform duration-100"
+        role="button"
+        tabIndex={0}
+        aria-label={`Expand ${images.length} extracted image${images.length !== 1 ? "s" : ""}`}
+        onClick={onExpand}
+        onKeyDown={onKeyDown}
+      >
+        {visibleCards.map((img, index) => (
+          <StackCard key={img.semanticId} img={img} index={index} isTop={index === 0} />
+        ))}
+
+        {images.length > 1 && (
+          <span className="absolute -top-2 -right-2 bg-blue-500 text-white text-[11px] font-medium w-[22px] h-[22px] rounded-full flex items-center justify-center z-20 border-2 border-gray-900 pointer-events-none">
+            {images.length}
+          </span>
+        )}
+      </div>
+
+      <p className="text-[11px] text-white/30 flex items-center gap-1 select-none m-0">
+        Click to expand
+      </p>
+    </div>
+  );
+}
+
+function StackCard({ img, index, isTop }) {
+  const OFFSET_PX = 7;
+  return (
+    <div
+      className="absolute inset-0 rounded-[10px] overflow-hidden border border-white/10 bg-gray-800 transition-colors duration-200 group-hover:border-blue-400/40 group-focus-visible:ring-2 group-focus-visible:ring-blue-500"
+      style={{
+        transform: `translate(${index * OFFSET_PX}px, ${index * OFFSET_PX}px)`,
+        zIndex: 10 - index,
+      }}
+    >
+      {isTop ? (
+        <img src={img.imageUrl} alt={img.caption ?? "Extracted image"} className="w-full h-full object-cover block" />
+      ) : (
+        <div className="w-full h-full bg-gray-900/75" aria-hidden="true" />
+      )}
+    </div>
+  );
+}
+
+/* ─── Expanded state ─────────────────────────────────────────────────────────── */
+
+function ExpandedGrid({ images, hoveredId, onHover, onCollapse }) {
+  return (
+    <div className="flex flex-wrap gap-2.5 animate-in fade-in slide-in-from-bottom-1 duration-200">
+      {images.map((img) => (
+        <ImageCard
+          key={img.semanticId}
+          img={img}
+          isHovered={hoveredId === img.semanticId}
+          onHover={() => onHover(img.semanticId)}
+          onLeave={() => onHover(null)}
+        />
+      ))}
+
+      <div className="w-full flex">
+        <button
+          className="inline-flex items-center gap-1 text-xs text-white/35 bg-transparent border-none py-0.5 mt-0.5 cursor-pointer transition-colors duration-150 hover:text-white/65 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 focus-visible:rounded-sm font-sans"
+          onClick={onCollapse}
+          aria-label="Collapse image deck"
+        >
+          <CollapseIcon />
+          Collapse
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CollapseIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="mr-1">
+      <polyline points="18 15 12 9 6 15" />
+    </svg>
+  );
+}
+
+function ImageCard({ img, isHovered, onHover, onLeave }) {
+  // We don't have a reliable sourceUrl right now, but if we did, we could link it.
+  const Tag = img.imageUrl ? "a" : "div";
+  const linkProps = img.imageUrl
+    ? { href: img.imageUrl, target: "_blank", rel: "noreferrer noopener" }
+    : {};
+
+  return (
+    <Tag
+      className={`relative w-[120px] h-[90px] rounded-lg overflow-hidden border border-white/10 bg-gray-800 block no-underline transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${isHovered ? 'scale-[1.04] border-blue-400/50' : ''} ${img.imageUrl ? 'cursor-pointer' : 'cursor-default'}`}
+      onMouseEnter={onHover}
+      onMouseLeave={onLeave}
+      aria-label={img.imageUrl ? `Open ${img.caption ?? "image"} in new tab` : img.caption}
+      {...linkProps}
+    >
+      <img src={img.imageUrl} alt={img.caption ?? "Extracted content"} className="w-full h-full object-cover block" />
+
+      {img.imageUrl && (
+        <div className={`absolute inset-0 bg-black/50 flex items-center justify-center text-white transition-opacity duration-150 pointer-events-none ${isHovered ? 'opacity-100' : 'opacity-0'}`} aria-hidden="true">
+          <ExternalLinkIcon />
+        </div>
+      )}
+
+      {img.caption && (
+        <div className="absolute bottom-0 left-0 right-0 py-1 px-1.5 bg-black/60 text-[10px] text-white/85 whitespace-nowrap overflow-hidden text-ellipsis pointer-events-none">
+          {img.caption}
+        </div>
+      )}
+    </Tag>
+  );
+}
+
+function ExternalLinkIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <polyline points="15 3 21 3 21 9" />
+      <line x1="10" y1="14" x2="21" y2="3" />
+    </svg>
+  );
+}
