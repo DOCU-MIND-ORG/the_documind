@@ -22,7 +22,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StreamOperations;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 import reactor.core.publisher.Mono;
 import jakarta.annotation.PreDestroy;
 import java.time.Duration;
@@ -52,8 +52,13 @@ public class IngestionWorkerService {
 
     private StreamOperations<String, Object, Object> streamOps;
     private static final String CONSUMER_GROUP = "ingestion-workers";
-    private static final String CONSUMER_NAME = "worker-1";
+    private final String consumerName = "worker-" + java.util.UUID.randomUUID().toString();
     private static final String STREAM_KEY = "ingestion_jobs";
+    private volatile boolean running = true;
+    private final java.util.concurrent.ExecutorService workerExecutor;
+
+    private final com.accenture.intern.docmind.service.AnalyticsService analyticsService;
+    private final TransactionTemplate transactionTemplate;
 
     public IngestionWorkerService(JobRepository jobRepository,
                                   DocumentParserService parserService,
@@ -63,7 +68,10 @@ public class IngestionWorkerService {
                                   RedisTemplate<String, Object> redisTemplate,
                                   RedisConnectionFactory redisConnectionFactory,
                                   ObjectMapper objectMapper,
-                                  CloudinaryService cloudinaryService) {
+                                  CloudinaryService cloudinaryService,
+                                  java.util.concurrent.ExecutorService workerExecutor,
+                                  com.accenture.intern.docmind.service.AnalyticsService analyticsService,
+                                  TransactionTemplate transactionTemplate) {
         this.jobRepository = jobRepository;
         this.parserService = parserService;
         this.embeddingService = embeddingService;
@@ -73,6 +81,9 @@ public class IngestionWorkerService {
         this.redisConnectionFactory = redisConnectionFactory;
         this.objectMapper = objectMapper;
         this.cloudinaryService = cloudinaryService;
+        this.workerExecutor = workerExecutor;
+        this.analyticsService = analyticsService;
+        this.transactionTemplate = transactionTemplate;
     }
 
     @PostConstruct
@@ -83,47 +94,49 @@ public class IngestionWorkerService {
         } catch (Exception e) {
             log.info("Ingestion consumer group likely exists already");
         }
+        workerExecutor.submit(this::runWorker);
     }
 
     @PreDestroy
     public void destroy() {
-        // No-op for @Scheduled
+        running = false;
     }
 
-    @Scheduled(fixedDelay = 1000)
-    public void pollJobs() {
-        try {
-            List<MapRecord<String, Object, Object>> records = streamOps.read(
-                    Consumer.from(CONSUMER_GROUP, CONSUMER_NAME),
-                    org.springframework.data.redis.connection.stream.StreamReadOptions.empty().count(1),
-                    StreamOffset.create(STREAM_KEY, ReadOffset.lastConsumed())
-            );
-
-            if (records != null && !records.isEmpty()) {
-                for (MapRecord<String, Object, Object> record : records) {
-                    processJob(record);
-                }
-            } else {
-                // Try PEL if no new messages
-                records = streamOps.read(
-                        Consumer.from(CONSUMER_GROUP, CONSUMER_NAME),
-                        org.springframework.data.redis.connection.stream.StreamReadOptions.empty().count(10),
-                        StreamOffset.create(STREAM_KEY, ReadOffset.from("0"))
+    public void runWorker() {
+        while (running) {
+            try {
+                List<MapRecord<String, Object, Object>> records = streamOps.read(
+                        Consumer.from(CONSUMER_GROUP, consumerName),
+                        org.springframework.data.redis.connection.stream.StreamReadOptions.empty().block(Duration.ofSeconds(30)).count(1),
+                        StreamOffset.create(STREAM_KEY, ReadOffset.lastConsumed())
                 );
-                if (records != null) {
+
+                if (records != null && !records.isEmpty()) {
                     for (MapRecord<String, Object, Object> record : records) {
                         processJob(record);
                     }
+                } else {
+                    // Try PEL if no new messages
+                    records = streamOps.read(
+                            Consumer.from(CONSUMER_GROUP, consumerName),
+                            org.springframework.data.redis.connection.stream.StreamReadOptions.empty().count(10),
+                            StreamOffset.create(STREAM_KEY, ReadOffset.from("0"))
+                    );
+                    if (records != null) {
+                        for (MapRecord<String, Object, Object> record : records) {
+                            processJob(record);
+                        }
+                    }
                 }
-            }
-        } catch (Exception e) {
-            if (e.getMessage() != null && e.getMessage().contains("NOGROUP")) {
-                try {
-                    streamOps.createGroup(STREAM_KEY, CONSUMER_GROUP);
-                } catch (Exception ignored) {
+            } catch (Exception e) {
+                if (e.getMessage() != null && e.getMessage().contains("NOGROUP")) {
+                    try {
+                        streamOps.createGroup(STREAM_KEY, CONSUMER_GROUP);
+                    } catch (Exception ignored) {
+                    }
+                } else {
+                    log.error("Error polling ingestion jobs from Redis stream", e);
                 }
-            } else {
-                log.error("Error polling ingestion jobs from Redis stream", e);
             }
         }
     }
@@ -170,11 +183,21 @@ public class IngestionWorkerService {
         jobRepository.save(job);
 
         try {
-            executeIngestion(payload, job);
+            transactionTemplate.executeWithoutResult(status -> {
+                try {
+                    executeIngestion(payload, job);
+                    
+                    job.setStatus(JobStatus.COMPLETED);
+                    job.setProgress(100);
+                    jobRepository.save(job);
+                    
+                    int count = (payload.getSourceType() == SourceType.WIKIPEDIA) ? 1 : 1; 
+                    analyticsService.incrementDocumentsUploaded(count);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
             
-            job.setStatus(JobStatus.COMPLETED);
-            job.setProgress(100);
-            jobRepository.save(job);
             streamOps.acknowledge(STREAM_KEY, CONSUMER_GROUP, record.getId());
             log.info("Successfully completed ingestion job {}", job.getId());
         } catch (Exception e) {

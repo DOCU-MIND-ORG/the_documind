@@ -49,6 +49,7 @@ public class SessionService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final ObjectMapper objectMapper;
     private final SessionSummaryService sessionSummaryService;
+    private final AnalyticsService analyticsService;
 
     private static final String PDF_EXPORT_STREAM_KEY = "pdf_export_jobs";
     private static final String PDF_EXPORT_RESULT_PREFIX = "pdf_export_result:";
@@ -58,6 +59,7 @@ public class SessionService {
         User user=userRepository.findByEmail(userEmail);
 
         if(user==null) throw new RuntimeException("User Not Found 🚫");
+        analyticsService.recordVisit(user.getId());
 
         LocalDateTime now=LocalDateTime.now();
 
@@ -77,6 +79,7 @@ public class SessionService {
         User user=userRepository.findByEmail(userEmail);
 
         if(user==null) throw new RuntimeException("User Not Found 🚫");
+        analyticsService.recordVisit(user.getId());
 
         List<Session> sessions=sessionRepository.findByUser(user);
 
@@ -89,6 +92,7 @@ public class SessionService {
         User user=userRepository.findByEmail(userEmail);
 
         if(user==null) throw new RuntimeException("User Not Found 🚫");
+        analyticsService.recordVisit(user.getId());
 
         Session session=sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new RuntimeException("No Session found 🚫"));

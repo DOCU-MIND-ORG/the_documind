@@ -12,6 +12,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StreamOperations;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import jakarta.annotation.PostConstruct;
 import java.time.Duration;
@@ -47,7 +48,9 @@ public class PdfExportWorkerService {
 
     private static final String STREAM_KEY = "pdf_export_jobs";
     private static final String CONSUMER_GROUP = "pdf-export-workers";
-    private static final String CONSUMER_NAME = "pdf-worker-1"; // Or dynamic UUID in prod
+    private final String consumerName = "pdf-worker-" + java.util.UUID.randomUUID().toString();
+    private volatile boolean running = true;
+    private final java.util.concurrent.ExecutorService workerExecutor;
     private static final String RESULT_KEY_PREFIX = "pdf_export_result:";
     private static final String BLOB_KEY_PREFIX = "pdf_export_blob:";
     private static final Duration RESULT_TTL = Duration.ofMinutes(30);
@@ -61,18 +64,27 @@ public class PdfExportWorkerService {
 
     private StreamOperations<String, Object, Object> streamOps;
 
+    private final com.accenture.intern.docmind.service.AnalyticsService analyticsService;
+    private final TransactionTemplate transactionTemplate;
+
     public PdfExportWorkerService(RedisTemplate<String, Object> redisTemplate,
                                    SessionRepository sessionRepository,
                                    MessageRepository messageRepository,
                                    SessionSummaryService sessionSummaryService,
                                    PdfGeneratorService pdfGeneratorService,
-                                   ObjectMapper objectMapper) {
+                                   ObjectMapper objectMapper,
+                                   java.util.concurrent.ExecutorService workerExecutor,
+                                   com.accenture.intern.docmind.service.AnalyticsService analyticsService,
+                                   TransactionTemplate transactionTemplate) {
         this.redisTemplate = redisTemplate;
         this.sessionRepository = sessionRepository;
         this.messageRepository = messageRepository;
         this.sessionSummaryService = sessionSummaryService;
         this.pdfGeneratorService = pdfGeneratorService;
         this.objectMapper = objectMapper;
+        this.workerExecutor = workerExecutor;
+        this.analyticsService = analyticsService;
+        this.transactionTemplate = transactionTemplate;
     }
 
     @PostConstruct
@@ -83,30 +95,37 @@ public class PdfExportWorkerService {
         } catch (Exception e) {
             log.info("PDF export consumer group likely exists already");
         }
+        workerExecutor.submit(this::runWorker);
     }
 
-    @Scheduled(fixedDelay = 250)
-    public void pollJobs() {
-        try {
-            List<MapRecord<String, Object, Object>> records = streamOps.read(
-                    Consumer.from(CONSUMER_GROUP, CONSUMER_NAME),
-                    StreamReadOptions.empty().count(1),
-                    StreamOffset.create(STREAM_KEY, ReadOffset.lastConsumed())
-            );
+    @jakarta.annotation.PreDestroy
+    public void destroy() {
+        running = false;
+    }
 
-            if (records == null || records.isEmpty()) return;
+    public void runWorker() {
+        while (running) {
+            try {
+                List<MapRecord<String, Object, Object>> records = streamOps.read(
+                        Consumer.from(CONSUMER_GROUP, consumerName),
+                        StreamReadOptions.empty().block(Duration.ofSeconds(30)).count(1),
+                        StreamOffset.create(STREAM_KEY, ReadOffset.lastConsumed())
+                );
 
-            for (MapRecord<String, Object, Object> record : records) {
-                processJob(record);
-            }
-        } catch (Exception e) {
-            if (e.getMessage() != null && e.getMessage().contains("NOGROUP")) {
-                try {
-                    streamOps.createGroup(STREAM_KEY, CONSUMER_GROUP);
-                } catch (Exception ignored) {
+                if (records == null || records.isEmpty()) continue;
+
+                for (MapRecord<String, Object, Object> record : records) {
+                    processJob(record);
                 }
-            } else {
-                log.error("Error polling jobs from Redis stream {}", STREAM_KEY, e);
+            } catch (Exception e) {
+                if (e.getMessage() != null && e.getMessage().contains("NOGROUP")) {
+                    try {
+                        streamOps.createGroup(STREAM_KEY, CONSUMER_GROUP);
+                    } catch (Exception ignored) {
+                    }
+                } else {
+                    log.error("Error polling jobs from Redis stream {}", STREAM_KEY, e);
+                }
             }
         }
     }
@@ -125,8 +144,15 @@ public class PdfExportWorkerService {
         }
 
         try {
-            writeStatus(jobId, "PROCESSING", null, null);
-            generatePdf(jobId, sessionId, userEmail);
+            transactionTemplate.executeWithoutResult(status -> {
+                try {
+                    writeStatus(jobId, "PROCESSING", null, null);
+                    generatePdf(jobId, sessionId, userEmail);
+                    analyticsService.incrementPdfExports();
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
             streamOps.acknowledge(STREAM_KEY, CONSUMER_GROUP, record.getId());
         } catch (Exception e) {
             log.error("Failed to process PDF export job {}", jobId, e);

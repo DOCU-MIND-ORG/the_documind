@@ -92,32 +92,23 @@ public class ChatService {
     }
 
     public Flux<ServerSentEvent<String>> streamChat(Long messageId) {
-        String streamKey = "tokens:" + messageId;
-        java.util.concurrent.atomic.AtomicReference<String> lastId = new java.util.concurrent.atomic.AtomicReference<>("0-0");
+        String channelKey = "chat-tokens:" + messageId;
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
 
-        return Flux.interval(java.time.Duration.ofMillis(200))
-                .onBackpressureDrop()
-                .flatMapIterable(tick -> {
+        return reactiveRedisTemplate.listenToChannel(channelKey)
+                .map(message -> {
                     try {
-                        java.util.List<MapRecord<String, Object, Object>> records = 
-                                redisTemplate.opsForStream().read(
-                                        StreamReadOptions.empty().count(50),
-                                        StreamOffset.create(streamKey,ReadOffset.from(lastId.get()))
-                                );
-                        if (records == null || records.isEmpty()) {
-                            return java.util.Collections.emptyList();
-                        }
-                        lastId.set(records.get(records.size() - 1).getId().getValue());
-                        return records;
+                        String json = (String) message.getMessage();
+                        java.util.Map<String, String> map = mapper.readValue(json, java.util.Map.class);
+                        return map;
                     } catch (Exception e) {
-                        log.error("Error polling stream", e);
-                        return java.util.Collections.emptyList();
+                        return java.util.Map.of("event", "message", "data", message.getMessage().toString());
                     }
                 })
-                .takeUntil(record -> "done".equals(record.getValue().get("event")))
-                .map(record -> {
-                    String event = (String) record.getValue().get("event");
-                    String data = (String) record.getValue().get("data");
+                .takeUntil(map -> "done".equals(map.get("event")))
+                .map(map -> {
+                    String event = map.get("event");
+                    String data = map.get("data");
                     return ServerSentEvent.<String>builder(data).event(event != null ? event : "message").build();
                 });
     }

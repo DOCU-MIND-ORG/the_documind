@@ -24,8 +24,8 @@ import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StreamOperations;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.data.redis.connection.stream.*;
 
 import jakarta.annotation.PostConstruct;
@@ -55,8 +55,12 @@ public class LlmWorkerService {
     
     private StreamOperations<String, Object, Object> streamOps;
     private static final String CONSUMER_GROUP = "llm-workers";
-    private static final String CONSUMER_NAME = "worker-1"; // Or dynamic UUID in prod
+    private final String consumerName = "worker-" + java.util.UUID.randomUUID().toString();
     private static final String STREAM_KEY = "chat_jobs";
+    private volatile boolean running = true;
+    private final java.util.concurrent.ExecutorService workerExecutor;
+    private final com.accenture.intern.docmind.service.AnalyticsService analyticsService;
+    private final TransactionTemplate transactionTemplate;
 
     private final com.accenture.intern.docmind.aiservices.context.SuggestedQuestionsService suggestedQuestionsService;
 
@@ -71,7 +75,10 @@ public class LlmWorkerService {
                             MemoryGatingService memoryGatingService,
                             com.accenture.intern.docmind.service.SessionCacheService sessionCacheService,
                             com.accenture.intern.docmind.aiservices.context.SuggestedQuestionsService suggestedQuestionsService,
-                            RedisTemplate<String, Object> redisTemplate) {
+                            RedisTemplate<String, Object> redisTemplate,
+                            java.util.concurrent.ExecutorService workerExecutor,
+                            com.accenture.intern.docmind.service.AnalyticsService analyticsService,
+                            TransactionTemplate transactionTemplate) {
         this.chatClient = chatClientBuilder.build();
         this.contextBuilderService = contextBuilderService;
         this.citationService = citationService;
@@ -84,6 +91,9 @@ public class LlmWorkerService {
         this.sessionCacheService = sessionCacheService;
         this.suggestedQuestionsService = suggestedQuestionsService;
         this.redisTemplate = redisTemplate;
+        this.workerExecutor = workerExecutor;
+        this.analyticsService = analyticsService;
+        this.transactionTemplate = transactionTemplate;
     }
 
     @PostConstruct
@@ -94,31 +104,37 @@ public class LlmWorkerService {
         } catch (Exception e) {
             log.info("Consumer group likely exists already");
         }
+        workerExecutor.submit(this::runWorker);
     }
 
-    @Scheduled(fixedDelay = 1000)
-    @org.springframework.transaction.annotation.Transactional
-    public void pollJobs() {
-        try {
-            List<MapRecord<String, Object, Object>> records = streamOps.read(
-                    Consumer.from(CONSUMER_GROUP, CONSUMER_NAME),
-                    StreamReadOptions.empty().count(1),
-                    StreamOffset.create(STREAM_KEY,ReadOffset.lastConsumed())
-            );
+    @jakarta.annotation.PreDestroy
+    public void destroy() {
+        running = false;
+    }
 
-            if (records == null || records.isEmpty()) return;
+    public void runWorker() {
+        while (running) {
+            try {
+                List<MapRecord<String, Object, Object>> records = streamOps.read(
+                        Consumer.from(CONSUMER_GROUP, consumerName),
+                        StreamReadOptions.empty().block(Duration.ofSeconds(30)).count(1),
+                        StreamOffset.create(STREAM_KEY, ReadOffset.lastConsumed())
+                );
 
-            for (MapRecord<String, Object, Object> record : records) {
-                processJob(record);
-            }
-        } catch (Exception e) {
-            if (e.getMessage() != null && e.getMessage().contains("NOGROUP")) {
-                try {
-                    streamOps.createGroup(STREAM_KEY, CONSUMER_GROUP);
-                } catch (Exception ignored) {
+                if (records == null || records.isEmpty()) continue;
+
+                for (MapRecord<String, Object, Object> record : records) {
+                    processJob(record);
                 }
-            } else {
-                log.error("Error polling jobs from Redis stream", e);
+            } catch (Exception e) {
+                if (e.getMessage() != null && e.getMessage().contains("NOGROUP")) {
+                    try {
+                        streamOps.createGroup(STREAM_KEY, CONSUMER_GROUP);
+                    } catch (Exception ignored) {
+                    }
+                } else {
+                    log.error("Error polling jobs from Redis stream", e);
+                }
             }
         }
     }
@@ -138,7 +154,17 @@ public class LlmWorkerService {
         }
 
         try {
-            executeLlmGeneration(messageId, sessionId, query, model);
+            transactionTemplate.executeWithoutResult(status -> {
+                long startTime = System.currentTimeMillis();
+                executeLlmGeneration(messageId, sessionId, query, model);
+                long duration = System.currentTimeMillis() - startTime;
+                
+                analyticsService.incrementChatRequests();
+                Message msg = messageRepository.findById(messageId).orElse(null);
+                long tokens = (msg != null && msg.getContent() != null) ? msg.getContent().length() / 4 : 0;
+                analyticsService.recordLlmGeneration(tokens, duration);
+            });
+            
             streamOps.acknowledge(STREAM_KEY, CONSUMER_GROUP, record.getId());
         } catch (Exception e) {
             log.error("Failed to process job {}", messageId, e);
@@ -148,7 +174,6 @@ public class LlmWorkerService {
         }
     }
 
-    @org.springframework.transaction.annotation.Transactional
     private void executeLlmGeneration(Long messageId, Long sessionId, String query, String model) {
         Session session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new RuntimeException("Session not found"));
@@ -212,9 +237,6 @@ public class LlmWorkerService {
         
         // Trigger follow-up questions generation in the background
         suggestedQuestionsService.triggerFollowUpForSession(sessionId);
-        
-        // Clean up token stream after 5 minutes
-        redisTemplate.expire("tokens:" + messageId, 5, TimeUnit.MINUTES);
 
         // Memory injection
         boolean isMemorable = memoryGatingService.isMemorable(query, fullResponse);
@@ -268,7 +290,12 @@ public class LlmWorkerService {
         Map<String, Object> map = new HashMap<>();
         map.put("event", event);
         map.put("data", data);
-        streamOps.add("tokens:" + messageId, map);
+        try {
+            String json = objectMapper.writeValueAsString(map);
+            redisTemplate.convertAndSend("chat-tokens:" + messageId, json);
+        } catch(Exception e) {
+            log.error("Failed to publish token", e);
+        }
     }
     
     private void updateMessageStatus(Long messageId, MessageStatus status) {
