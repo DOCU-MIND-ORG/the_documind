@@ -116,11 +116,8 @@ public class SessionService {
             throw new RuntimeException("Access denied");
         }
 
-        // 1. Delete view_attachments rows for this session first (FK child of both
-        //    sessions and attachments — must go before either parent is deleted).
-        //    This only removes the session's "View Attachments" membership rows;
-        //    it never touches the Attachment rows themselves.
-        viewAttachmentRepository.deleteBySession_SessionId(sessionId);
+        // 1. view_attachments are deleted automatically via DB-level ON DELETE CASCADE
+        //    (see ViewAttachment.session mapping).
 
         // 2. Detach (do NOT delete) the attachments originally uploaded in this
         //    session. Attachment.session is a real FK column, so simply deleting
@@ -131,18 +128,17 @@ public class SessionService {
         //    Explore page) for everyone even after the session that introduced it
         //    is gone. Setting session -> null breaks the FK link cleanly without
         //    deleting the row, the Cloudinary file, or the indexed chunks.
-        List<com.accenture.intern.docmind.entity.Attachment> attachments =
-                attachmentRepository.findBySessionSessionId(sessionId);
-        for (com.accenture.intern.docmind.entity.Attachment attachment : attachments) {
-            attachment.setSession(null);
-        }
-        attachmentRepository.saveAll(attachments);
+        //    Optimized to use a bulk update instead of row-by-row JPA saves.
+        attachmentRepository.detachAttachmentsFromSession(sessionId);
 
         // 3. Clear the in-memory upload/processing cache for this session so the
         //    frontend never sees a stale "processing" state after deletion.
         sessionCacheService.invalidateState(sessionId);
 
-        // 4. Delete the session (cascades to messages via Session.messages CascadeType.ALL).
+        // 4. Messages are deleted automatically via DB-level ON DELETE CASCADE
+        //    (see Message.session mapping).
+
+        // 5. Delete the session itself.
         sessionRepository.delete(session);
     }
 

@@ -12,8 +12,13 @@ import java.time.LocalDateTime;
  *
  * Table: view_attachments
  */
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
+
 @Entity
-@Table(name = "view_attachments")
+@Table(name = "view_attachments", indexes = {
+    @Index(name = "idx_view_attachment_session_id", columnList = "session_id")
+})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -28,6 +33,7 @@ public class ViewAttachment {
     /** The session this view-attachment record belongs to. */
     @ManyToOne
     @JoinColumn(name = "session_id", nullable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
     private Session session;
 
     /** The actual attachment (PDF, image, URL, etc.). */

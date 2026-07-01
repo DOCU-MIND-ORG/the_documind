@@ -112,6 +112,7 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
   const [renameSessionId, setRenameSessionId] = useState(null);
   const [renameTitle, setRenameTitle]         = useState('');
   const [deleteSessionId, setDeleteSessionId] = useState(null);
+  const [isDeleting, setIsDeleting]           = useState(false);
 
   const activeId = location.pathname.startsWith('/chat/')
     ? location.pathname.split('/')[2]
@@ -128,7 +129,8 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
   };
 
   const handleConfirmDelete = async () => {
-    if (!deleteSessionId) return;
+    if (!deleteSessionId || isDeleting) return;
+    setIsDeleting(true);
     try {
       await sessionService.delete(deleteSessionId);
       removeSession(deleteSessionId);
@@ -137,6 +139,7 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
     } catch (err) {
       showToast(err.message || 'Failed to delete', 'error');
     } finally {
+      setIsDeleting(false);
       setDeleteSessionId(null);
     }
   };
@@ -466,9 +469,10 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
             </button>
             <button
               onClick={handleConfirmDelete}
-              className="px-4 py-2.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-500 active:scale-95 rounded-xl shadow-lg shadow-red-500/20 transition-all cursor-pointer"
+              disabled={isDeleting}
+              className="px-4 py-2.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-500 active:scale-95 disabled:scale-100 disabled:opacity-50 rounded-xl shadow-lg shadow-red-500/20 transition-all cursor-pointer"
             >
-              Delete
+              {isDeleting ? 'Deleting...' : 'Delete'}
             </button>
           </>
         }

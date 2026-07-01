@@ -9,7 +9,9 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 @Entity
-@Table(name = "attachments")
+@Table(name = "attachments", indexes = {
+    @Index(name = "idx_attachment_session_id", columnList = "session_id")
+})
 @EntityListeners(AttachmentEntityListener.class)
 @Getter
 @Setter

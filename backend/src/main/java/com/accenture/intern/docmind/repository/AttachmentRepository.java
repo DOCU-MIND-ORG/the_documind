@@ -2,6 +2,9 @@ package com.accenture.intern.docmind.repository;
 
 import com.accenture.intern.docmind.entity.Attachment;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 
@@ -25,6 +28,10 @@ public interface AttachmentRepository extends JpaRepository<Attachment, Long> {
      * real FK column.
      */
     List<Attachment> findBySessionSessionId(Long sessionId);
+
+    @Modifying
+    @Query("UPDATE Attachment a SET a.session = null WHERE a.session.sessionId = :sessionId")
+    void detachAttachmentsFromSession(@Param("sessionId") Long sessionId);
 
     /**
      * The original Attachment row that owns a given Cloudinary URL. Used when
