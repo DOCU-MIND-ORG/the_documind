@@ -94,16 +94,16 @@ public class ContextBuilderService {
                     return orchestrateAdaptive(question, sessionId, adapt, Mono.just(historyBlock), sessionContext, progressSink);
                 }
 
-                if (decision != null && (decision.intent() == Intent.GREETING_ACK || decision.intent() == Intent.BOT_QA)) {
+                if (decision != null && decision.scope() == Scope.NONE && (decision.purpose().contains("GREETING") || decision.purpose().contains("BOT_QA"))) {
                     return Mono.just(new ContextResult(generalPrompt, buildPrompt(question, "", historyBlock, sessionContext), Collections.emptyList(), 0.0));
                 }
 
-                if (decision != null && ((decision.intent() == Intent.META_HISTORY || decision.intent() == Intent.CLARIFICATION) && decision.scope() == Scope.NONE)) {
+                if (decision != null && decision.scope() == Scope.NONE && (decision.purpose().contains("META_HISTORY") || decision.purpose().contains("CLARIFICATION"))) {
                     String metaContext = "Context: The user is asking about past conversations or asking for clarification. Rely on the Conversation History above.";
                     return Mono.just(new ContextResult(ragPrompt, buildPrompt(question, metaContext, historyBlock, sessionContext), Collections.emptyList(), 0.0));
                 }
 
-                if (decision != null && decision.intent() == Intent.SESSION_INFO) {
+                if (decision != null && decision.scope() == Scope.NONE && decision.purpose().contains("SESSION_INFO")) {
                     List<String> activeDocs = sessionContext != null && sessionContext.uploadedDocuments() != null ? sessionContext.uploadedDocuments().stream().map(DocumentReference::filename).toList() : java.util.Collections.emptyList();
                     String activeDocsStr = activeDocs != null && !activeDocs.isEmpty()
                             ? String.join("\n- ", activeDocs)
@@ -131,30 +131,25 @@ public class ContextBuilderService {
                                     return acc;
                                 })
                                 .map(selectedDocs -> new ContextResult(
-                                        getSystemPrompt(selectedDocs.isEmpty(), finalDecision.retrievalStrategy(), historyBlock, sessionContext),
+                                        getSystemPrompt(selectedDocs.isEmpty(), "", historyBlock, sessionContext),
                                         buildPrompt(question, buildContextBlock(selectedDocs, finalMergeOperation), historyBlock, sessionContext),
                                         selectedDocs, 1.0
                                 ));
                     }
                 }
 
-                StaticExecutionPlan staticPlan = new StaticExecutionPlan(plans, mergeOperation);
-                return orchestrateAndBuild(question, sessionId, staticPlan, Mono.just(historyBlock), sessionContext, progressSink);
+                return orchestrateAndBuild(question, sessionId, execPlan, Mono.just(historyBlock), sessionContext, progressSink);
             });
         });
     }
 
     private Mono<ContextResult> orchestrateAdaptive(String question, Long sessionId, AdaptiveExecutionPlan adaptivePlan, Mono<String> historyBlockMono, SessionContext sessionContext, reactor.core.publisher.Sinks.Many<org.springframework.http.codec.ServerSentEvent<String>> progressSink) {
         RetrievalPlan initialPlan = new RetrievalPlan(
-                Intent.DOCUMENT_QA,
-                Scope.CORPUS,
-                RetrievalStrategy.SINGLE_SOURCE,
-                com.accenture.intern.docmind.aiservices.understanding.RetrievalExecutionMode.RANKED_RETRIEVAL,
-                List.of(),
-                List.of(),
+                "Adaptive Search",
                 question,
                 List.of(),
-                List.of()
+                com.accenture.intern.docmind.aiservices.understanding.RetrievalExecutionMode.RANKED_RETRIEVAL,
+                Scope.CORPUS
         );
         RetrievalTrace trace = new RetrievalTrace();
         return adaptiveLoop(adaptivePlan, initialPlan, new ArrayList<>(), 1, sessionId, question, historyBlockMono, sessionContext, progressSink, trace);
@@ -175,7 +170,10 @@ public class ContextBuilderService {
                 "Adaptive retry retrieval for: " + question,
                 Collections.emptyList(),
                 1,
-                3
+                3,
+                null,
+                Collections.emptyList(),
+                false
         );
         Mono<String> historyBlockMono = fetchHistoryBlock(sessionId, question, true);
         return orchestrateAdaptive(question, sessionId, adaptivePlan, historyBlockMono, sessionContext, null);
@@ -186,9 +184,9 @@ public class ContextBuilderService {
             return buildFinalAdaptiveResult(originalQuestion, accumulatedCandidates, historyBlockMono, sessionContext, trace);
         }
         
-        StaticExecutionPlan singleStatic = new StaticExecutionPlan(List.of(currentPlan), MergeOperation.UNION);
+        StaticExecutionPlan singleStatic = new StaticExecutionPlan(List.of(currentPlan), MergeOperation.UNION, Collections.emptyList(), false);
         return retrievalOrchestrator.orchestrate(originalQuestion, sessionId, singleStatic, progressSink)
-            .flatMap(newCandidates -> {
+            .flatMap(newResult -> {
                 if (progressSink != null) {
                     String msg = new com.accenture.intern.docmind.dto.chat.ProgressEvent(
                             com.accenture.intern.docmind.dto.chat.ProgressStage.ADAPTIVE,
@@ -198,10 +196,10 @@ public class ContextBuilderService {
                     progressSink.tryEmitNext(org.springframework.http.codec.ServerSentEvent.<String>builder(msg).event("progress").build());
                 }
 
-                com.accenture.intern.docmind.aiservices.understanding.plan.RetrievalObservation obs = retrievalOrchestrator.generateObservation(newCandidates, currentPlan);
+                com.accenture.intern.docmind.aiservices.understanding.plan.RetrievalObservation obs = retrievalOrchestrator.generateObservation(newResult.evidence(), currentPlan);
                 trace.addObservation(obs);
                 trace.addStep(String.format("Iteration %d: %s", iteration, obs.message()));
-                accumulatedCandidates.addAll(newCandidates);
+                accumulatedCandidates.addAll(newResult.evidence());
                 
                 return retrievalController.decideNextAction(adaptivePlan, obs)
                     .flatMap(action -> {
@@ -210,9 +208,7 @@ public class ContextBuilderService {
                             return buildFinalAdaptiveResult(originalQuestion, accumulatedCandidates, historyBlockMono, sessionContext, trace);
                         } else {
                             if (progressSink != null) {
-                                String targetStr = action.nextPlan().get().entities().stream().findFirst()
-                                    .map(e -> e.canonicalEntity())
-                                    .orElse(action.nextPlan().get().optimizedQuery());
+                                String targetStr = action.nextPlan().get().optimizedQuery();
                                 String msg = new com.accenture.intern.docmind.dto.chat.ProgressEvent(
                                         com.accenture.intern.docmind.dto.chat.ProgressStage.RETRIEVAL,
                                         com.accenture.intern.docmind.dto.chat.ProgressStatus.RUNNING,
@@ -233,31 +229,34 @@ public class ContextBuilderService {
              String contextBlock = buildContextBlock(candidates, MergeOperation.UNION);
              String augmentedPrompt = buildPrompt(question, contextBlock, historyBlock, sessionContext);
              return Mono.just(new ContextResult(
-                     getSystemPrompt(candidates.isEmpty(), RetrievalStrategy.SINGLE_SOURCE, historyBlock, sessionContext),
-                     augmentedPrompt, candidates, candidates, Collections.emptyList(), Collections.emptyList(), trace, topScore));
+                     getSystemPrompt(candidates.isEmpty(), "", historyBlock, sessionContext),
+                     augmentedPrompt, candidates, candidates, Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), trace, topScore));
         });
     }
 
-    private Mono<ContextResult> orchestrateAndBuild(String question, Long sessionId, StaticExecutionPlan execPlan, Mono<String> historyBlockMono, SessionContext sessionContext, reactor.core.publisher.Sinks.Many<org.springframework.http.codec.ServerSentEvent<String>> progressSink) {
+    private Mono<ContextResult> orchestrateAndBuild(String question, Long sessionId, ExecutionPlan execPlan, Mono<String> historyBlockMono, SessionContext sessionContext, reactor.core.publisher.Sinks.Many<org.springframework.http.codec.ServerSentEvent<String>> progressSink) {
         return retrievalOrchestrator.orchestrate(question, sessionId, execPlan, progressSink)
                 .zipWith(historyBlockMono)
                 .flatMap(tuple -> {
-                    List<RetrievalCandidate> candidates = tuple.getT1();
+                    com.accenture.intern.docmind.dto.chat.RetrievalResult result = tuple.getT1();
                     String historyBlock = tuple.getT2();
 
                     RetrievalTrace trace = new RetrievalTrace();
-                    trace.addStep(String.format("Orchestrator returned %d merged chunks.", candidates.size()));
+                    trace.addStep(String.format("Orchestrator returned %d merged chunks.", result.evidence().size()));
 
-                    double topScore = candidates.isEmpty() ? 0.0 : candidates.get(0).finalScore();
+                    double topScore = result.evidence().isEmpty() ? 0.0 : result.evidence().get(0).finalScore();
                     
-                    RetrievalStrategy primaryStrategy = execPlan.plans().isEmpty() ? RetrievalStrategy.SINGLE_SOURCE : execPlan.plans().get(0).retrievalStrategy();
+                    String primaryStrategy = "";
 
-                    String contextBlock = buildContextBlock(candidates, execPlan.mergeOperation());
+                    String contextBlock = buildContextBlock(result.evidence(), execPlan.getMergeOperation());
+                    if (result.visuals() != null && !result.visuals().isEmpty()) {
+                        contextBlock = "Visual Context:\n" + result.visuals().size() + " related images are attached to this response.\n\n" + contextBlock;
+                    }
                     String augmentedPrompt = buildPrompt(question, contextBlock, historyBlock, sessionContext);
                     
                     return Mono.just(new ContextResult(
-                            getSystemPrompt(candidates.isEmpty(), primaryStrategy, historyBlock, sessionContext),
-                            augmentedPrompt, candidates, candidates, Collections.emptyList(), Collections.emptyList(), trace, topScore));
+                            getSystemPrompt(result.evidence().isEmpty(), primaryStrategy, historyBlock, sessionContext),
+                            augmentedPrompt, result.evidence(), result.evidence(), Collections.emptyList(), Collections.emptyList(), result.visuals() != null ? result.visuals() : Collections.emptyList(), trace, topScore));
                 });
     }
 
@@ -334,15 +333,15 @@ public class ContextBuilderService {
         return "Context Information:\n" + contextBlock + "\n\n" + sessionContextStr + "\nConversation History:\n" + historyBlock + "\n\nUser Question:\n" + question;
     }
 
-    private String getSystemPrompt(boolean isEmpty, RetrievalStrategy strategy, String historyBlock, SessionContext sessionContext) {
+    private String getSystemPrompt(boolean isEmpty, String strategy, String historyBlock, SessionContext sessionContext) {
         if (isEmpty && (historyBlock == null || historyBlock.isBlank())) return generalPrompt;
 
         String directive;
-        if (strategy == RetrievalStrategy.CONCEPT_EXPANSION) {
+        if ("CONCEPT_EXPANSION".equals(strategy)) {
             directive = "Never say a concept is absent because the exact word is missing. " +
                     "Infer the concept from the underlying evidence present in the retrieved context. " +
                     "Map thematic evidence to the abstract concept the user asked about and answer accordingly.";
-        } else if (strategy == RetrievalStrategy.META_DOC_SEARCH) {
+        } else if ("META_DOC_SEARCH".equals(strategy)) {
             directive = "Your task is to identify WHICH documents are relevant to the user's query and name them explicitly. " +
                     "CRITICAL RULE: Do NOT require the exact query word or phrase to appear verbatim in the document. " +
                     "Instead, identify the underlying theme or concept in the user's question, then evaluate each document's content " +

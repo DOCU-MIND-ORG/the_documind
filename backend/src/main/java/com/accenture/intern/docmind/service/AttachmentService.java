@@ -1,17 +1,30 @@
 package com.accenture.intern.docmind.service;
 
+import com.accenture.intern.docmind.dto.attachment.AttachmentDeleteResponse;
 import com.accenture.intern.docmind.dto.attachment.AttachmentResponse;
 import com.accenture.intern.docmind.dto.attachment.AttachmentUploadResult;
 import com.accenture.intern.docmind.entity.*;
 import com.accenture.intern.docmind.repository.AttachmentRepository;
+import com.accenture.intern.docmind.repository.DocumentChunkRepository;
 import com.accenture.intern.docmind.repository.MessageRepository;
 import com.accenture.intern.docmind.repository.SessionRepository;
+import com.accenture.intern.docmind.repository.UserRepository;
+import com.accenture.intern.docmind.aiservices.retrieval.VectorStoreService;
 import lombok.extern.slf4j.Slf4j;
 import com.accenture.intern.docmind.aiservices.embedding.DocumentParserService;
 import com.accenture.intern.docmind.aiservices.embedding.EmbeddingService;
+import com.accenture.intern.docmind.aiservices.embedding.WikipediaIngestionService;
 import com.accenture.intern.docmind.aiservices.vision.ImageVisionService;
 import com.accenture.intern.docmind.aiservices.vision.ImageVisionResponse;
+import com.accenture.intern.docmind.dto.job.IngestionJobPayload;
+import com.accenture.intern.docmind.entity.Job;
+import com.accenture.intern.docmind.entity.JobStatus;
+import com.accenture.intern.docmind.entity.JobType;
+import com.accenture.intern.docmind.entity.SourceType;
+import com.accenture.intern.docmind.repository.JobRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +38,7 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -37,10 +51,32 @@ public class AttachmentService {
     private final com.accenture.intern.docmind.repository.ViewAttachmentRepository viewAttachmentRepository;
     private final MessageRepository messageRepository;
     private final SessionRepository sessionRepository;
+    private final UserRepository userRepository;
+    private final DocumentChunkRepository documentChunkRepository;
+    private final VectorStoreService vectorStoreService;
     private final DocumentParserService parserService;
     private final EmbeddingService embeddingService;
     private final ImageVisionService imageVisionService;
     private final CloudinaryService cloudinaryService;
+    private final WikipediaIngestionService wikipediaIngestionService;
+    private final JobRepository jobRepository;
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final ObjectMapper objectMapper;
+
+    /**
+     * Self-reference to THIS bean's Spring proxy (not the raw `this`).
+     * Needed because deleteExploreAttachment() calls the @Transactional
+     * deleteExploreAttachmentBlocking() from inside the same class — a
+     * plain `this.deleteExploreAttachmentBlocking(...)` call bypasses the
+     * proxy entirely, so @Transactional would silently never apply (Spring's
+     * well-known "self-invocation" pitfall). Calling through `self` instead
+     * routes back through the proxy, so the transaction interceptor runs and
+     * an EntityManager gets bound to whichever thread actually executes it.
+     * @Lazy breaks the circular self-dependency this would otherwise create.
+     */
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.context.annotation.Lazy
+    private AttachmentService self;
 
     /** Root storage dir — always resolved to absolute path at startup */
     @Value("${app.storage.root:storage}")
@@ -52,18 +88,32 @@ public class AttachmentService {
                              com.accenture.intern.docmind.repository.ViewAttachmentRepository viewAttachmentRepository,
                              MessageRepository messageRepository,
                              SessionRepository sessionRepository,
+                             UserRepository userRepository,
+                             DocumentChunkRepository documentChunkRepository,
+                             VectorStoreService vectorStoreService,
                              DocumentParserService parserService,
                              EmbeddingService embeddingService,
                              ImageVisionService imageVisionService,
-                             CloudinaryService cloudinaryService) {
+                             CloudinaryService cloudinaryService,
+                             WikipediaIngestionService wikipediaIngestionService,
+                             JobRepository jobRepository,
+                             RedisTemplate<String, Object> redisTemplate,
+                             ObjectMapper objectMapper) {
         this.attachmentRepository = attachmentRepository;
         this.viewAttachmentRepository = viewAttachmentRepository;
         this.messageRepository = messageRepository;
         this.sessionRepository = sessionRepository;
+        this.userRepository = userRepository;
+        this.documentChunkRepository = documentChunkRepository;
+        this.vectorStoreService = vectorStoreService;
         this.parserService = parserService;
         this.embeddingService = embeddingService;
         this.imageVisionService = imageVisionService;
         this.cloudinaryService = cloudinaryService;
+        this.wikipediaIngestionService = wikipediaIngestionService;
+        this.jobRepository = jobRepository;
+        this.redisTemplate = redisTemplate;
+        this.objectMapper = objectMapper;
     }
 
     @jakarta.annotation.PostConstruct
@@ -234,13 +284,40 @@ public class AttachmentService {
                     }
                 }
             } catch (Exception e) {
-                log.error("Failed to parse/ingest '{}': {}", originalName, e.getMessage());
-                // We proceed even if parsing fails so the attachment is still recorded
+                log.error("Failed pre-upload parse for '{}': {}", originalName, e.getMessage());
             }
 
-            Mono<Void> ingestionMono = ingestionMonos.isEmpty()
-                    ? Mono.empty()
-                    : Mono.when(ingestionMonos);
+            // Create background Job for ingestion
+            Job job = Job.builder()
+                    .type(JobType.DOCUMENT_INGESTION)
+                    .status(JobStatus.QUEUED)
+                    .build();
+            jobRepository.save(job);
+
+            SourceType sourceTypeEnum = switch (type) {
+                case PDF -> SourceType.PDF;
+                case IMAGE -> SourceType.PDF; // images handled in PDF pipeline in worker or OTHER
+                case TEXT -> SourceType.TEXT;
+                default -> SourceType.OTHER; // Note: OTHER might need to be added to SourceType enum
+            };
+
+            IngestionJobPayload payload = IngestionJobPayload.builder()
+                    .jobId(job.getId())
+                    .sourceType(sourceTypeEnum)
+                    .sourceLocation(dest.toAbsolutePath().toString())
+                    .sessionId(sessionId)
+                    .userId(session.getUser().getId())
+                    .sourceUrl(publicUrl)
+                    .build();
+
+            // Push to Redis Stream
+            try {
+                redisTemplate.opsForStream().add("ingestion_jobs", Map.of("payload", payload));
+            } catch (Exception e) {
+                log.error("Failed to serialize job payload for PDF", e);
+            }
+
+            Mono<Void> ingestionMono = Mono.empty(); // Now handled async via Redis
 
             long sizeBytes;
             try {
@@ -248,11 +325,6 @@ public class AttachmentService {
             } catch (IOException e) {
                 sizeBytes = -1L;
             }
-
-            // Cleanup local temp file since we have it in Cloudinary now
-            try {
-                Files.deleteIfExists(dest);
-            } catch (IOException ignored) {}
 
             // 5. Create a system Message so the upload shows up in chat history/transcript
             Message systemMsg = Message.builder()
@@ -269,24 +341,32 @@ public class AttachmentService {
             // shared, persistent corpus and survives even if that session is
             // later deleted (see SessionService#deleteSession).
             //
-            // If this content was already detected as a duplicate above
-            // (existingSourceUrl != null), don't insert a second Attachment
-            // row for bytes that are already on file — reuse the original
-            // row instead, and only add a fresh ViewAttachment link so this
-            // session can still see it. Falls back to inserting normally if,
-            // for whatever reason, no Attachment row owns that URL (shouldn't
-            // happen in practice, but a dedup check shouldn't be able to make
-            // the upload disappear entirely).
+            // If THIS SAME USER already has an Attachment row for this exact
+            // content (existingSourceUrl != null AND they're the owner of that
+            // row), reuse it via a new ViewAttachment link instead of inserting
+            // a duplicate row for bytes they've already uploaded before.
+            //
+            // If the duplicate content was originally uploaded by a DIFFERENT
+            // user, don't reuse their row — insert a brand-new Attachment row
+            // for THIS user instead (still pointing at the same Cloudinary
+            // asset/publicUrl, so nothing gets re-uploaded). This keeps
+            // Explore's "who owns this file" accounting correct: every user
+            // who has a copy of a file gets their own deletable row, and
+            // AttachmentService#deleteExploreAttachment can tell, from how many
+            // rows share a url, whether it's safe to purge the underlying
+            // Cloudinary asset + document_chunks + Pinecone vectors, or whether
+            // it should just detach this one user's row.
             Attachment attachment = existingSourceUrl != null
-                    ? attachmentRepository.findFirstByUrlOrderByUploadedAtAsc(existingSourceUrl).orElse(null)
+                    ? attachmentRepository.findFirstByUrlAndUserIdOrderByUploadedAtAsc(existingSourceUrl, session.getUser().getId()).orElse(null)
                     : null;
 
             if (attachment != null) {
-                log.info("'{}' duplicates existing attachment #{} — reusing it instead of inserting a new row",
+                log.info("'{}' duplicates existing attachment #{} owned by this same user — reusing it instead of inserting a new row",
                         originalName, attachment.getAttachmentId());
             } else {
                 attachment = Attachment.builder()
                         .session(session)
+                        .userId(session.getUser().getId())
                         .type(type)
                         .fileName(originalName)
                         .storagePath(storagePath)
@@ -361,21 +441,31 @@ public class AttachmentService {
                 wikipediaUrl = "https://en.wikipedia.org/wiki/" + originalName.replace(" ", "_");
             }
 
-            // Fetch the text from Wikipedia
-            String parsedText = null;
+            // We don't fetch chunks here anymore, just queue the job.
+
+            // Create background Job for ingestion
+            Job job = Job.builder()
+                    .type(JobType.DOCUMENT_INGESTION)
+                    .status(JobStatus.QUEUED)
+                    .build();
+            jobRepository.save(job);
+
+            IngestionJobPayload payload = IngestionJobPayload.builder()
+                    .jobId(job.getId())
+                    .sourceType(SourceType.WIKIPEDIA)
+                    .sourceLocation(originalName) // For wikipedia, location is the title/url
+                    .sessionId(sessionId)
+                    .userId(session.getUser().getId())
+                    .build();
+
+            // Push to Redis Stream
             try {
-                parsedText = parserService.fetchWikipedia(originalName);
+                redisTemplate.opsForStream().add("ingestion_jobs", Map.of("payload", payload));
             } catch (Exception e) {
-                log.error("Failed to fetch Wikipedia page '{}': {}", originalName, e.getMessage());
+                log.error("Failed to serialize job payload for Wikipedia", e);
             }
 
-            Mono<Void> ingestionMono = Mono.empty();
-            if (parsedText != null && !parsedText.isBlank()) {
-                ingestionMono = embeddingService.processAndIngest(parsedText, AttachmentType.WIKIPEDIA.name(), originalName, wikipediaUrl, sessionId);
-                log.info("Successfully fetched and started ingestion for '{}'", originalName);
-            } else {
-                throw new RuntimeException("Could not extract text from Wikipedia page.");
-            }
+            Mono<Void> ingestionMono = Mono.empty(); // Handled async in worker
 
             // 5. Create a system Message so the link shows up in chat history/transcript
             Message systemMsg = Message.builder()
@@ -387,17 +477,20 @@ public class AttachmentService {
                     .build();
             messageRepository.save(systemMsg);
 
+            long sizeBytes = 0L;
+
             // 6. Persist the Attachment record, linked directly to the session
             // it was added in (provenance) — survives even if that session is
             // later deleted (see SessionService#deleteSession).
             Attachment attachment = Attachment.builder()
                     .session(session)
+                    .userId(session.getUser().getId())
                     .type(AttachmentType.WIKIPEDIA)
                     .fileName(originalName)
                     .storagePath(wikipediaUrl)
                     .url(wikipediaUrl)
                     .mimeType("text/html")
-                    .fileSizeBytes((long) parsedText.length())
+                    .fileSizeBytes(sizeBytes)
                     .uploadedAt(LocalDateTime.now())
                     .build();
             attachmentRepository.save(attachment);
@@ -430,11 +523,114 @@ public class AttachmentService {
     }
 
     @Transactional(readOnly = true)
-    public List<AttachmentResponse> getAllGlobalAttachments() {
-        return attachmentRepository.findAll(org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "uploadedAt"))
-                .stream()
+    public List<AttachmentResponse> getAllGlobalAttachments(String userEmail) {
+        User user = userRepository.findByEmail(userEmail);
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+        return attachmentRepository.findByUserIdOrderByUploadedAtDesc(user.getId()).stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Deletes a single attachment from the caller's Explore view, with
+     * duplicate-ownership-aware cleanup:
+     * <p>
+     * 1. Looks up every Attachment row (across all users) sharing the same
+     *    url. If exactly one row exists (this user is the sole owner), the
+     *    file is hard-deleted everywhere: the Cloudinary asset, every
+     *    document_chunks row whose sourceUrl matches, and the corresponding
+     *    Pinecone vectors (looked up by DocumentChunk.vectorId).
+     * 2. If more than one row shares that url (other users also have this
+     *    content), only THIS user's own Attachment row (and its
+     *    ViewAttachment membership rows) is removed — the shared Cloudinary
+     *    asset, chunks, and vectors are left alone since other users still
+     *    depend on them.
+     */
+    public Mono<AttachmentDeleteResponse> deleteExploreAttachment(Long attachmentId, String userEmail) {
+        return Mono.fromCallable(() -> self.deleteExploreAttachmentBlocking(attachmentId, userEmail))
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    @Transactional
+    public AttachmentDeleteResponse deleteExploreAttachmentBlocking(Long attachmentId, String userEmail) {
+        User user = userRepository.findByEmail(userEmail);
+        if (user == null) {
+            throw new RuntimeException("User not found");
+        }
+
+        Attachment attachment = attachmentRepository.findById(attachmentId)
+                .orElseThrow(() -> new RuntimeException("Attachment not found"));
+
+        if (attachment.getUserId() == null || !attachment.getUserId().equals(user.getId())) {
+            throw new RuntimeException("Access denied");
+        }
+
+        String url = attachment.getUrl();
+        List<Attachment> owners = url != null ? attachmentRepository.findByUrl(url) : List.of(attachment);
+        int ownerCount = owners.isEmpty() ? 1 : owners.size();
+
+        if (ownerCount <= 1) {
+            // Sole owner — purge everywhere.
+            String cloudinaryPublicId = attachment.getCloudinaryPublicId();
+            String cloudinaryResourceType = attachment.getCloudinaryResourceType();
+            if (cloudinaryPublicId == null) {
+                // This row's own asset fields can be null (e.g. it was created via the
+                // dedup-reuse path) even though it's the sole remaining owner — fall back
+                // to scanning the other owner rows (should just be itself here, but this
+                // stays correct even if that assumption ever changes).
+                for (Attachment a : owners) {
+                    if (a.getCloudinaryPublicId() != null) {
+                        cloudinaryPublicId = a.getCloudinaryPublicId();
+                        cloudinaryResourceType = a.getCloudinaryResourceType();
+                        break;
+                    }
+                }
+            }
+            if (cloudinaryPublicId != null) {
+                cloudinaryService.deleteFile(cloudinaryPublicId, cloudinaryResourceType);
+            }
+
+            if (url != null) {
+                List<DocumentChunk> chunks = documentChunkRepository.findBySourceUrl(url);
+                if (!chunks.isEmpty()) {
+                    List<String> vectorIds = chunks.stream()
+                            .map(DocumentChunk::getVectorId)
+                            .filter(java.util.Objects::nonNull)
+                            .collect(Collectors.toList());
+                    // Safe to block here: this method only ever runs on a
+                    // boundedElastic thread (see deleteExploreAttachment above),
+                    // never directly on the Netty/event-loop thread.
+                    vectorStoreService.deleteByIds(vectorIds).block();
+                    documentChunkRepository.deleteAll(chunks);
+                }
+            }
+
+            viewAttachmentRepository.deleteByAttachment_AttachmentId(attachmentId);
+            attachmentRepository.delete(attachment);
+
+            log.info("Attachment #{} ('{}') fully deleted — was sole owner", attachmentId, attachment.getFileName());
+            return AttachmentDeleteResponse.builder()
+                    .attachmentId(attachmentId)
+                    .fullyDeleted(true)
+                    .ownerCount(ownerCount)
+                    .message("File removed for everyone — no other user had it.")
+                    .build();
+        } else {
+            // Other users still reference this content — only detach this user's copy.
+            viewAttachmentRepository.deleteByAttachment_AttachmentId(attachmentId);
+            attachmentRepository.delete(attachment);
+
+            log.info("Attachment #{} ('{}') detached — {} other user(s) still reference this file",
+                    attachmentId, attachment.getFileName(), ownerCount - 1);
+            return AttachmentDeleteResponse.builder()
+                    .attachmentId(attachmentId)
+                    .fullyDeleted(false)
+                    .ownerCount(ownerCount)
+                    .message("Removed from your Explore list. Kept — " + (ownerCount - 1) + " other user(s) still have this file.")
+                    .build();
+        }
     }
 
     public Mono<List<String>> searchWikipedia(String query) {
@@ -464,6 +660,7 @@ public class AttachmentService {
         return AttachmentResponse.builder()
                 .attachmentId(a.getAttachmentId())
                 .sessionId(a.getSession() != null ? a.getSession().getSessionId() : null)
+                .userId(a.getUserId())
                 .type(a.getType())
                 .fileName(a.getFileName())
                 .storagePath(a.getStoragePath())

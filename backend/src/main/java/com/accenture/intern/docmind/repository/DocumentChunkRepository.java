@@ -38,6 +38,18 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, Lo
     List<DocumentChunk> keywordSearch(@Param("query") String query, @Param("topK") int topK);
 
     /**
+     * Lexical / keyword search filtered specifically to chunks that are images.
+     */
+    @Query(value = """
+            SELECT * FROM document_chunks dc
+            WHERE dc.image_url IS NOT NULL 
+              AND to_tsvector('english', dc.content) @@ plainto_tsquery('english', :query)
+            ORDER BY ts_rank_cd(to_tsvector('english', dc.content), plainto_tsquery('english', :query)) DESC
+            LIMIT :topK
+            """, nativeQuery = true)
+    List<DocumentChunk> keywordSearchImages(@Param("query") String query, @Param("topK") int topK);
+
+    /**
      * Distinct source filenames across the whole company corpus. Used to detect
      * whether a query names one specific uploaded document (e.g. "tell about
      * hitesh" matching "Hitesh_Resume.pdf") so retrieval can switch to whole-
@@ -63,4 +75,15 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, Lo
      * re-chunking and re-embedding content that's already in the corpus.
      */
     List<DocumentChunk> findByContentHash(String contentHash);
+
+    /**
+     * Every chunk (text + any extracted-image sub-chunks) whose sourceUrl
+     * matches a given Attachment's Cloudinary/source URL. Used by
+     * AttachmentService#deleteExploreAttachment to find exactly which chunks
+     * — and, via their vectorId, which Pinecone vectors — belong to a file
+     * before hard-deleting it. Only meaningful once a chunk's sourceUrl is
+     * that Attachment's real url rather than a placeholder (see
+     * IngestionJobPayload#sourceUrl / IngestionWorkerService).
+     */
+    List<DocumentChunk> findBySourceUrl(String sourceUrl);
 }

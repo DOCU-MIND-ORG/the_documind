@@ -41,7 +41,7 @@ export const chatService = {
     return response.json();
   },
 
-  consumeStream: async (sessionId, messageId, onChunk, onCitations, onProgress, onError, onComplete, onRetry) => {
+  consumeStream: async (sessionId, messageId, onChunk, onCitations, onVisuals, onProgress, onError, onComplete, onRetry) => {
     const streamUrl = `${BASE_URL}/api/chat/${sessionId}/stream/${messageId}`;
     try {
       const response = await fetch(streamUrl, {
@@ -87,12 +87,39 @@ export const chatService = {
               } catch (e) {
                 console.error('Failed to parse citations', e);
               }
+            } else if (eventType === 'visuals') {
+              try {
+                const visuals = JSON.parse(eventData.join('\n'));
+                if (onVisuals) onVisuals(visuals);
+              } catch (e) {
+                console.error('Failed to parse visuals', e);
+              }
             } else if (eventType === 'progress') {
               try {
                 const progressData = JSON.parse(eventData.join('\n'));
                 if (onProgress) onProgress(progressData);
               } catch (e) {
                 console.error('Failed to parse progress', e);
+              }
+            } else if (eventType === 'scope_expansion') {
+              try {
+                const expansionData = JSON.parse(eventData.join('\n'));
+                if (onProgress) {
+                  onProgress({
+                    id: crypto.randomUUID(),
+                    stage: 'RETRIEVAL',
+                    status: 'WARN',
+                    message: 'No sufficient evidence found'
+                  });
+                  onProgress({
+                    id: crypto.randomUUID(),
+                    stage: 'RETRIEVAL',
+                    status: 'INFO',
+                    message: 'Expanding to entire knowledge base'
+                  });
+                }
+              } catch (e) {
+                console.error('Failed to parse scope expansion', e);
               }
             } else if (eventType === 'done') {
                 if (onComplete) onComplete();

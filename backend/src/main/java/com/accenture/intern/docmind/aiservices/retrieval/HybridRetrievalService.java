@@ -110,14 +110,14 @@ public class HybridRetrievalService {
     private static final int MIN_SOURCE_MATCH_WORD_LENGTH = 4;
 
     public Mono<List<RetrievalCandidate>> retrieve(String query, Long sessionId) {
-        return retrieve(List.of(), query, sessionId, CANDIDATE_POOL_SIZE, false, List.of());
+        return retrieve(List.of(), query, sessionId, CANDIDATE_POOL_SIZE, false, List.of(), false);
     }
 
     /**
      * Overload used by the MULTI_SOURCE wide-pool path and META_DOC_SEARCH.
      */
     public Mono<List<RetrievalCandidate>> retrieve(String query, Long sessionId, int candidatePoolSize) {
-        return retrieve(List.of(), query, sessionId, candidatePoolSize, false, List.of());
+        return retrieve(List.of(), query, sessionId, candidatePoolSize, false, List.of(), false);
     }
 
     /**
@@ -125,7 +125,7 @@ public class HybridRetrievalService {
      */
     public Mono<List<RetrievalCandidate>> retrieve(String query, Long sessionId, int candidatePoolSize,
             boolean skipWholeDocument) {
-        return retrieve(List.of(), query, sessionId, candidatePoolSize, skipWholeDocument, List.of());
+        return retrieve(List.of(), query, sessionId, candidatePoolSize, skipWholeDocument, List.of(), false);
     }
 
     /**
@@ -141,24 +141,36 @@ public class HybridRetrievalService {
      * @param candidatePoolSize  topK per retriever before RRF fusion
      * @param skipWholeDocument  when true, bypasses findUniquelyMatchedSource entirely;
      *                           set by the RetrievalOrchestrator based on query provenance
+     * @param imageOnly          when true, restricts both dense and keyword retrieval to chunks of type IMAGE.
      */
     public Mono<List<RetrievalCandidate>> retrieve(List<EntityResolution> entities, String retrievalQuery,
-            Long sessionId, int candidatePoolSize, boolean skipWholeDocument, List<String> targetDocuments) {
+            Long sessionId, int candidatePoolSize, boolean skipWholeDocument, List<String> targetDocuments, boolean imageOnly) {
         long t0 = System.currentTimeMillis();
 
         if (skipWholeDocument) {
-            return rankedRetrieve(retrievalQuery, sessionId, t0, candidatePoolSize, targetDocuments);
+            return rankedRetrieve(retrievalQuery, sessionId, t0, candidatePoolSize, targetDocuments, imageOnly);
         }
 
-        // Filename detection uses the LLM-extracted entities; retrieval uses the expanded form
-        return findUniquelyMatchedSource(entities, sessionId)
+        Mono<String> matchedSourceMono;
+        if (targetDocuments != null && targetDocuments.size() == 1) {
+            matchedSourceMono = Mono.just(targetDocuments.get(0));
+        } else {
+            matchedSourceMono = Mono.empty();
+        }
+
+        return matchedSourceMono
                 .flatMap(matchedSource -> {
                     log.info(
-                            "Query matched single source '{}' - using whole-document retrieval (capped), skipping corpus-wide ranking",
-                            matchedSource);
+                            "Query matched single source '{}' - using whole-document retrieval (capped), skipping corpus-wide ranking, imageOnly: {}",
+                            matchedSource, imageOnly);
                     return Mono.fromCallable(
                             () -> {
                                 List<DocumentChunk> chunks = documentChunkRepository.findBySourceNameIgnoreCaseOrderByChunkIndexAsc(matchedSource);
+                                if (imageOnly) {
+                                    chunks = chunks.stream()
+                                            .filter(c -> c.getImageUrl() != null && !c.getImageUrl().isEmpty())
+                                            .collect(Collectors.toList());
+                                }
                                 if (chunks.size() > 60) {
                                     log.warn("Document '{}' exceeds 60 chunks (total: {}). Truncating to prevent context flooding.", matchedSource, chunks.size());
                                     chunks = chunks.subList(0, 60);
@@ -173,91 +185,10 @@ public class HybridRetrievalService {
                             })
                             .subscribeOn(Schedulers.boundedElastic());
                 })
-                .switchIfEmpty(Mono.defer(() -> rankedRetrieve(retrievalQuery, sessionId, t0, candidatePoolSize, targetDocuments)));
+                .switchIfEmpty(Mono.defer(() -> rankedRetrieve(retrievalQuery, sessionId, t0, candidatePoolSize, targetDocuments, imageOnly)));
     }
 
-    /**
-     * Checks whether the LLM-extracted entities contain a distinctive word (length >=
-     * MIN_SOURCE_MATCH_WORD_LENGTH) that also appears in exactly one uploaded
-     * source's filename. Word-boundary matching only (not substring), so e.g.
-     * "hitesh" matches "Hitesh_Resume.pdf" but doesn't accidentally match
-     * unrelated filenames that merely contain "hitesh" as part of a longer word.
-     * <p>
-     * Returns empty (not an error) when zero or 2+ sources match - ambiguous or
-     * no match both mean "fall back to normal ranked retrieval", since whole-
-     * document mode only makes sense when exactly one source is clearly meant.
-     */
-    private Mono<String> findUniquelyMatchedSource(List<EntityResolution> entities, Long sessionId) {
-        if (entities == null || entities.isEmpty()) {
-            return Mono.empty();
-        }
 
-        // Combine all words from all extracted entities
-        Set<String> entityWords = entities.stream()
-                .filter(e -> e != null && e.canonicalEntity() != null && !e.canonicalEntity().isBlank())
-                .flatMap(e -> wordsOf(e.canonicalEntity()).stream())
-                .filter(w -> w.length() >= MIN_SOURCE_MATCH_WORD_LENGTH)
-                .collect(Collectors.toSet());
-
-        if (entityWords.isEmpty()) {
-            return Mono.empty();
-        }
-
-        return Mono.fromCallable(() -> documentChunkRepository.findDistinctSourceNames())
-                .subscribeOn(Schedulers.boundedElastic())
-                .flatMap(sourceNames -> {
-                    String bestMatch = null;
-                    int maxScore = 0;
-                    boolean isTie = false;
-
-                    for (String sourceName : sourceNames) {
-                        if (sourceName == null)
-                            continue;
-                        Set<String> sourceWords = wordsOf(sourceName);
-                        
-                        int overlapCount = 0;
-                        for (String ew : entityWords) {
-                            if (sourceWords.contains(ew)) {
-                                overlapCount++;
-                            }
-                        }
-
-                        if (overlapCount > 0) {
-                            if (overlapCount > maxScore) {
-                                maxScore = overlapCount;
-                                bestMatch = sourceName;
-                                isTie = false;
-                            } else if (overlapCount == maxScore) {
-                                isTie = true;
-                            }
-                        }
-                    }
-
-                    if (bestMatch != null && !isTie) {
-                        log.info("Scored filename match: '{}' won with overlap score {}", bestMatch, maxScore);
-                        return Mono.just(bestMatch);
-                    }
-
-                    if (isTie) {
-                        log.warn("Filename match tie detected at score {}. Falling back to ranked vector retrieval.", maxScore);
-                    }
-
-                    return Mono.empty();
-                });
-    }
-
-    /**
-     * Lowercased, punctuation-stripped words - used for both query and filename
-     * matching.
-     */
-    private Set<String> wordsOf(String text) {
-        if (text == null || text.isBlank()) {
-            return Set.of();
-        }
-        return Arrays.stream(text.toLowerCase().split("[^a-z0-9]+"))
-                .filter(w -> !w.isBlank())
-                .collect(Collectors.toSet());
-    }
 
     /**
      * Returns every chunk of one source, in original document order, with no
@@ -294,11 +225,11 @@ public class HybridRetrievalService {
                 });
     }
 
-    private Mono<List<RetrievalCandidate>> rankedRetrieve(String query, Long sessionId, long t0, int candidatePoolSize, List<String> targetDocuments) {
-        Mono<List<Document>> denseMono = vectorStoreService.retrieve(query, candidatePoolSize, targetDocuments)
+    private Mono<List<RetrievalCandidate>> rankedRetrieve(String query, Long sessionId, long t0, int candidatePoolSize, List<String> targetDocuments, boolean imageOnly) {
+        Mono<List<Document>> denseMono = vectorStoreService.retrieve(query, candidatePoolSize, targetDocuments, imageOnly)
                 .doOnNext(docs -> log.info("[TIMING] dense (Pinecone) search: {}ms, {} hits",
                         System.currentTimeMillis() - t0, docs.size()));
-        Mono<List<Document>> keywordMono = keywordSearch(query, candidatePoolSize)
+        Mono<List<Document>> keywordMono = keywordSearch(query, candidatePoolSize, imageOnly)
                 .doOnNext(docs -> log.info("[TIMING] keyword (Postgres BM25) search: {}ms, {} hits",
                         System.currentTimeMillis() - t0, docs.size()));
 
@@ -315,14 +246,16 @@ public class HybridRetrievalService {
                 });
     }
 
-    private Mono<List<Document>> keywordSearch(String query, int topK) {
+    private Mono<List<Document>> keywordSearch(String query, int topK, boolean imageOnly) {
         String[] tokens = query.toLowerCase().split("\\s+");
         if (tokens.length < 3) {
             log.info("[ROUTING] BM25 skipped — query too short");
             return Mono.just(Collections.emptyList());
         }
 
-        return Mono.fromCallable(() -> documentChunkRepository.keywordSearch(query, topK))
+        return Mono.fromCallable(() -> imageOnly 
+                        ? documentChunkRepository.keywordSearchImages(query, topK) 
+                        : documentChunkRepository.keywordSearch(query, topK))
                 .subscribeOn(Schedulers.boundedElastic())
                 .map(chunks -> chunks.stream().map(this::toDocument).collect(Collectors.toList()))
                 .onErrorResume(e -> {

@@ -24,8 +24,8 @@ import org.springframework.data.redis.connection.stream.StreamOffset;
 import org.springframework.data.redis.connection.stream.StreamReadOptions;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StreamOperations;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.data.redis.connection.stream.*;
 
 import jakarta.annotation.PostConstruct;
@@ -55,8 +55,12 @@ public class LlmWorkerService {
     
     private StreamOperations<String, Object, Object> streamOps;
     private static final String CONSUMER_GROUP = "llm-workers";
-    private static final String CONSUMER_NAME = "worker-1"; // Or dynamic UUID in prod
+    private final String consumerName = "worker-" + java.util.UUID.randomUUID().toString();
     private static final String STREAM_KEY = "chat_jobs";
+    private volatile boolean running = true;
+    private final java.util.concurrent.ExecutorService workerExecutor;
+    private final com.accenture.intern.docmind.service.AnalyticsService analyticsService;
+    private final TransactionTemplate transactionTemplate;
 
     private final com.accenture.intern.docmind.aiservices.context.SuggestedQuestionsService suggestedQuestionsService;
 
@@ -71,7 +75,10 @@ public class LlmWorkerService {
                             MemoryGatingService memoryGatingService,
                             com.accenture.intern.docmind.service.SessionCacheService sessionCacheService,
                             com.accenture.intern.docmind.aiservices.context.SuggestedQuestionsService suggestedQuestionsService,
-                            RedisTemplate<String, Object> redisTemplate) {
+                            RedisTemplate<String, Object> redisTemplate,
+                            java.util.concurrent.ExecutorService workerExecutor,
+                            com.accenture.intern.docmind.service.AnalyticsService analyticsService,
+                            TransactionTemplate transactionTemplate) {
         this.chatClient = chatClientBuilder.build();
         this.contextBuilderService = contextBuilderService;
         this.citationService = citationService;
@@ -84,6 +91,9 @@ public class LlmWorkerService {
         this.sessionCacheService = sessionCacheService;
         this.suggestedQuestionsService = suggestedQuestionsService;
         this.redisTemplate = redisTemplate;
+        this.workerExecutor = workerExecutor;
+        this.analyticsService = analyticsService;
+        this.transactionTemplate = transactionTemplate;
     }
 
     @PostConstruct
@@ -94,24 +104,38 @@ public class LlmWorkerService {
         } catch (Exception e) {
             log.info("Consumer group likely exists already");
         }
+        workerExecutor.submit(this::runWorker);
     }
 
-    @Scheduled(fixedDelay = 100)
-    public void pollJobs() {
-        try {
-            List<MapRecord<String, Object, Object>> records = streamOps.read(
-                    Consumer.from(CONSUMER_GROUP, CONSUMER_NAME),
-                    StreamReadOptions.empty().count(1),
-                    StreamOffset.create(STREAM_KEY,ReadOffset.lastConsumed())
-            );
+    @jakarta.annotation.PreDestroy
+    public void destroy() {
+        running = false;
+    }
 
-            if (records == null || records.isEmpty()) return;
+    public void runWorker() {
+        while (running) {
+            try {
+                List<MapRecord<String, Object, Object>> records = streamOps.read(
+                        Consumer.from(CONSUMER_GROUP, consumerName),
+                        StreamReadOptions.empty().block(Duration.ofSeconds(30)).count(1),
+                        StreamOffset.create(STREAM_KEY, ReadOffset.lastConsumed())
+                );
 
-            for (MapRecord<String, Object, Object> record : records) {
-                processJob(record);
+                if (records == null || records.isEmpty()) continue;
+
+                for (MapRecord<String, Object, Object> record : records) {
+                    processJob(record);
+                }
+            } catch (Exception e) {
+                if (e.getMessage() != null && e.getMessage().contains("NOGROUP")) {
+                    try {
+                        streamOps.createGroup(STREAM_KEY, CONSUMER_GROUP);
+                    } catch (Exception ignored) {
+                    }
+                } else {
+                    log.error("Error polling jobs from Redis stream", e);
+                }
             }
-        } catch (Exception e) {
-            log.error("Error polling jobs from Redis stream", e);
         }
     }
 
@@ -130,7 +154,17 @@ public class LlmWorkerService {
         }
 
         try {
-            executeLlmGeneration(messageId, sessionId, query, model);
+            transactionTemplate.executeWithoutResult(status -> {
+                long startTime = System.currentTimeMillis();
+                executeLlmGeneration(messageId, sessionId, query, model);
+                long duration = System.currentTimeMillis() - startTime;
+                
+                analyticsService.incrementChatRequests();
+                Message msg = messageRepository.findById(messageId).orElse(null);
+                long tokens = (msg != null && msg.getContent() != null) ? msg.getContent().length() / 4 : 0;
+                analyticsService.recordLlmGeneration(tokens, duration);
+            });
+            
             streamOps.acknowledge(STREAM_KEY, CONSUMER_GROUP, record.getId());
         } catch (Exception e) {
             log.error("Failed to process job {}", messageId, e);
@@ -140,24 +174,21 @@ public class LlmWorkerService {
         }
     }
 
-    /**
-     * The exact sentinel phrase the rag prompt instructs the model to return
-     * verbatim when retrieval came back empty/irrelevant (see
-     * prompts/ragprompt.st). We match on a stable, distinctive prefix rather
-     * than the full sentence so minor wording drift in the prompt doesn't
-     * silently break the retry path.
-     */
-    private static final String RETRIEVAL_FAILURE_SENTINEL = "I couldn't find relevant information in the uploaded documents";
-
     private void executeLlmGeneration(Long messageId, Long sessionId, String query, String model) {
         Session session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new RuntimeException("Session not found"));
         
         SessionUploadState state = sessionCacheService.getState(sessionId);
         boolean stillIndexing = state != null && (state.getState() == UploadState.EMBEDDING || state.getState() == UploadState.INGESTING);
-        List<DocumentReference> uploadedDocs = state != null && state.getActiveDocumentNames() != null 
-                ? state.getActiveDocumentNames().stream().map(name -> new DocumentReference(name, System.currentTimeMillis())).toList() 
-                : List.of();
+        List<DocumentReference> uploadedDocs;
+        if (state != null && state.getActiveDocumentNames() != null) {
+            uploadedDocs = state.getActiveDocumentNames().stream()
+                    .map(name -> new DocumentReference(name, System.currentTimeMillis())).toList();
+        } else {
+            uploadedDocs = session.getAttachments().stream()
+                    .filter(a -> a.getType() != com.accenture.intern.docmind.entity.AttachmentType.IMAGE)
+                    .map(a -> new DocumentReference(a.getFileName(), System.currentTimeMillis())).toList();
+        }
         String activeDoc = uploadedDocs.isEmpty() ? null : uploadedDocs.get(0).filename();
         SessionContext sessionContext = new SessionContext(sessionId, uploadedDocs, activeDoc, state != null ? state.getAliases() : Map.of());
 
@@ -175,51 +206,9 @@ public class LlmWorkerService {
         org.springframework.ai.google.genai.GoogleGenAiChatOptions options = modelFactory.getChatOptions(session.getUser(), model);
         String finalSystemPrompt = modelFactory.injectResponseStyle(session.getUser(), contextResult.systemPrompt());
 
-        String firstPassText = streamAnswer(messageId, finalSystemPrompt, contextResult.prompt(), options);
-        String finalText = firstPassText;
+        String fullResponse = streamAnswer(messageId, finalSystemPrompt, contextResult.prompt(), options);
+        progressSink.tryEmitComplete();
 
-        // Adaptive RAG retry: a single-pass retrieval miss doesn't necessarily
-        // mean the answer truly isn't in the corpus — it may just mean the
-        // planner's chosen retrieval strategy didn't dig deep enough. Before
-        // surfacing the "couldn't find" message to the user, retry once with
-        // the adaptive multi-iteration search-and-refine loop (the same one
-        // PlannerService reserves for queries it flags as hard) and only fall
-        // back to the original failure message if that retry also comes up
-        // empty.
-        if (isRetrievalFailure(firstPassText)) {
-            log.info("First-pass retrieval miss for message {}, retrying with adaptive RAG", messageId);
-
-            // Tell the frontend to clear the failure text it just rendered —
-            // it only ever appends streamed chunks, so without this reset the
-            // retry's tokens would render glued onto the end of the discarded
-            // first-pass answer instead of replacing it.
-            publishToken(messageId, "retry", "");
-            try {
-                publishToken(messageId, "progress", new com.accenture.intern.docmind.dto.chat.ProgressEvent(
-                        com.accenture.intern.docmind.dto.chat.ProgressStage.ADAPTIVE,
-                        com.accenture.intern.docmind.dto.chat.ProgressStatus.RUNNING,
-                        "Initial search came up empty, trying a deeper adaptive search...", null, null, null).toJson(objectMapper));
-            } catch (Exception ignored) {}
-
-            ContextResult adaptiveResult = contextBuilderService.buildContextAdaptive(query, sessionId, sessionContext).block();
-            String adaptiveSystemPrompt = modelFactory.injectResponseStyle(session.getUser(), adaptiveResult.systemPrompt());
-
-            String adaptiveText = streamAnswer(messageId, adaptiveSystemPrompt, adaptiveResult.prompt(), options);
-
-            if (!isRetrievalFailure(adaptiveText)) {
-                // The adaptive retry actually found something — commit to its
-                // result (and its citations/top score) instead of the original miss.
-                contextResult = adaptiveResult;
-                finalText = adaptiveText;
-            } else {
-                // Adaptive retry also failed to find anything. We already told
-                // the frontend to clear the screen for the retry attempt, so
-                // re-publish the original failure text (instead of leaving the
-                // message blank) before finalizing.
-                publishToken(messageId, "message", firstPassText);
-                finalText = firstPassText;
-            }
-        }
 
         List<Map<String, Object>> citations = citationService.extractCitations(contextResult.documents());
         String citationsJson = null;
@@ -228,22 +217,26 @@ public class LlmWorkerService {
             publishToken(messageId, "citations", citationsJson);
         } catch (Exception ignored) {}
 
-        String fullResponse = finalText;
+        String visualsJson = null;
+        if (contextResult.visuals() != null && !contextResult.visuals().isEmpty()) {
+            try {
+                visualsJson = objectMapper.writeValueAsString(contextResult.visuals());
+                publishToken(messageId, "visuals", visualsJson);
+            } catch (Exception ignored) {}
+        }
 
         // Finalize
         Message msg = messageRepository.findById(messageId).orElseThrow();
         msg.setContent(fullResponse);
         msg.setStatus(MessageStatus.COMPLETED);
         msg.setCitationsJson(citationsJson);
+        msg.setVisualsJson(visualsJson);
         messageRepository.save(msg);
 
         publishToken(messageId, "done", "");
         
         // Trigger follow-up questions generation in the background
         suggestedQuestionsService.triggerFollowUpForSession(sessionId);
-        
-        // Clean up token stream after 5 minutes
-        redisTemplate.expire("tokens:" + messageId, 5, TimeUnit.MINUTES);
 
         // Memory injection
         boolean isMemorable = memoryGatingService.isMemorable(query, fullResponse);
@@ -256,10 +249,6 @@ public class LlmWorkerService {
             metadata.put("timestamp", System.currentTimeMillis());
             messagesVectorStore.add(List.of(new org.springframework.ai.document.Document(pairContent, metadata)));
         }
-    }
-
-    private boolean isRetrievalFailure(String text) {
-        return text != null && text.contains(RETRIEVAL_FAILURE_SENTINEL);
     }
 
     /**
@@ -301,7 +290,12 @@ public class LlmWorkerService {
         Map<String, Object> map = new HashMap<>();
         map.put("event", event);
         map.put("data", data);
-        streamOps.add("tokens:" + messageId, map);
+        try {
+            String json = objectMapper.writeValueAsString(map);
+            redisTemplate.convertAndSend("chat-tokens:" + messageId, json);
+        } catch(Exception e) {
+            log.error("Failed to publish token", e);
+        }
     }
     
     private void updateMessageStatus(Long messageId, MessageStatus status) {

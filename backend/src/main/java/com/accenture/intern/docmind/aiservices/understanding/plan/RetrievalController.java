@@ -68,15 +68,11 @@ public class RetrievalController {
                 if (type != AdaptiveAction.AdaptiveActionType.STOP && nextQuery != null) {
                     // Create a simple plan for the next iteration based on the controller's query
                     nextPlan = java.util.Optional.of(new RetrievalPlan(
-                            com.accenture.intern.docmind.aiservices.understanding.Intent.DOCUMENT_QA,
-                            com.accenture.intern.docmind.aiservices.understanding.Scope.CORPUS,
-                            com.accenture.intern.docmind.aiservices.understanding.RetrievalStrategy.SINGLE_SOURCE,
-                            com.accenture.intern.docmind.aiservices.understanding.RetrievalExecutionMode.RANKED_RETRIEVAL,
-                            java.util.List.of(),
-                            java.util.List.of(),
+                            "Adaptive Iteration",
                             nextQuery,
                             java.util.List.of(),
-                            java.util.List.of()
+                            com.accenture.intern.docmind.aiservices.understanding.RetrievalExecutionMode.RANKED_RETRIEVAL,
+                            com.accenture.intern.docmind.aiservices.understanding.Scope.CORPUS
                     ));
                 }
                 

@@ -19,6 +19,9 @@ public class AttachmentResponse {
      */
     private Long sessionId;
 
+    /** The uploader's user id — lets the Explore page confirm row ownership client-side too. */
+    private Long userId;
+
     private AttachmentType type;
     private String fileName;
     private String storagePath;

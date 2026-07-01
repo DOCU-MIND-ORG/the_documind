@@ -22,6 +22,19 @@ public class Attachment {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long attachmentId;
 
+    /**
+     * The uploader's User.id, captured at upload time. Unlike {@link #session},
+     * this is NOT nulled out when the originating session is deleted — it's a
+     * plain, permanent column (not a relation) precisely so a row's ownership
+     * for the Explore page survives independent of session lifecycle.
+     * <p>
+     * Nullable so existing rows created before this column existed don't break
+     * on {@code ddl-auto=update}; such legacy rows simply won't show up in any
+     * user's per-user Explore view until backfilled.
+     */
+    @Column(name = "user_id")
+    private Long userId;
+
     // Removed message_id — attachments are now linked directly to a session
     @ManyToOne
     @JoinColumn(name = "session_id", nullable = true)

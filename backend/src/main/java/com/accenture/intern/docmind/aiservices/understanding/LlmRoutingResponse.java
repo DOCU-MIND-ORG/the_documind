@@ -13,24 +13,7 @@ import java.util.List;
 public record LlmRoutingResponse(
     String strategy,
 
-    /**
-     * Whether this query is actually about the bot itself (capabilities, identity,
-     * "who/what are you") rather than about document content. The fast-path keyword
-     * list in FastIntentService catches the most common phrasings of this without
-     * an LLM call, but free-form rephrasings ("what all can you help with", etc.)
-     * fall through to this field instead of being silently forced into DOCUMENT_QA.
-     * Defaults to false when the LLM omits it (i.e. assume DOCUMENT_QA), matching
-     * the prior hardcoded behavior for anything this field doesn't explicitly flag.
-     */
     @JsonProperty("is_bot_qa") Boolean isBotQa,
-
-    /**
-     * Keyword-dense, vocabulary-normalized version of the user's query.
-     * Abstract concepts are expanded into concrete action-oriented terms.
-     * E.g. "perseverance" → "enduring hardship persisting adversity overcoming obstacles".
-     * Falls back to the raw query if the LLM returns null.
-     */
-    @JsonProperty("optimized_query") String optimizedQuery,
 
     /**
      * Key entities / nouns extracted from the query for downstream source filtering.
@@ -38,25 +21,37 @@ public record LlmRoutingResponse(
     List<EntityResolution> entities,
 
     /**
-     * Populated only for MULTI_SOURCE: one entry per comparison target.
-     */
-    List<ComparisonTarget> comparisons,
-
-    /**
-     * Populated only for CONCEPT_EXPANSION: 3-4 action-oriented sub-queries.
-     */
-    @JsonProperty("sub_queries") List<String> subQueries,
-
-    /**
-     * Explicit filenames resolved from the user's references (e.g. "the first one", "all three").
-     * These map strictly to the active document names provided in the session state.
-     */
-    @JsonProperty("target_documents") List<String> targetDocuments,
-    
-    /**
      * The execution tier to route this query to:
      * DIRECT (one-shot), DECOMPOSE (static planning), or ADAPTIVE (iterative reasoning)
      */
-    @JsonProperty("execution_tier") String executionTier
-) {}
+    @JsonProperty("execution_tier") String executionTier,
+
+    /**
+     * Determines how evidence is retrieved:
+     * RANKED (default, best chunks) or WHOLE_DOCUMENT (entire file).
+     */
+    @JsonProperty("retrieval_mode") String retrievalMode,
+
+    /**
+     * Determines how evidence from multiple plans is combined:
+     * NONE (default), UNION (merge/dedupe), COMPARE (side-by-side).
+     */
+    @JsonProperty("merge_operation") String mergeOperation,
+
+    /**
+     * The unified execution plans to resolve this query.
+     */
+    List<Plan> plans,
+
+    /**
+     * Whether the query asks for or would benefit from visual information.
+     */
+    @JsonProperty("visual_search") Boolean visualSearch
+) {
+    public record Plan(
+        String purpose,
+        @JsonProperty("optimized_query") String optimizedQuery,
+        @JsonProperty("target_documents") List<String> targetDocuments
+    ) {}
+}
 

@@ -36,6 +36,27 @@ public class CloudinaryService {
         }
     }
 
+    /**
+     * Deletes an asset given both its public_id AND resource_type. Cloudinary's
+     * destroy() defaults resource_type to "image" when it's not passed
+     * explicitly — {@link #deleteImage} relies on that default and so silently
+     * no-ops (or deletes nothing) for "raw" assets like PDFs. Attachment stores
+     * cloudinaryResourceType ("image" or "raw") specifically so callers can use
+     * this overload instead and always target the right asset type.
+     */
+    public void deleteFile(String publicId, String resourceType) {
+        if (publicId == null || publicId.isEmpty()) return;
+
+        try {
+            Map params = ObjectUtils.asMap("resource_type", resourceType != null ? resourceType : "image");
+            Map result = cloudinary.uploader().destroy(publicId, params);
+            System.out.println("Cloudinary delete result for " + publicId + " (" + resourceType + "): " + result);
+        } catch (Exception e) {
+            System.err.println("Failed to delete file from Cloudinary: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
     public record UploadResult(String url, String publicId) {}
 
     public UploadResult uploadImage(byte[] fileBytes, String folder, String originalName) throws IOException {

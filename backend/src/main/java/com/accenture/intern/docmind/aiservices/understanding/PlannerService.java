@@ -29,16 +29,14 @@ public class PlannerService {
     private final ChatClient chatClient;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     private final FastIntentService fastIntentService;
-    private final QueryDecomposer queryDecomposer;
 
     private static final Set<String> DEICTIC_WORDS = Set.of(
             "this", "that", "it", "given", "uploaded", "attached", "above", "provided");
 
-    public PlannerService(ChatClient.Builder chatClientBuilder, com.fasterxml.jackson.databind.ObjectMapper objectMapper, FastIntentService fastIntentService, QueryDecomposer queryDecomposer) {
+    public PlannerService(ChatClient.Builder chatClientBuilder, com.fasterxml.jackson.databind.ObjectMapper objectMapper, FastIntentService fastIntentService) {
         this.chatClient = chatClientBuilder.build();
         this.objectMapper = objectMapper;
         this.fastIntentService = fastIntentService;
-        this.queryDecomposer = queryDecomposer;
     }
 
     public Mono<ExecutionPlan> routeQuery(String query, String history, SessionContext sessionContext, reactor.core.publisher.Sinks.Many<org.springframework.http.codec.ServerSentEvent<String>> progressSink) {
@@ -47,7 +45,7 @@ public class PlannerService {
         Intent fastIntent = fastIntentService.classifyIntent(cleanQuery);
         if (fastIntent != null) {
             log.info("ROUTER: Fast-pass triggered: {}", fastIntent);
-            return Mono.just(new DirectExecutionPlan(new RetrievalPlan(fastIntent, Scope.NONE)));
+            return Mono.just(new DirectExecutionPlan(new RetrievalPlan("Fast Pass", cleanQuery, Collections.emptyList(), RetrievalExecutionMode.WHOLE_DOCUMENT, Scope.NONE), Collections.emptyList(), false));
         }
 
         return runUnifiedLlmRouter(cleanQuery, query, history, sessionContext, progressSink)
@@ -57,45 +55,59 @@ public class PlannerService {
                     if ("ADAPTIVE".equals(tier)) {
                         log.info("ROUTER: Adaptive execution triggered for query: {}", query);
                         List<String> expectedEntities = response.entities() != null ? response.entities().stream().map(com.accenture.intern.docmind.aiservices.understanding.EntityResolution::canonicalEntity).toList() : Collections.emptyList();
-                        return Mono.just(new AdaptiveExecutionPlan("Adaptive retrieval for: " + query, expectedEntities, 1, 3));
-                    }
-                    
-                    if ("DECOMPOSE".equals(tier)) {
-                        log.info("ROUTER: Needs decomposition triggered for query: {}", query);
-                        return queryDecomposer.decompose(query, history, sessionContext)
-                            .map(execPlan -> {
-                                if (execPlan.plans().size() <= 1) {
-                                    log.warn("ROUTER: Decomposer returned {} plans despite execution_tier=DECOMPOSE. Proceeding normally.", execPlan.plans().size());
-                                }
-                                return execPlan;
-                            });
-                    }
-                    
-                    List<String> activeDocumentNames = sessionContext != null && sessionContext.uploadedDocuments() != null 
-                        ? sessionContext.uploadedDocuments().stream().map(DocumentReference::filename).toList() 
-                        : Collections.emptyList();
                         
-                    RetrievalPlan decision = buildRetrievalPlan(response, cleanQuery, query, activeDocumentNames);
+                        RetrievalPlan initialPlan = null;
+                        if (response.plans() != null && !response.plans().isEmpty()) {
+                            initialPlan = buildRetrievalPlan(response.plans().get(0), response, cleanQuery, sessionContext);
+                        }
+                        return Mono.just(new AdaptiveExecutionPlan("Adaptive retrieval for: " + query, expectedEntities, 1, 2, initialPlan, response.entities(), Boolean.TRUE.equals(response.visualSearch())));
+                    }
                     
-                    log.info("\n=== Query Understanding ===\n" +
-                            "Original Query       : {}\n" +
-                            "Optimized Query      : {}\n" +
-                            "Intent               : {}\n" +
-                            "Strategy             : {}\n" +
-                            "Scope                : {}\n" +
-                            "Entities             : {}\n" +
-                            "Referenced Documents : {}\n" +
-                            "===========================",
-                            query,
-                            decision.optimizedQuery(),
-                            decision.intent(),
-                            decision.retrievalStrategy(),
-                            decision.scope(),
-                            decision.entities(),
-                            decision.targetDocuments());
+                    List<RetrievalPlan> retrievalPlans = new java.util.ArrayList<>();
+                    if (response.plans() != null) {
+                        for (LlmRoutingResponse.Plan planDto : response.plans()) {
+                            retrievalPlans.add(buildRetrievalPlan(planDto, response, cleanQuery, sessionContext));
+                        }
+                    }
+
+                    if (retrievalPlans.isEmpty()) {
+                        retrievalPlans.add(new RetrievalPlan("Fallback Plan", query, Collections.emptyList(), RetrievalExecutionMode.RANKED_RETRIEVAL, Scope.CORPUS));
+                    }
                     
-                    return Mono.just(new DirectExecutionPlan(decision));
+                    if ("DECOMPOSE".equals(tier) || retrievalPlans.size() > 1) {
+                        MergeOperation mergeOp = MergeOperation.NONE;
+                        if (response.mergeOperation() != null) {
+                            try {
+                                mergeOp = MergeOperation.valueOf(response.mergeOperation().toUpperCase());
+                            } catch (Exception e) {
+                                mergeOp = MergeOperation.NONE;
+                            }
+                        }
+                        return Mono.just(new StaticExecutionPlan(retrievalPlans, mergeOp, response.entities(), Boolean.TRUE.equals(response.visualSearch())));
+                    }
+                    
+                    return Mono.just(new DirectExecutionPlan(retrievalPlans.get(0), response.entities(), Boolean.TRUE.equals(response.visualSearch())));
                 });
+    }
+
+    private RetrievalPlan buildRetrievalPlan(LlmRoutingResponse.Plan planDto, LlmRoutingResponse response, String cleanQuery, SessionContext sessionContext) {
+        String optimizedQuery = planDto.optimizedQuery() != null && !planDto.optimizedQuery().isBlank() ? planDto.optimizedQuery() : cleanQuery;
+        List<String> targetDocuments = planDto.targetDocuments() != null ? planDto.targetDocuments() : Collections.emptyList();
+        
+        RetrievalExecutionMode executionMode = "WHOLE_DOCUMENT".equalsIgnoreCase(response.retrievalMode()) 
+                ? RetrievalExecutionMode.WHOLE_DOCUMENT 
+                : RetrievalExecutionMode.RANKED_RETRIEVAL;
+
+        boolean isDeictic = cleanQuery.matches(".*\\b(this|that|the|given|uploaded|attached|above|provided)\\b.*");
+        boolean hasRecentUpload = sessionContext != null && sessionContext.uploadedDocuments() != null && !sessionContext.uploadedDocuments().isEmpty();
+        Scope scope = (isDeictic && hasRecentUpload) ? Scope.SPECIFIC_DOC : Scope.CORPUS;
+
+        if (Boolean.TRUE.equals(response.isBotQa())) {
+            scope = Scope.NONE;
+            executionMode = RetrievalExecutionMode.WHOLE_DOCUMENT;
+        }
+
+        return new RetrievalPlan(planDto.purpose() != null ? planDto.purpose() : "Retrieval", optimizedQuery, targetDocuments, executionMode, scope);
     }
 
     private Mono<LlmRoutingResponse> runUnifiedLlmRouter(String cleanQuery, String originalQuery,
@@ -105,10 +117,16 @@ public class PlannerService {
                 .doOnNext(response -> {
                     if (progressSink != null) {
                         String tier = response.executionTier() != null ? response.executionTier() : "DIRECT";
+                        java.util.Map<String, Object> meta = new java.util.HashMap<>();
+                        meta.put("tier", tier);
+                        if (response.plans() != null && !response.plans().isEmpty()) {
+                            meta.put("optimized_query", response.plans().get(0).optimizedQuery());
+                        }
+                        
                         String msg = new com.accenture.intern.docmind.dto.chat.ProgressEvent(
                             com.accenture.intern.docmind.dto.chat.ProgressStage.PLANNING,
                             com.accenture.intern.docmind.dto.chat.ProgressStatus.COMPLETE,
-                            "Planning retrieval...", null, null, java.util.Map.of("tier", tier)
+                            "Planning retrieval...", null, null, meta
                         ).toJson(objectMapper);
                         progressSink.tryEmitNext(org.springframework.http.codec.ServerSentEvent.<String>builder(msg).event("progress").build());
                     }
@@ -157,87 +175,90 @@ public class PlannerService {
         its capabilities, what it can help with, or who/what it is — rather than
         about the content of any uploaded document. This covers ANY phrasing of
         that idea, not just exact matches: "what can you do", "what all can you
-        help with", "what are you able to do", "who are you", "what is this tool",
-        "what kind of questions can I ask you", etc.
-        → If true, set "is_bot_qa": true. No document retrieval will run for this
-          query, so the rest of this prompt (strategy/entities/target_documents)
-          can be left at their defaults — they are ignored when is_bot_qa is true.
-        → If the query asks about document content, summarization, extraction, or
-          anything that needs the uploaded corpus, set "is_bot_qa": false.
-
-        ═══════════════════════════════════════════════════════════════════
+            ═══════════════════════════════════════════════════════════════════
         PART A — STRATEGY CLASSIFICATION
         ═══════════════════════════════════════════════════════════════════
  
         Classify into EXACTLY ONE of these strategies:
  
-        1. MULTI_SOURCE
-           Triggered when the user wants to compare, contrast, or find similarities/differences
-           between named entities, AND each entity only needs ONE independent retrieval pass,
-           AND the only fusion step is presenting the results side-by-side.
-           → Populate "comparisons" array with one entry per entity.
-           → Do NOT set needs_decomposition for this case.
- 
-        2. CONCEPT_EXPANSION
+        1. CONCEPT_EXPANSION
            Triggered when the query is about a SINGLE abstract/implicit topic with no obvious
            keyword match in typical document text (e.g. "resilience", "grief", "innovation").
-           → Generate 3-4 dense, action-oriented sub-queries expanding the concept.
+           → Set "execution_tier": "DECOMPOSE" and "merge_operation": "UNION".
+           → Generate 3-4 separate plans expanding the concept into concrete action-oriented searches.
  
-        3. META_DOC_SEARCH
+        2. META_DOC_SEARCH
            Triggered when the user asks for a semantic corpus search ABOUT their document collection
            (e.g. "Which uploaded documents discuss black holes?", "Name files that talk about gravity?").
-           → Leave both "comparisons" and "sub_queries" empty.
+           → Set "execution_tier": "DIRECT" and generate exactly 1 plan.
  
-        4. SINGLE_SOURCE
-           Default. Standard factual lookup targeting a single concrete topic in one document.
-           → Leave both "comparisons" and "sub_queries" empty.
- 
-        ═══════════════════════════════════════════════════════════════════
-        PART B — UNIVERSAL QUERY EXPANSION
-        ═══════════════════════════════════════════════════════════════════
- 
-        Always populate "optimized_query" with a keyword-dense rewrite of the user's query.
-        Rules:
-        - If the query is already keyword-rich and concrete, return it UNCHANGED.
-        - If the query contains abstract concepts, EXPAND them into concrete keywords.
-        - CRITICAL: If the query contains conversational references (e.g. "this roadmap", "that document", "it"), you MUST use the CONVERSATION HISTORY below to resolve the reference to its concrete noun/filename, and rewrite the query to explicitly include it (e.g. "tell me more about the DSA roadmap in screenshot.png").
+        3. SINGLE_SOURCE
+           Default. Standard factual lookup targeting a specific topic.
+           → Depending on the complexity, this might be "DIRECT" (1 plan) or "DECOMPOSE" (multiple plans).
  
         ═══════════════════════════════════════════════════════════════════
-        PART C — COMPLEX QUERY DECOMPOSITION & EXECUTION TIER
+        PART B — COMPLEX QUERY DECOMPOSITION & EXECUTION TIER
         ═══════════════════════════════════════════════════════════════════
         Set "execution_tier" to one of:
-        - "DIRECT": The query can be resolved in a single step (e.g., "What is X?", "Compare X and Y").
-        - "DECOMPOSE": The query requires 3+ entities to be compared in parallel.
-        - "ADAPTIVE": The query explicitly requires a goal-oriented, multi-hop search loop. This is REQUIRED when the answer depends on finding an unknown entity based on the characteristics of a known entity (e.g., "Which Avengers have leadership similar to Captain America?", "Does our PTO policy comply with the Labor Law?", "Which server has the same error as Database A?"). In these cases, you must retrieve the characteristics of the known entity FIRST, observe the results, and then formulate a second search for the unknown entity.
-
-        If "execution_tier" is DECOMPOSE or ADAPTIVE, you DO NOT need to populate "comparisons" or "sub_queries".
-
+        - "DIRECT": The query can be resolved in a single step (e.g., "What is X?"). You must output EXACTLY 1 plan.
+        - "DECOMPOSE": The query asks to compare or retrieve multiple independent entities/topics (e.g. "Compare X and Y"). You must output MULTIPLE plans (one for each entity).
+        - "ADAPTIVE": The query explicitly requires a goal-oriented, multi-hop search loop. You must output EXACTLY 1 plan for the FIRST hop.
+ 
+        Set "merge_operation":
+        - "NONE": For DIRECT or ADAPTIVE.
+        - "COMPARE": When DECOMPOSE is used to compare entities side-by-side.
+        - "UNION": When DECOMPOSE is used to expand a concept or search for multiple aspects of a single entity.
+ 
+        ═══════════════════════════════════════════════════════════════════
+        PART C — RETRIEVAL PLANS
+        ═══════════════════════════════════════════════════════════════════
+        You must generate a list of "plans". Each plan requires:
+        - "purpose": A short description of what this plan is looking for.
+        - "optimized_query": A keyword-dense rewrite of the user's query. Expand abstract concepts into concrete keywords. Resolve references (like "this", "that") using conversation history.
+        - "target_documents": An array of specific filenames if requested.
+ 
         ═══════════════════════════════════════════════════════════════════
         PART D — ENTITY EXTRACTION WITH CONFIDENCE
         ═══════════════════════════════════════════════════════════════════
         For each entity you identify, also estimate your confidence (0.0–1.0) that it is the
-        correct resolution of the user's reference. Be conservative:
-        - High confidence (0.85+): the entity is explicitly named, or there is exactly one
-          plausible referent given the session state and conversation history.
-        - Medium confidence (0.5–0.84): the reference is resolvable but relies on inferring from
-          context (e.g. "my" with one active user document).
-        - Low confidence (<0.5): multiple plausible referents exist (e.g. multiple users'
-          documents are active and "my" could mean more than one), or the reference is genuinely
-          ambiguous. Do NOT silently default to the most likely guess at full confidence — report
-          the true uncertainty so downstream ranking does not over-trust a guess.
+        correct resolution of the user's reference. Be conservative.
+ 
+        ═══════════════════════════════════════════════════════════════════
+        PART E — RETRIEVAL MODE SELECTION
+        ═══════════════════════════════════════════════════════════════════
+        Choose exactly one retrieval mode:
+ 
+        RANKED
+        - Default. Use for facts, explanations, comparisons, QA.
+ 
+        WHOLE_DOCUMENT
+        - Use only when the user explicitly wants the document as a whole (summarize this document, review this report).
+ 
+        ═══════════════════════════════════════════════════════════════════
+        PART F — VISUAL SEARCH
+        ═══════════════════════════════════════════════════════════════════
+        Set "visual_search": true when the user explicitly asks for:
+        image, picture, photo, diagram, architecture, flowchart, chart, graph, timeline, map, iconography, illustration, visual example,
+        or any request where visuals significantly improve understanding. Otherwise false.
  
         ═══════════════════════════════════════════════════════════════════
         OUTPUT — Return ONLY a valid JSON object, no explanation:
         ═══════════════════════════════════════════════════════════════════
         {
           "is_bot_qa": false,
-          "strategy": "SINGLE_SOURCE | MULTI_SOURCE | CONCEPT_EXPANSION | META_DOC_SEARCH",
+          "strategy": "SINGLE_SOURCE | CONCEPT_EXPANSION | META_DOC_SEARCH",
           "execution_tier": "DIRECT | DECOMPOSE | ADAPTIVE",
-          "optimized_query": "keyword-dense rewrite",
+          "retrieval_mode": "RANKED | WHOLE_DOCUMENT",
+          "merge_operation": "NONE | UNION | COMPARE",
+          "visual_search": false,
           "entities": [ { "name": "resolved canonical entity name", "confidence": 0.0 } ],
-          "comparisons": [ { "entity": "clean name", "optimized_query": "name + expanded keywords" } ],
-          "sub_queries": ["for CONCEPT_EXPANSION"],
-          "target_documents": ["resolved exact filenames"]
+          "plans": [
+             {
+                "purpose": "What this plan searches for",
+                "optimized_query": "keyword-dense query",
+                "target_documents": ["resolved exact filenames"]
+             }
+          ]
         }
         ═══════════════════════════════════════════════════════════════════
         CONVERSATION HISTORY
@@ -270,54 +291,36 @@ public class PlannerService {
                         }
                 })
                 .subscribeOn(Schedulers.boundedElastic())
-                .doOnNext(res -> log.info("[TIMING] Unified LLM Router: {}ms | strategy={} | execution_tier={}", System.currentTimeMillis() - t0, res.strategy(), res.executionTier()))
+                .doOnNext(res -> {
+                        System.out.println("""
+=== Query Understanding ===
+Visual Search : %s
+Retrieval Mode: %s
+Execution Tier: %s
+Plans: %d
+==========================
+""".formatted(
+                            res.visualSearch(),
+                            res.retrievalMode(),
+                            res.executionTier(),
+                            res.plans() != null ? res.plans().size() : 0
+                        ));
+                        log.info("[TIMING] Unified LLM Router: {}ms | strategy={} | execution_tier={}", System.currentTimeMillis() - t0, res.strategy(), res.executionTier());
+                })
                 .retry(1)
                 .onErrorResume(e -> {
                         String fallbackStrategy = "SINGLE_SOURCE";
                         log.error("Unified LLM Router failed. Falling back to {} using heuristics. Error: {}", fallbackStrategy, e.getMessage());
-                        return Mono.just(new LlmRoutingResponse(fallbackStrategy, false, query, List.of(), List.of(), List.of(), List.of(), "DIRECT"));
+                        return Mono.just(new LlmRoutingResponse(
+                            fallbackStrategy,
+                            false,
+                            java.util.Collections.emptyList(),
+                            "DIRECT",
+                            "RANKED",
+                            "NONE",
+                            java.util.List.of(new LlmRoutingResponse.Plan("Fallback Plan", query, java.util.Collections.emptyList())),
+                            false
+                        ));
                 });
-    }
-
-    private RetrievalPlan buildRetrievalPlan(LlmRoutingResponse response, String cleanQuery, String originalQuery, List<String> activeDocumentNames) {
-        String optimizedQuery = (response.optimizedQuery() != null && !response.optimizedQuery().isBlank()) ? response.optimizedQuery() : originalQuery;
-        String strategyStr = response.strategy() != null ? response.strategy() : "SINGLE_SOURCE";
-        
-        List<EntityResolution> resolvedEntities = response.entities() != null ? response.entities() : List.of();
-
-        // The LLM router's own judgment that this query is about the bot's
-        // capabilities/identity rather than document content - catches phrasings
-        // FastIntentService's fixed keyword list doesn't recognize (e.g. "what all
-        // can you help with"), instead of those silently falling through to a
-        // DOCUMENT_QA retrieval plan and forcing a citation-mandatory answer onto
-        // a question that has nothing to do with any uploaded document.
-        if (Boolean.TRUE.equals(response.isBotQa())) {
-            return new RetrievalPlan(Intent.BOT_QA, Scope.NONE, RetrievalStrategy.SINGLE_SOURCE, RetrievalExecutionMode.WHOLE_DOCUMENT, List.of(), List.of(), optimizedQuery, resolvedEntities, List.of());
-        }
-
-        if ("MULTI_SOURCE".equals(strategyStr) && response.comparisons() != null && response.comparisons().size() >= 2) {
-            return new RetrievalPlan(Intent.DOCUMENT_QA, Scope.CORPUS, RetrievalStrategy.MULTI_SOURCE, RetrievalExecutionMode.RANKED_RETRIEVAL, response.comparisons(), List.of(), optimizedQuery, resolvedEntities, response.targetDocuments() != null ? response.targetDocuments() : List.of());
-        }
-
-        if ("META_DOC_SEARCH".equals(strategyStr)) {
-            return new RetrievalPlan(Intent.DOCUMENT_QA, Scope.CORPUS, RetrievalStrategy.META_DOC_SEARCH, RetrievalExecutionMode.RANKED_RETRIEVAL, List.of(), List.of(), optimizedQuery, resolvedEntities, response.targetDocuments() != null ? response.targetDocuments() : List.of());
-        }
-
-        if ("CONCEPT_EXPANSION".equals(strategyStr) && response.subQueries() != null && !response.subQueries().isEmpty()) {
-            return new RetrievalPlan(Intent.DOCUMENT_QA, Scope.CORPUS, RetrievalStrategy.CONCEPT_EXPANSION, RetrievalExecutionMode.RANKED_RETRIEVAL, List.of(), response.subQueries(), optimizedQuery, resolvedEntities, response.targetDocuments() != null ? response.targetDocuments() : List.of());
-        }
-
-        return checkDeicticAndReturnSingleSource(cleanQuery, activeDocumentNames != null && !activeDocumentNames.isEmpty(), optimizedQuery, resolvedEntities, response.targetDocuments());
-    }
-
-    private RetrievalPlan checkDeicticAndReturnSingleSource(String cleanQuery, boolean hasRecentUpload, String optimizedQuery, List<EntityResolution> entities, List<String> targetDocuments) {
-        boolean isDeictic = cleanQuery.matches(".*\\b(this|that|the|given|uploaded|attached|above|provided)\\b.*");
-        List<EntityResolution> safeEntities = entities != null ? entities : List.of();
-
-        if (isDeictic && hasRecentUpload) {
-                return new RetrievalPlan(Intent.DOCUMENT_QA, Scope.SPECIFIC_DOC, RetrievalStrategy.SINGLE_SOURCE, RetrievalExecutionMode.WHOLE_DOCUMENT, List.of(), List.of(), optimizedQuery, safeEntities, targetDocuments);
-        }
-
-        return new RetrievalPlan(Intent.DOCUMENT_QA, Scope.CORPUS, RetrievalStrategy.SINGLE_SOURCE, RetrievalExecutionMode.WHOLE_DOCUMENT, List.of(), List.of(), optimizedQuery, safeEntities, targetDocuments);
     }
 }

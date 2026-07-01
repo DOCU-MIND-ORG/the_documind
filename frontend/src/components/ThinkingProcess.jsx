@@ -44,8 +44,19 @@ const StepRow = ({ event, index, isLast, isComplete }) => {
       </div>
       <div className="v-content">
         <div className="v-title">{event.message}</div>
-        <div className="v-sub">
-           {event.metadata && Object.keys(event.metadata).length > 0 ? JSON.stringify(event.metadata) : ''}
+        <div className="v-sub mt-1.5 flex flex-col gap-1">
+          {event.metadata?.optimized_query && (
+            <div className="text-[12.5px] leading-snug">
+              <span className="font-semibold text-secondary">Understood as: </span>
+              <span className="text-tertiary italic">{event.metadata.optimized_query}</span>
+            </div>
+          )}
+          {event.metadata?.scope && (
+            <div className="text-[12.5px] leading-snug">
+              <span className="font-semibold text-secondary">Search scope: </span>
+              <span className="text-tertiary">{event.metadata.scope}</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
