@@ -16,4 +16,14 @@ public class IngestionJobPayload {
     private String sourceLocation;
     private Long sessionId;
     private Long userId;
+
+    /**
+     * The Cloudinary secure_url (or Wikipedia URL) this ingestion job's content
+     * lives at. Threaded through so IngestionWorkerService can stamp every
+     * resulting DocumentChunk.sourceUrl with the SAME url stored on the owning
+     * Attachment row — that equality is what lets the Explore-page delete flow
+     * (AttachmentService#deleteExploreAttachment) find every chunk/vector that
+     * belongs to a given attachment.
+     */
+    private String sourceUrl;
 }

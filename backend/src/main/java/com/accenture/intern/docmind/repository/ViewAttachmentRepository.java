@@ -33,4 +33,14 @@ public interface ViewAttachmentRepository extends JpaRepository<ViewAttachment, 
      * survive independently as part of the shared corpus.
      */
     void deleteBySession_SessionId(Long sessionId);
+
+    /**
+     * Deletes every membership row pointing at a given Attachment. Must be
+     * called before removing the Attachment row itself (ViewAttachment.attachment
+     * is a non-nullable FK) — used by AttachmentService#deleteExploreAttachment
+     * for both the "hard delete" path (sole owner removing a file entirely)
+     * and the "detach" path (one of several owners removing just their own
+     * copy from Explore).
+     */
+    void deleteByAttachment_AttachmentId(Long attachmentId);
 }

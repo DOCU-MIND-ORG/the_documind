@@ -216,13 +216,25 @@ public class IngestionWorkerService {
         }
     }
 
+    /**
+     * The standard random UUID (36 chars: 8-4-4-4-12 hex) followed by the "_"
+     * separator that AttachmentService#uploadFile prepends when it writes the
+     * uploaded file to disk (storedName = UUID.randomUUID() + "_" + originalName).
+     * Stripped back off here so the name this worker stores as
+     * DocumentChunk.sourceName matches the actual original filename — not the
+     * on-disk storage name — since retrieval (HybridRetrievalService whole-
+     * document mode, citations, Explore, etc.) all reason about the real
+     * filename the user uploaded, never the UUID-prefixed storage name.
+     */
+    private static final java.util.regex.Pattern UUID_PREFIX =
+            java.util.regex.Pattern.compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}_");
+
     private void executeIngestion(IngestionJobPayload payload, Job job) throws Exception {
         String originalName = ""; // Can be passed in payload or derived
         Path dest = null;
         if (payload.getSourceType() != SourceType.WIKIPEDIA) {
             dest = Paths.get(payload.getSourceLocation());
-            originalName = dest.getFileName().toString();
-            // strip uuid prefix from original name if needed, but for now we just use it
+            originalName = UUID_PREFIX.matcher(dest.getFileName().toString()).replaceFirst("");
         }
 
         List<Mono<Void>> ingestionMonos = new ArrayList<>();
@@ -231,7 +243,7 @@ public class IngestionWorkerService {
             case PDF:
                 DocumentParserService.PdfParseResult parsed = parserService.parsePdfWithImages(dest);
                 if (parsed.text() != null && !parsed.text().isBlank()) {
-                    ingestionMonos.add(embeddingService.processAndIngest(parsed.text(), "PDF", originalName, "local", payload.getSessionId()));
+                    ingestionMonos.add(embeddingService.processAndIngest(parsed.text(), "PDF", originalName, payload.getSourceUrl(), payload.getSessionId()));
                 }
                 
                 int imgIndex = 0;
@@ -244,7 +256,7 @@ public class IngestionWorkerService {
                     String tags = vr.tags() != null ? String.join(",", vr.tags()) : null;
                     String imageSourceName = originalName + " (page " + img.pageNumber() + " image)";
                     ingestionMonos.add(embeddingService.processAndIngest(
-                            vr.denseDescription(), "PDF_IMAGE", imageSourceName, vr.suggestedFilename(), vr.assetClassification(), tags, payload.getSessionId(), null, null));
+                            vr.denseDescription(), "PDF_IMAGE", imageSourceName, vr.suggestedFilename(), vr.assetClassification(), tags, payload.getSessionId(), null, payload.getSourceUrl()));
                 }
                 break;
 
@@ -253,7 +265,7 @@ public class IngestionWorkerService {
             case HTML:
                 String parsedText = parserService.parseTextFile(dest);
                 if (parsedText != null && !parsedText.isBlank()) {
-                    ingestionMonos.add(embeddingService.processAndIngest(parsedText, payload.getSourceType().name(), originalName, "local", payload.getSessionId()));
+                    ingestionMonos.add(embeddingService.processAndIngest(parsedText, payload.getSourceType().name(), originalName, payload.getSourceUrl(), payload.getSessionId()));
                 }
                 break;
                 

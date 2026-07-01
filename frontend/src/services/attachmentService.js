@@ -41,6 +41,16 @@ export const attachmentService = {
   getAllGlobal: () =>
     request(`/api/explore/attachments`),
 
+  /**
+   * Deletes a file from the Explore page. If the caller is the only user who
+   * ever uploaded this exact content, the backend purges it everywhere
+   * (Cloudinary + document_chunks + Pinecone). If other users also uploaded
+   * it, only the caller's own reference is removed. Returns
+   * { attachmentId, fullyDeleted, ownerCount, message }.
+   */
+  deleteExploreAttachment: (attachmentId) =>
+    request(`/api/explore/attachments/${attachmentId}`, { method: 'DELETE' }),
+
   getSuggestedQuestions: (sessionId) =>
     request(`/api/sessions/${sessionId}/suggested-questions`, { hideProgress: true }),
 };

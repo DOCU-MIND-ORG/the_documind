@@ -87,6 +87,27 @@ public class VectorStoreService {
                 });
     }
 
+    /**
+     * Deletes vectors from Pinecone by id. IDs here should be
+     * DocumentChunk.vectorId values — same id used on both sides (see
+     * DocumentChunk class doc) — so a Postgres chunk lookup lines up 1:1 with
+     * what needs removing from the vector index. Used by
+     * AttachmentService#deleteExploreAttachment when a file being deleted from
+     * Explore is owned by exactly one user.
+     */
+    public Mono<Void> deleteByIds(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Mono.empty();
+        }
+        return Mono.fromRunnable(() -> vectorStore.delete(ids))
+                .subscribeOn(Schedulers.boundedElastic())
+                .then()
+                .onErrorResume(e -> {
+                    log.error("Failed to delete {} vectors from Pinecone", ids.size(), e);
+                    return Mono.empty();
+                });
+    }
+
     public Mono<List<Document>> retrieveSessionFallback(String query, int topK, Long sessionId) {
         return Mono.fromCallable(() -> {
                     SearchRequest.Builder builder = SearchRequest.builder()

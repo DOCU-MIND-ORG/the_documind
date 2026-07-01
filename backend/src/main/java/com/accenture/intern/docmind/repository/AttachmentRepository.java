@@ -44,4 +44,33 @@ public interface AttachmentRepository extends JpaRepository<Attachment, Long> {
      * recent.
      */
     java.util.Optional<Attachment> findFirstByUrlOrderByUploadedAtAsc(String url);
+
+    /**
+     * Same as {@link #findFirstByUrlOrderByUploadedAtAsc}, but scoped to one
+     * user. Dedup reuse only kicks in when THIS user has already uploaded this
+     * exact content before — a different user uploading the same bytes gets
+     * their own new Attachment row (see AttachmentService#uploadFile), so that
+     * every user has their own deletable row in Explore even for shared
+     * content, and {@link #findByUrl} can tell how many distinct users
+     * currently reference a given Cloudinary asset.
+     */
+    java.util.Optional<Attachment> findFirstByUrlAndUserIdOrderByUploadedAtAsc(String url, Long userId);
+
+    /**
+     * Every Attachment row (across all users) that points at the same
+     * Cloudinary/source URL. Used by AttachmentService#deleteExploreAttachment
+     * to decide whether a file is "owned" by exactly one user (safe to hard-
+     * delete from Cloudinary + document_chunks + Pinecone) or shared by
+     * several users (in which case only the requesting user's own row is
+     * removed).
+     */
+    List<Attachment> findByUrl(String url);
+
+    /**
+     * All attachments uploaded by one specific user, most recent first. Backs
+     * the per-user Explore page (see ExploreController#getAllAttachments) —
+     * each user only sees files they personally uploaded, not every file in
+     * the shared corpus.
+     */
+    List<Attachment> findByUserIdOrderByUploadedAtDesc(Long userId);
 }
