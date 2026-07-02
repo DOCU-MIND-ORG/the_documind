@@ -37,7 +37,7 @@ export default function Register() {
     try {
       const res = await fetch(`${endpoint}/auth/signup`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
         credentials: 'include',
         body: JSON.stringify({ name: form.name, email: form.email, password: form.password }),
       });

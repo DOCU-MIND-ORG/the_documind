@@ -69,7 +69,7 @@ export default function ForgotPasswordModal({ isOpen, email, onClose }) {
     try {
       const res = await fetch(`${endpoint}/auth/request-otp`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
         credentials: 'include',
         body: JSON.stringify({ email }),
       });
@@ -108,7 +108,7 @@ export default function ForgotPasswordModal({ isOpen, email, onClose }) {
     try {
       const res = await fetch(`${endpoint}/auth/verify-otp`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
         credentials: 'include',
         body: JSON.stringify({ email, otp: form.otp }),
       });
@@ -149,7 +149,7 @@ export default function ForgotPasswordModal({ isOpen, email, onClose }) {
     try {
       const res = await fetch(`${endpoint}/auth/reset-password`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
         credentials: 'include',
         body: JSON.stringify({
           email,
