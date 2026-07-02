@@ -179,6 +179,20 @@ public class LlmWorkerService {
                 .orElseThrow(() -> new RuntimeException("Session not found"));
         
         SessionUploadState state = sessionCacheService.getState(sessionId);
+        
+        int waitSeconds = 0;
+        while (state != null && (state.getState() == UploadState.EMBEDDING || state.getState() == UploadState.INGESTING) && waitSeconds < 120) {
+            log.info("Session {} is currently {}, waiting for ingestion to complete before generating response...", sessionId, state.getState());
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            state = sessionCacheService.getState(sessionId);
+            waitSeconds++;
+        }
+        
         boolean stillIndexing = state != null && (state.getState() == UploadState.EMBEDDING || state.getState() == UploadState.INGESTING);
         List<DocumentReference> uploadedDocs;
         if (state != null && state.getActiveDocumentNames() != null) {

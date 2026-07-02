@@ -249,14 +249,11 @@ public class IngestionWorkerService {
                 int imgIndex = 0;
                 for (DocumentParserService.ExtractedImage img : parsed.images()) {
                     imgIndex++;
-                    // In a real app we'd upload the extracted image to Cloudinary and get a public URL
-                    // Since this is a background worker, we'd need to recreate the saveExtractedPdfImage logic
-                    // We'll skip the URL for now or just ingest the text
-                    ImageVisionResponse vr = img.visionResponse();
-                    String tags = vr.tags() != null ? String.join(",", vr.tags()) : null;
+                    com.accenture.intern.docmind.aiservices.vision.SemanticImage vr = img.visionResponse();
+                    String tags = vr.keywords() != null ? String.join(",", vr.keywords()) : null;
                     String imageSourceName = originalName + " (page " + img.pageNumber() + " image)";
                     ingestionMonos.add(embeddingService.processAndIngest(
-                            vr.denseDescription(), "PDF_IMAGE", imageSourceName, vr.suggestedFilename(), vr.assetClassification(), tags, payload.getSessionId(), null, payload.getSourceUrl()));
+                            vr.toDenseEmbeddingText(), "PDF_IMAGE", imageSourceName, originalName, vr.imageType(), tags, payload.getSessionId(), null, payload.getSourceUrl()));
                 }
                 break;
 
@@ -280,8 +277,23 @@ public class IngestionWorkerService {
                 }
                 break;
 
+            case IMAGE:
+                byte[] fileBytes = Files.readAllBytes(dest);
+                String contentType = "image/jpeg";
+                if (originalName.toLowerCase().endsWith(".png")) contentType = "image/png";
+                else if (originalName.toLowerCase().endsWith(".webp")) contentType = "image/webp";
+                
+                com.accenture.intern.docmind.aiservices.vision.SemanticImage imageVision = imageVisionService.describeImage(
+                        fileBytes, contentType, com.accenture.intern.docmind.aiservices.vision.ImageContextBuilder.buildStandaloneContext(originalName, null)).block();
+                
+                if (imageVision != null && imageVision.summary() != null && !imageVision.summary().isBlank()) {
+                    String imgTags = imageVision.keywords() != null ? String.join(",", imageVision.keywords()) : null;
+                    ingestionMonos.add(embeddingService.processAndIngest(
+                            imageVision.toDenseEmbeddingText(), "IMAGE", originalName, originalName, imageVision.imageType(), imgTags, payload.getSessionId(), payload.getSourceUrl(), payload.getSourceUrl()));
+                }
+                break;
+
             default:
-                // Image processing could go here if needed
                 break;
         }
 

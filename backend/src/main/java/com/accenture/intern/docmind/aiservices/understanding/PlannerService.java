@@ -260,10 +260,14 @@ public class PlannerService {
 
                 ═══════════════════════════════════════════════════════════════════
                 PART F — VISUAL SEARCH
-                ═══════════════════════════════════════════════════════════════════
-                Set "visual_search": true when the user explicitly asks for:
-                image, picture, photo, diagram, architecture, flowchart, chart, graph, timeline, map, iconography, illustration, visual example,
-                or any request where visuals significantly improve understanding. Otherwise false.
+                ═══════════════════════════════════════════════════════════════════        
+                Set "visual_search": true if the user explicitly asks for an image, OR if the query involves:
+                - Architectures, system designs, or workflows
+                - Geographical or spatial relationships
+                - Data trends, comparisons, or financial metrics
+                - UI layouts or physical descriptions
+                In these cases, a diagram, chart, or photo would significantly enhance the answer, even if the user didn't type the word "image".
+
 
                 ═══════════════════════════════════════════════════════════════════
                 OUTPUT — Return ONLY a valid JSON object, no explanation:

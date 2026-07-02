@@ -141,31 +141,41 @@ export default function CitationDrawer({ citations, onClose }) {
               className="rounded-xl border overflow-hidden shadow-sm"
               style={{ backgroundColor: 'var(--color-bg-surface)', borderColor: 'var(--color-border)' }}
             >
-              <div 
-                className="flex items-start justify-between px-4 py-3 shrink-0"
-                style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-subtle)' }}
-              >
-                <div className="flex flex-col min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="flex items-center justify-center w-6 h-6 rounded-md text-[12px] font-bold text-white bg-blue-600 shrink-0">
-                      {chunk.chunkIndex}
-                    </span>
-                    <h3 className="text-[14px] font-bold truncate" style={{ color: 'var(--color-text-primary)' }}>
-                      {chunkSourceName}
-                    </h3>
-                  </div>
+              <div className="flex items-start gap-3 px-4 py-3 pb-0">
+                <div className="flex items-center justify-center w-8 h-8 rounded shrink-0" style={{ backgroundColor: 'var(--color-bg-subtle)' }}>
+                  <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                     <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
                 </div>
-                {chunkSourceType && (
-                  <span 
-                    className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase shrink-0 mt-0.5 ml-2 border"
-                    style={{ backgroundColor: 'var(--color-bg-surface)', color: 'var(--color-text-secondary)', borderColor: 'var(--color-border)' }}
-                  >
-                    {chunkSourceType}
+                <div className="flex flex-col min-w-0 pt-0.5">
+                  <h3 className="text-[14px] font-bold truncate leading-tight" style={{ color: 'var(--color-text-primary)' }}>
+                    {chunkSourceName}
+                  </h3>
+                  <span className="text-[12px] truncate mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>
+                    DocuMind / {chunkSourceType || 'Documents'}
                   </span>
-                )}
+                </div>
               </div>
 
-              <div className="px-4 py-3">
+              <div className="px-4 py-3 mt-1">
+                <div className="flex items-center justify-between gap-3 text-[13px] font-semibold">
+                  <span style={{ color: 'var(--color-text-secondary)' }}>Relevance</span>
+                  <div className="flex-1 h-[4px] bg-gray-800 rounded-full overflow-hidden mx-1 flex items-center">
+                    <div 
+                      className="h-full rounded-full" 
+                      style={{ 
+                        width: `${chunk.score != null ? Math.round(chunk.score * 100) : 0}%`, 
+                        background: 'linear-gradient(to right, #3b82f6, #22c55e)'
+                      }} 
+                    />
+                  </div>
+                  <span className={chunk.score != null && chunk.score > 0.8 ? 'text-[#22c55e]' : 'text-blue-500'}>
+                    {chunk.score != null ? Math.round(chunk.score * 100) : 0}%
+                  </span>
+                </div>
+              </div>
+
+              <div className="px-4 pb-3">
                 {chunk.isImage && resolvedImageUrl && (
                   <div className="mb-4">
                     <img
@@ -178,9 +188,10 @@ export default function CitationDrawer({ citations, onClose }) {
                   </div>
                 )}
                 
+                <h4 className="text-[13px] font-bold mb-2" style={{ color: 'var(--color-text-secondary)' }}>Preview</h4>
                 <div 
-                  className={`text-[14px] leading-relaxed whitespace-pre-wrap font-sans ${!isExpanded ? 'line-clamp-3 cursor-pointer' : ''}`}
-                  style={{ color: 'var(--color-text-secondary)' }}
+                  className={`text-[13.5px] leading-relaxed whitespace-pre-wrap font-sans ${!isExpanded ? 'line-clamp-4 cursor-pointer' : ''}`}
+                  style={{ color: 'var(--color-text-tertiary)' }}
                   onClick={() => !isExpanded && toggleExpand()}
                 >
                   {chunk.fullExcerpt || chunk.excerpt}
@@ -197,20 +208,27 @@ export default function CitationDrawer({ citations, onClose }) {
                     <>Show more <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg></>
                   )}
                 </button>
-                
-                <div className="mt-3 pt-3 flex items-center justify-between text-[11px] font-medium" style={{ borderTop: '1px solid var(--color-border)', color: 'var(--color-text-tertiary)' }}>
-                  <div className="flex items-center gap-1.5">
-                    <span>Score:</span>
-                    <span style={{ color: chunk.score > 0.8 ? 'var(--color-accent)' : 'inherit' }}>
-                      {chunk.score != null ? chunk.score.toFixed(2) : 'N/A'}
-                    </span>
-                  </div>
-                  {chunk.url && (
-                    <a href={chunk.url} target="_blank" rel="noopener noreferrer" className="hover:underline flex items-center gap-1 font-semibold" style={{ color: 'var(--color-accent)' }}>
-                      View Source <span aria-hidden="true">→</span>
-                    </a>
-                  )}
-                </div>
+              </div>
+
+              <div className="px-4 py-3" style={{ borderTop: '1px solid var(--color-border)' }}>
+                {chunk.url ? (
+                  <a 
+                    href={chunk.url} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="flex items-center justify-center w-full py-2 rounded-md text-[13px] font-bold border hover:bg-gray-800 transition-colors"
+                    style={{ color: 'var(--color-text-secondary)', borderColor: 'var(--color-border)' }}
+                  >
+                    Open source
+                  </a>
+                ) : (
+                   <button 
+                    className="flex items-center justify-center w-full py-2 rounded-md text-[13px] font-bold border hover:bg-gray-800 transition-colors"
+                    style={{ color: 'var(--color-text-secondary)', borderColor: 'var(--color-border)' }}
+                  >
+                    Open source
+                  </button>
+                )}
               </div>
             </div>
           );

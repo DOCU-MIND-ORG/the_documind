@@ -15,7 +15,7 @@ import com.accenture.intern.docmind.aiservices.embedding.DocumentParserService;
 import com.accenture.intern.docmind.aiservices.embedding.EmbeddingService;
 import com.accenture.intern.docmind.aiservices.embedding.WikipediaIngestionService;
 import com.accenture.intern.docmind.aiservices.vision.ImageVisionService;
-import com.accenture.intern.docmind.aiservices.vision.ImageVisionResponse;
+import com.accenture.intern.docmind.aiservices.vision.SemanticImage;
 import com.accenture.intern.docmind.dto.job.IngestionJobPayload;
 import com.accenture.intern.docmind.entity.Job;
 import com.accenture.intern.docmind.entity.JobStatus;
@@ -180,7 +180,7 @@ public class AttachmentService {
             // aborting the whole request — a dedup check is an optimization, not
             // something that should be able to block an upload from succeeding.
             DocumentParserService.PdfParseResult pdfParsed = null;
-            ImageVisionResponse imageVision = null;
+            SemanticImage imageVision = null;
             String existingSourceUrl = null;
 
             try {
@@ -191,9 +191,10 @@ public class AttachmentService {
                                 .block().orElse(null);
                     }
                 } else if (type == AttachmentType.IMAGE) {
-                    imageVision = imageVisionService.describeImage(fileBytes, contentType).block();
-                    if (imageVision != null && imageVision.denseDescription() != null && !imageVision.denseDescription().isBlank()) {
-                        existingSourceUrl = embeddingService.findExistingSourceUrl(imageVision.denseDescription())
+                    String context = com.accenture.intern.docmind.aiservices.vision.ImageContextBuilder.buildStandaloneContext(originalName, null);
+                    imageVision = imageVisionService.describeImage(fileBytes, contentType, context).block();
+                    if (imageVision != null && imageVision.summary() != null && !imageVision.summary().isBlank()) {
+                        existingSourceUrl = embeddingService.findExistingSourceUrl(imageVision.toDenseEmbeddingText())
                                 .block().orElse(null);
                     }
                 }
@@ -253,11 +254,11 @@ public class AttachmentService {
                             continue; // failed to persist this one image — skip, don't fail the whole upload
                         }
                         String imageSourceName = originalName + " (page " + img.pageNumber() + " image)";
-                        ImageVisionResponse vr = img.visionResponse();
-                        String tags = vr.tags() != null ? String.join(",", vr.tags()) : null;
+                        SemanticImage vr = img.visionResponse();
+                        String tags = vr.keywords() != null ? String.join(",", vr.keywords()) : null;
                         
                         ingestionMonos.add(embeddingService.processAndIngest(
-                                vr.denseDescription(), "PDF_IMAGE", imageSourceName, vr.suggestedFilename(), vr.assetClassification(), tags, sessionId, extractedImageUrl, publicUrl));
+                                vr.toDenseEmbeddingText(), "PDF_IMAGE", imageSourceName, originalName, vr.imageType(), tags, sessionId, extractedImageUrl, publicUrl));
                     }
 
                     log.info("Successfully processed '{}' ({} text chunk-source, {} embedded images)",
@@ -273,13 +274,13 @@ public class AttachmentService {
                     // Reuse the vision result from the pre-Cloudinary dedup check
                     // above when available; if that check was skipped/failed, run
                     // vision now exactly as the original code always did.
-                    ImageVisionResponse parsedVision = imageVision != null
+                    SemanticImage parsedVision = imageVision != null
                             ? imageVision
-                            : imageVisionService.describeImage(fileBytes, contentType).block();
-                    if (parsedVision != null && parsedVision.denseDescription() != null && !parsedVision.denseDescription().isBlank()) {
-                        String tags = parsedVision.tags() != null ? String.join(",", parsedVision.tags()) : null;
+                            : imageVisionService.describeImage(fileBytes, contentType, com.accenture.intern.docmind.aiservices.vision.ImageContextBuilder.buildStandaloneContext(originalName, null)).block();
+                    if (parsedVision != null && parsedVision.summary() != null && !parsedVision.summary().isBlank()) {
+                        String tags = parsedVision.keywords() != null ? String.join(",", parsedVision.keywords()) : null;
                         ingestionMonos.add(
-                                embeddingService.processAndIngest(parsedVision.denseDescription(), type.name(), originalName, parsedVision.suggestedFilename(), parsedVision.assetClassification(), tags, sessionId, publicUrl, publicUrl));
+                                embeddingService.processAndIngest(parsedVision.toDenseEmbeddingText(), type.name(), originalName, originalName, parsedVision.imageType(), tags, sessionId, publicUrl, publicUrl));
                         log.info("Successfully processed '{}'", originalName);
                     }
                 }
@@ -296,9 +297,9 @@ public class AttachmentService {
 
             SourceType sourceTypeEnum = switch (type) {
                 case PDF -> SourceType.PDF;
-                case IMAGE -> SourceType.PDF; // images handled in PDF pipeline in worker or OTHER
+                case IMAGE -> SourceType.IMAGE;
                 case TEXT -> SourceType.TEXT;
-                default -> SourceType.OTHER; // Note: OTHER might need to be added to SourceType enum
+                default -> SourceType.OTHER;
             };
 
             IngestionJobPayload payload = IngestionJobPayload.builder()

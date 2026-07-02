@@ -7,5 +7,6 @@ public enum SourceType {
     HTML,
     MARKDOWN,
     TEXT,
+    IMAGE,
     OTHER
 }

@@ -43,7 +43,7 @@ public class DocumentParserService {
                 .build();
     }
 
-    public record ExtractedImage(byte[] imageBytes, String mimeType, int pageNumber, ImageVisionResponse visionResponse) {}
+    public record ExtractedImage(byte[] imageBytes, String mimeType, int pageNumber, SemanticImage visionResponse) {}
 
     public record PdfParseResult(String text, List<ExtractedImage> images) {}
 
@@ -165,10 +165,15 @@ public class DocumentParserService {
                         continue;
                     }
 
-                    ImageVisionResponse visionResponse = imageVisionService.describeImage(pngBytes, "image/png").block();
+                    String previousText = extractTextFromPage(doc, pageNumber - 1);
+                    String currentText = extractTextFromPage(doc, pageNumber);
+                    String nextText = extractTextFromPage(doc, pageNumber + 1);
+                    String contextText = ImageContextBuilder.buildPdfContext(previousText, currentText, nextText);
+
+                    SemanticImage visionResponse = imageVisionService.describeImage(pngBytes, "image/png", contextText).block();
                     processedCount++;
 
-                    if (visionResponse != null && visionResponse.denseDescription() != null && !visionResponse.denseDescription().isBlank()) {
+                    if (visionResponse != null && visionResponse.summary() != null && !visionResponse.summary().isBlank()) {
                         results.add(new ExtractedImage(pngBytes, "image/png", pageNumber, visionResponse));
                         log.info("Described image on page {} ({}x{})", pageNumber,
                                 bufferedImage.getWidth(), bufferedImage.getHeight());
@@ -182,6 +187,18 @@ public class DocumentParserService {
         return results;
     }
 
+    private String extractTextFromPage(PDDocument doc, int pageNumber) {
+        if (pageNumber < 1 || pageNumber > doc.getNumberOfPages()) return "";
+        try {
+            PDFTextStripper stripper = new PDFTextStripper();
+            stripper.setStartPage(pageNumber);
+            stripper.setEndPage(pageNumber);
+            return stripper.getText(doc);
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
     private byte[] toPngBytes(BufferedImage image) {
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             ImageIO.write(image, "png", baos);
@@ -192,5 +209,3 @@ public class DocumentParserService {
         }
     }
 }
-
-

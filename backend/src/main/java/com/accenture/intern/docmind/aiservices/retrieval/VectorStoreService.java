@@ -66,7 +66,7 @@ public class VectorStoreService {
                     }
 
                     if (imageOnly) {
-                        org.springframework.ai.vectorstore.filter.Filter.Expression imgFilter = new org.springframework.ai.vectorstore.filter.FilterExpressionBuilder().eq("type", "IMAGE").build();
+                        org.springframework.ai.vectorstore.filter.Filter.Expression imgFilter = new org.springframework.ai.vectorstore.filter.FilterExpressionBuilder().in("type", "IMAGE", "PDF_IMAGE").build();
                         if (filter != null) {
                             filter = new org.springframework.ai.vectorstore.filter.Filter.Expression(org.springframework.ai.vectorstore.filter.Filter.ExpressionType.AND, filter, imgFilter);
                         } else {

@@ -48,6 +48,7 @@ public class ContextBuilderService {
     private final PlannerService plannerService;
     private final RetrievalOrchestrator retrievalOrchestrator;
     private final com.accenture.intern.docmind.aiservices.understanding.plan.RetrievalController retrievalController;
+    private final EvidenceAggregatorService evidenceAggregatorService;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     private final String ragPrompt;
     private final String generalPrompt;
@@ -58,6 +59,7 @@ public class ContextBuilderService {
             PlannerService plannerService,
             RetrievalOrchestrator retrievalOrchestrator,
             com.accenture.intern.docmind.aiservices.understanding.plan.RetrievalController retrievalController,
+            EvidenceAggregatorService evidenceAggregatorService,
             com.fasterxml.jackson.databind.ObjectMapper objectMapper,
             @Value("classpath:prompts/ragprompt.st") Resource ragPromptResource,
             @Value("classpath:prompts/generalprompt.st") Resource generalPromptResource) throws IOException {
@@ -66,6 +68,7 @@ public class ContextBuilderService {
         this.plannerService = plannerService;
         this.retrievalOrchestrator = retrievalOrchestrator;
         this.retrievalController = retrievalController;
+        this.evidenceAggregatorService = evidenceAggregatorService;
         this.objectMapper = objectMapper;
         this.ragPrompt = StreamUtils.copyToString(ragPromptResource.getInputStream(), StandardCharsets.UTF_8);
         this.generalPrompt = StreamUtils.copyToString(generalPromptResource.getInputStream(), StandardCharsets.UTF_8);
@@ -130,11 +133,14 @@ public class ContextBuilderService {
                                     acc.addAll(list);
                                     return acc;
                                 })
-                                .map(selectedDocs -> new ContextResult(
+                                .map(selectedDocs -> {
+                                    com.accenture.intern.docmind.dto.chat.AggregatedEvidence agg = evidenceAggregatorService.aggregate(selectedDocs, java.util.Collections.emptyList(), finalMergeOperation);
+                                    return new ContextResult(
                                         getSystemPrompt(selectedDocs.isEmpty(), "", historyBlock, sessionContext),
-                                        buildPrompt(question, buildContextBlock(selectedDocs, finalMergeOperation), historyBlock, sessionContext),
+                                        buildPrompt(question, agg.evidenceString(), historyBlock, sessionContext),
                                         selectedDocs, 1.0
-                                ));
+                                    );
+                                });
                     }
                 }
 
@@ -226,11 +232,12 @@ public class ContextBuilderService {
         return historyBlockMono.flatMap(historyBlock -> {
              trace.addStep(String.format("Adaptive Loop finished, returning %d chunks.", candidates.size()));
              double topScore = candidates.isEmpty() ? 0.0 : candidates.get(0).finalScore();
-             String contextBlock = buildContextBlock(candidates, MergeOperation.UNION);
-             String augmentedPrompt = buildPrompt(question, contextBlock, historyBlock, sessionContext);
+             
+             com.accenture.intern.docmind.dto.chat.AggregatedEvidence agg = evidenceAggregatorService.aggregate(candidates, Collections.emptyList(), MergeOperation.UNION);
+             String augmentedPrompt = buildPrompt(question, agg.evidenceString(), historyBlock, sessionContext);
              return Mono.just(new ContextResult(
                      getSystemPrompt(candidates.isEmpty(), "", historyBlock, sessionContext),
-                     augmentedPrompt, candidates, candidates, Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), trace, topScore));
+                     augmentedPrompt, candidates, candidates, Collections.emptyList(), Collections.emptyList(), agg.updatedVisuals(), trace, topScore));
         });
     }
 
@@ -248,15 +255,12 @@ public class ContextBuilderService {
                     
                     String primaryStrategy = "";
 
-                    String contextBlock = buildContextBlock(result.evidence(), execPlan.getMergeOperation());
-                    if (result.visuals() != null && !result.visuals().isEmpty()) {
-                        contextBlock = "Visual Context:\n" + result.visuals().size() + " related images are attached to this response.\n\n" + contextBlock;
-                    }
-                    String augmentedPrompt = buildPrompt(question, contextBlock, historyBlock, sessionContext);
+                    com.accenture.intern.docmind.dto.chat.AggregatedEvidence agg = evidenceAggregatorService.aggregate(result.evidence(), result.visuals(), execPlan.getMergeOperation());
+                    String augmentedPrompt = buildPrompt(question, agg.evidenceString(), historyBlock, sessionContext);
                     
                     return Mono.just(new ContextResult(
                             getSystemPrompt(result.evidence().isEmpty(), primaryStrategy, historyBlock, sessionContext),
-                            augmentedPrompt, result.evidence(), result.evidence(), Collections.emptyList(), Collections.emptyList(), result.visuals() != null ? result.visuals() : Collections.emptyList(), trace, topScore));
+                            augmentedPrompt, result.evidence(), result.evidence(), Collections.emptyList(), Collections.emptyList(), agg.updatedVisuals(), trace, topScore));
                 });
     }
 
@@ -283,42 +287,7 @@ public class ContextBuilderService {
                 });
     }
 
-    private String buildContextBlock(List<RetrievalCandidate> docs, MergeOperation mergeOperation) {
-        if (docs.isEmpty()) {
-            return "No relevant documents found.";
-        }
 
-        StringBuilder sb = new StringBuilder();
-        
-        if (mergeOperation == MergeOperation.COMPARE) {
-            java.util.Map<String, List<RetrievalCandidate>> grouped = new java.util.LinkedHashMap<>();
-            for (RetrievalCandidate cand : docs) {
-                String purpose = (String) cand.chunk().getMetadata().getOrDefault("purpose", "General Retrieval");
-                grouped.computeIfAbsent(purpose, k -> new ArrayList<>()).add(cand);
-            }
-            
-            int index = 1;
-            for (java.util.Map.Entry<String, List<RetrievalCandidate>> entry : grouped.entrySet()) {
-                sb.append("=== Evidence for: ").append(entry.getKey()).append(" ===\n");
-                for (RetrievalCandidate cand : entry.getValue()) {
-                    String name = (String) cand.chunk().getMetadata().getOrDefault("sourceName", "unknown");
-                    String type = (String) cand.chunk().getMetadata().getOrDefault("sourceType", "");
-                    sb.append(String.format("<CITATION id=\"%d\">\nSource: %s | Type: %s\n%s\n</CITATION>\n\n",
-                            index++, name, type, cand.chunk().getText()));
-                }
-            }
-        } else {
-            int index = 1;
-            for (RetrievalCandidate cand : docs) {
-                String name = (String) cand.chunk().getMetadata().getOrDefault("sourceName", "unknown");
-                String type = (String) cand.chunk().getMetadata().getOrDefault("sourceType", "");
-                sb.append(String.format("<CITATION id=\"%d\">\nSource: %s | Type: %s\n%s\n</CITATION>\n\n",
-                        index++, name, type, cand.chunk().getText()));
-            }
-        }
-
-        return sb.toString().trim();
-    }
 
     private String buildPrompt(String question, String contextBlock, String historyBlock, SessionContext sessionContext) {
         String sessionContextStr = "";

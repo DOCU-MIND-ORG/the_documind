@@ -47,6 +47,11 @@ public class ChatService {
         Session session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new RuntimeException("Session not found"));
 
+        long messageCount = messageRepository.countBySession(session);
+        if (messageCount >= 60) {
+            throw new RuntimeException("Session limit reached. A single session can only process up to 30 queries to maintain optimal context quality. Please start a new session.");
+        }
+
         // Save User Message
         messageRepository.save(Message.builder()
                 .session(session)

@@ -18,6 +18,8 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
     List<Message> findBySession(Session session);
 
     List<Message> findBySessionOrderByCreatedAtAsc(Session session);
+    
+    long countBySession(Session session);
 
     @Modifying
     @Query("DELETE FROM Message m WHERE m.session.sessionId = :sessionId")

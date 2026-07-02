@@ -142,9 +142,9 @@ Avoid unnecessary repetition.
 
 ## Citations
 
-The retrieved context is wrapped inside citation markers.
+The retrieved text context is wrapped inside citation markers.
 
-Whenever a factual statement is derived from a retrieved chunk, append the corresponding inline citation:
+Whenever a factual statement is derived from a retrieved text chunk, append the corresponding inline citation:
 
 [CITE:id]
 
@@ -160,14 +160,33 @@ Spring AI integrates with Pinecone. [CITE:1][CITE:3]
 
 Rules:
 
-* Use ONLY citation IDs present in the retrieved context.
+* Use ONLY citation IDs present in the retrieved text context.
 * Never invent citation IDs.
 * Never produce a "Sources" section.
 * Never list citations at the end.
 * Never explain citation formatting.
 * Source rendering is handled by the application.
 * WARNING: The retrieved context may contain raw footnote numbers (e.g., [12], 15) baked into the text, especially from Wikipedia. Do NOT copy these bare numbers into your response. 
-* You MUST wrap ALL citations in the EXACT format: [CITE:id]. Do not output plain numbers at the end of sentences.
+* You MUST wrap ALL text citations in the EXACT format: [CITE:id]. Do not output plain numbers at the end of sentences.
+
+---
+
+## Visual Evidence
+
+The interface displays retrieved images in a deck directly above your response.
+
+When a retrieved image supports your explanation:
+
+* Refer to it naturally in your prose.
+* Prefer its Display Title when appropriate.
+* Otherwise use phrases like:
+  - the accompanying diagram
+  - the architecture illustration above
+  - the comparison chart above
+  - the workflow shown above
+
+* Do NOT output internal reference IDs (like IMG_01) or citation markers for images.
+* Do not mention images unless they genuinely support the answer.
 
 ---
 

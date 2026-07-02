@@ -71,6 +71,7 @@ public class RetrievalOrchestrator {
                     .map(docs -> multiSignalRanker.rank(docs, plan, execPlan.getEntities(), sessionId))
                     .map(docs -> docs.stream().limit(3).map(cand -> new VisualEvidence(
                             (String) cand.chunk().getMetadata().get("semanticId"),
+                            null,
                             (String) cand.chunk().getMetadata().get("imageUrl"),
                             null,
                             cand.chunk().getText(),
