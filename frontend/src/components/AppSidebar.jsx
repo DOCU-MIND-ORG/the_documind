@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useSessions } from '../context/SessionsContext.jsx';
@@ -113,6 +113,27 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
   const [renameTitle, setRenameTitle]         = useState('');
   const [deleteSessionId, setDeleteSessionId] = useState(null);
   const [isDeleting, setIsDeleting]           = useState(false);
+  const [deferredPrompt, setDeferredPrompt]   = useState(null);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
+  };
 
   const activeId = location.pathname.startsWith('/chat/')
     ? location.pathname.split('/')[2]
@@ -281,14 +302,14 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
           onClick={e => e.stopPropagation()}
         >
           <button
-            onClick={() => { setSettingsOpen(false); navigate('/settings'); }}
+            onClick={() => { setSettingsOpen(false); setMobileOpen(false); navigate('/settings'); }}
             className="w-full text-left px-4 py-2.5 text-[13px] t-text-muted hover:t-text-main t-hover-bg transition-colors rounded-xl"
           >
             Settings
           </button>
           <div className="h-px t-border mx-3 my-1" />
           <button
-            onClick={() => { setSettingsOpen(false); logout(); navigate('/login'); }}
+            onClick={() => { setSettingsOpen(false); setMobileOpen(false); logout(); navigate('/login'); }}
             className="w-full text-left px-4 py-2.5 text-[13px] text-red-400 hover:text-red-300 hover:bg-red-500/[0.07] transition-colors rounded-xl font-medium"
           >
             Sign out
@@ -359,6 +380,17 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
             <PlusIcon />
             New chat
           </button>
+          {deferredPrompt && (
+            <button
+              onClick={handleInstallClick}
+              className="flex items-center gap-3 w-full px-3 py-2.5 text-[13px] font-medium text-blue-500 bg-blue-500/10 hover:bg-blue-500/20 rounded-xl transition-all cursor-pointer mt-1"
+            >
+              <svg className="w-[16px] h-[16px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              Install App
+            </button>
+          )}
         </div>
         <SessionList alwaysExpanded />
         <UserFooter show />
@@ -412,6 +444,18 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
             <PlusIcon />
             {expanded && <span className="whitespace-nowrap">New chat</span>}
           </button>
+          {deferredPrompt && (
+            <button
+              onClick={handleInstallClick}
+              title={!expanded ? 'Install App' : undefined}
+              className={`flex items-center gap-3 w-full px-2.5 py-[10px] text-[13px] font-medium text-blue-500 bg-blue-500/10 hover:bg-blue-500/20 rounded-xl transition-all active:scale-[0.97] cursor-pointer mt-1 ${!expanded ? 'justify-center' : ''}`}
+            >
+              <svg className="w-[16px] h-[16px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              {expanded && <span className="whitespace-nowrap">Install App</span>}
+            </button>
+          )}
         </div>
 
         <SessionList />

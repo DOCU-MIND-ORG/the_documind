@@ -151,7 +151,6 @@ export default function Explore() {
         </button>
         <div className="flex-1 min-w-0 flex items-center gap-2">
           <h1 className="text-[13px] font-medium text-primary truncate">Explore Documents</h1>
-          <span className="text-[11px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">My Documents</span>
         </div>
         <span className="text-[11px] text-tertiary shrink-0">{attachments.length} file{attachments.length !== 1 ? 's' : ''} total</span>
       </header>

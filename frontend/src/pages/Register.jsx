@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
-import logo from '../../public/light.png';
+import logo from '/light.png';
 
 export default function Register() {
   const endpoint = import.meta.env.VITE_API_URL;

@@ -506,15 +506,16 @@ export default function Chat() {
           </svg>
         </button>
 
-          <div className="flex-1 flex items-center justify-between">
-            <div className="relative">
+          <div className="flex-1 flex items-center justify-between min-w-0 gap-2">
+            <div className="relative shrink-0 max-w-[45%] sm:max-w-none">
               <button
                 type="button"
                 onClick={() => setModelMenuOpen(prev => !prev)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-[15px] font-semibold text-primary rounded-xl interactive cursor-pointer select-none"
+                className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-[15px] font-semibold text-primary rounded-xl interactive cursor-pointer select-none max-w-full"
               >
-                DocuMind <span className="text-tertiary font-medium">{displayModelName}</span>
-                <svg className={`w-3.5 h-3.5 text-tertiary transition-transform duration-200 ${modelMenuOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <span className="hidden sm:inline">DocuMind</span>
+                <span className="text-tertiary font-medium truncate max-w-[150px] sm:max-w-none">{displayModelName}</span>
+                <svg className={`w-3.5 h-3.5 shrink-0 text-tertiary transition-transform duration-200 ${modelMenuOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
                 </svg>
               </button>
@@ -522,7 +523,7 @@ export default function Chat() {
               {modelMenuOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setModelMenuOpen(false)} />
-                  <div className="absolute left-0 mt-2 z-50 w-[280px] menu-popup py-1.5 animate-fade-in-up">
+                  <div className="absolute left-0 mt-2 z-50 w-[280px] max-w-[calc(100vw-3rem)] menu-popup py-1.5 animate-fade-in-up">
                     {models.map(m => {
                       const isSelected = m.id === selectedModel;
                       return (
@@ -559,16 +560,16 @@ export default function Chat() {
             </div>
             
             {!isNewChat && (
-              <div className="hidden sm:flex items-center gap-2 relative">
-                <div className="px-3 py-1.5 bg-[var(--color-bg-base)] border border-[var(--color-border)] rounded-lg max-w-[300px]">
-                  <h1 className="text-[13px] font-medium text-secondary truncate">
+              <div className="flex items-center gap-1 sm:gap-2 relative min-w-0 justify-end">
+                <div className="px-2 sm:px-3 py-1 sm:py-1.5 bg-[var(--color-bg-base)] border border-[var(--color-border)] rounded-lg max-w-[120px] sm:max-w-[300px] min-w-0 shrink">
+                  <h1 className="text-[11px] sm:text-[13px] font-medium text-secondary truncate leading-tight">
                     {session?.title || 'Loading…'}
                   </h1>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowShareMenu(prev => !prev)}
-                  className="p-1.5 text-secondary hover:text-primary hover:bg-[var(--color-bg-surface-hover)] rounded-md transition-colors"
+                  className="p-1 sm:p-1.5 text-secondary hover:text-primary hover:bg-[var(--color-bg-surface-hover)] rounded-md transition-colors shrink-0"
                   title="Share options"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -655,7 +656,6 @@ export default function Chat() {
               const isBot = msg.role === 'ASSISTANT';
               return (
                 <div key={msg.id} className={`flex items-start gap-2.5 ${isBot ? '' : 'flex-row-reverse'}`}>
-                  {isBot && <BotAvatar />}
                   <div className={`flex flex-col gap-1 max-w-[85%] ${isBot ? '' : 'items-end'}`}>
                     <div className={`px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${
                       isBot

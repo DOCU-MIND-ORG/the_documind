@@ -29,6 +29,9 @@ public class AuthController {
     private final JwtService jwtService;
     private final UserRepository userRepository;
 
+
+
+   
     @PostMapping("/signup")
     public ResponseEntity<?> SignUp(@RequestBody SignupRequest request) {
         try {
@@ -109,18 +112,18 @@ public class AuthController {
 
         ResponseCookie clearAccess = ResponseCookie.from("access_token", "")
                 .httpOnly(true)
-                .secure(false)
+                .secure(true)
                 .path("/")
                 .maxAge(0)           // Expires immediately
-                .sameSite("Strict")
+                .sameSite("None")
                 .build();
 
         ResponseCookie clearRefresh = ResponseCookie.from("refresh_token", "")
                 .httpOnly(true)
-                .secure(false)
+                .secure(true)
                 .path("/")
                 .maxAge(0)
-                .sameSite("Strict")
+                .sameSite("None")
                 .build();
 
         return ResponseEntity.ok()
@@ -187,6 +190,43 @@ public class AuthController {
         return ResponseEntity.ok(body);
     }
 
+    @DeleteMapping("/me")
+    public ResponseEntity<?> deleteMe(ServerHttpRequest request) {
+        String token = extractCookieValue(request, "access_token");
+
+        if (token == null || !jwtService.isTokenValid(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ErrorResponse("No valid session found"));
+        }
+
+        String email = jwtService.extractEmail(token);
+        User user = userRepository.findByEmail(email);
+
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ErrorResponse("User not found"));
+        }
+
+        try {
+            AuthService.deleteMe(user);
+            
+            // Clear the cookie
+            ResponseCookie jwtCookie = ResponseCookie.from("access_token", "")
+                    .httpOnly(true)
+                    .secure(true) // Ensure this matches your deployment context
+                    .path("/")
+                    .maxAge(0)
+                    .sameSite("None")
+                    .build();
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.SET_COOKIE, jwtCookie.toString())
+                    .body(java.util.Map.of("message", "Account successfully deleted"));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ErrorResponse("Failed to delete account: " + e.getMessage()));
+        }
+    }
 
     @PutMapping("/update")
     public ResponseEntity<?> update(@RequestBody UserUpdateDto updateDto, ServerHttpRequest request) {
@@ -245,18 +285,18 @@ public class AuthController {
     private ResponseEntity<?> buildCookieResponse(LoginResponse response) {
         ResponseCookie jwtCookie = ResponseCookie.from("access_token", response.getAccessToken())
                 .httpOnly(true)
-                .secure(false) 
+                .secure(true) 
                 .path("/")
                 .maxAge(15 * 60)
-                .sameSite("Strict")
+                .sameSite("None")
                 .build();
 
         ResponseCookie refreshCookie = ResponseCookie.from("refresh_token", response.getRefreshToken())
                 .httpOnly(true)
-                .secure(false)
+                .secure(true)
                 .path("/")
                 .maxAge(7 * 24 * 60 * 60) 
-                .sameSite("Strict")
+                .sameSite("None")
                 .build();
 
         java.util.Map<String, Object> body = new java.util.HashMap<>();

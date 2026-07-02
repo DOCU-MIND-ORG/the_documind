@@ -4,6 +4,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { authService } from '../services/authService.js';
 import { preferenceService } from '../services/preferenceService.js';
+import { useToast } from '../context/ToastContext.jsx';
+import Modal from '../components/Modal.jsx';
 import { HexColorPicker } from "react-colorful";
 
 function Field({ label, hint, error, children }) {
@@ -30,6 +32,7 @@ function Section({ title, children }) {
 
 export default function Settings() {
   const { user, logout, updateUser } = useAuth();
+  const { showToast } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('profile');
@@ -57,6 +60,7 @@ export default function Settings() {
   const [language,      setLanguage]      = useState('en');
   const [responseStyle, setResponseStyle] = useState('BALANCED');
   const [prefSaved,     setPrefSaved]     = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [availableModels, setAvailableModels] = useState([]);
 
   useEffect(() => {
@@ -188,10 +192,10 @@ export default function Settings() {
     }
   };
 
-  const deleteAccount = async () => {
-    if (!confirm('Delete your account? This cannot be undone.')) return;
+  const confirmDeleteAccount = async () => {
+    setIsDeleteModalOpen(false);
     try { await authService.deleteMe(); logout(); navigate('/register'); }
-    catch (err) { alert(err.message || 'Failed to delete account'); }
+    catch (err) { showToast(err.message || 'Failed to delete account', 'error'); }
   };
 
   const savePreferences = async () => {
@@ -206,7 +210,7 @@ export default function Settings() {
       setTimeout(() => setPrefSaved(false), 3000);
     } catch (err) {
       console.error("Failed to save preferences", err);
-      alert("Failed to save preferences");
+      showToast("Failed to save preferences", "error");
     }
   };
 
@@ -437,7 +441,7 @@ export default function Settings() {
               </div>
 
               <button
-                onClick={deleteAccount}
+                onClick={() => setIsDeleteModalOpen(true)}
                 className="px-4 py-2 rounded-lg text-sm font-medium text-red-500 hover:text-red-400 transition-colors"
                 style={{ border: '1px solid rgba(239,68,68,0.25)', backgroundColor: 'rgba(239,68,68,0.05)' }}
               >
@@ -546,8 +550,41 @@ export default function Settings() {
             </div>
           </div>
         )}
-
       </div>
+
+      <Modal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        title="Delete Account"
+        footer={
+          <>
+            <button
+              onClick={() => setIsDeleteModalOpen(false)}
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              style={{
+                color: 'var(--color-text-secondary)',
+                backgroundColor: 'var(--color-bg-elevated)',
+                border: '1px solid var(--color-border)'
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmDeleteAccount}
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors text-white"
+              style={{ backgroundColor: 'var(--color-destructive)' }}
+            >
+              Confirm Delete
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p style={{ color: 'var(--color-text-secondary)' }}>
+            Are you sure you want to delete your account? This action cannot be undone. All of your sessions, attachments, and preferences will be permanently removed.
+          </p>
+        </div>
+      </Modal>
     </div>
   );
 }

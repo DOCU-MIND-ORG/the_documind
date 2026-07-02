@@ -9,4 +9,5 @@ import java.util.Optional;
 public interface UserPreferenceRepository extends JpaRepository<UserPreference, Long> {
 
     Optional<UserPreference> findByUser(User user);
+    void deleteByUser(User user);
 }

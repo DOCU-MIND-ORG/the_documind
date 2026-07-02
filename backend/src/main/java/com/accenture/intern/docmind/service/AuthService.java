@@ -13,6 +13,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.accenture.intern.docmind.repository.OtpRepository;
+import com.accenture.intern.docmind.repository.SessionRepository;
+import com.accenture.intern.docmind.repository.UserPreferenceRepository;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -34,6 +36,9 @@ public class AuthService {
     private final RefreshTokenService refreshTokenService;
     private final JavaMailSender mailSender;
     private final CloudinaryService cloudinaryService;
+    private final SessionService sessionService;
+    private final SessionRepository sessionRepository;
+    private final UserPreferenceRepository userPreferenceRepository;
 
     @Value("${spring.mail.username}")
     private String mailUsername;
@@ -70,9 +75,13 @@ public class AuthService {
             throw new RuntimeException("User not found");
         }
 
+
+
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new RuntimeException("Invalid credentials");
         }
+
+        
 
         return generateAuthResponse(user, "Successfully logged in .");
     }
@@ -354,5 +363,35 @@ public class AuthService {
         if (refreshTokenStr != null) {
             refreshTokenService.deleteByToken(refreshTokenStr);
         }
+    }
+
+    public void deleteMe(User user) {
+        // 1. Delete all sessions (this cascades to messages, attachments, Pinecone, and Cloudinary for attachments)
+        java.util.List<Session> sessions = sessionRepository.findByUser(user);
+        for (Session session : sessions) {
+            try {
+                sessionService.deleteSession(user.getEmail(), session.getSessionId());
+            } catch (Exception e) {
+                System.err.println("Failed to delete session " + session.getSessionId() + ": " + e.getMessage());
+            }
+        }
+
+        // 2. Delete profile image from Cloudinary if it exists
+        if (user.getProfileImagePublicId() != null && !user.getProfileImagePublicId().isEmpty()) {
+            try {
+                cloudinaryService.deleteImage(user.getProfileImagePublicId());
+            } catch (Exception e) {
+                System.err.println("Failed to delete profile image from Cloudinary: " + e.getMessage());
+            }
+        }
+
+        // 3. Delete user preferences
+        userPreferenceRepository.deleteByUser(user);
+
+        // 4. Delete OTP and RefreshTokens
+        otpRepository.deleteByUser(user);
+        refreshTokenService.deleteByUser(user);
+
+        userRepository.delete(user);
     }
 }

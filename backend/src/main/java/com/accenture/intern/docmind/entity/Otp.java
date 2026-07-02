@@ -34,4 +34,7 @@ public class Otp {
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "user_id",referencedColumnName = "id",nullable = false)
     private User user;
+
+
+    
 }
