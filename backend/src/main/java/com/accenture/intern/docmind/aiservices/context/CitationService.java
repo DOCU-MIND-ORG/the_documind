@@ -62,6 +62,16 @@ public class CitationService {
                         citation.put("rankingExplanation", cand.explanation().reasoning());
                     }
                     
+                    if (cand.chunk().getMetadata().containsKey("page")) {
+                        citation.put("page", cand.chunk().getMetadata().get("page"));
+                    }
+                    if (cand.chunk().getMetadata().containsKey("boundingBoxes")) {
+                        citation.put("boundingBoxes", cand.chunk().getMetadata().get("boundingBoxes"));
+                    }
+                    if (cand.chunk().getMetadata().containsKey("sectionPath")) {
+                        citation.put("sectionPath", cand.chunk().getMetadata().get("sectionPath"));
+                    }
+                    
                     return citation;
                 })
                 .collect(Collectors.toList());

@@ -61,6 +61,8 @@ public class SecurityConfig {
                                 "/auth/verify-otp",
                                 "/auth/reset-password",
 
+                                "/api/proxy",
+
                                 // Static file serving — storage/** exposed under /files/**
                                 "/files/**",
 

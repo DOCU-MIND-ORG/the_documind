@@ -182,7 +182,7 @@ public class EmbeddingService {
 
     private Mono<Void> doIngestSemantic(List<com.accenture.intern.docmind.dto.context.SemanticChunk> chunks, String originalFileName, String normalizedName, String sourceUrl, Long sessionId, String contentHash, SessionUploadState state) {
         List<Document> documents = chunks.stream().map(chunk -> {
-            String content = "Page: " + chunk.page() + "\nSection: " + chunk.sectionPath() + "\n\n" + chunk.text();
+            String content = "Section: " + chunk.sectionPath() + "\n\n" + chunk.text();
             
             Map<String, Object> metadata = new HashMap<>();
             metadata.put("sourceName", normalizedName);
@@ -191,7 +191,6 @@ public class EmbeddingService {
             metadata.put("semanticId", chunk.semanticId());
             metadata.put("type", chunk.type().name());
             metadata.put("sectionPath", chunk.sectionPath());
-            metadata.put("page", chunk.page());
             metadata.put("chunkIndex", chunk.order());
             metadata.put("sessionId", sessionId);
             if (sourceUrl != null) metadata.put("sourceUrl", sourceUrl);
@@ -434,10 +433,15 @@ public class EmbeddingService {
                             .map(doc -> {
                                 String boundingBoxesJson = null;
                                 if (doc.getMetadata().containsKey("boundingBoxes")) {
-                                    try {
-                                        boundingBoxesJson = objectMapper.writeValueAsString(doc.getMetadata().get("boundingBoxes"));
-                                    } catch (Exception e) {
-                                        log.warn("Failed to serialize bounding boxes", e);
+                                    Object bboxes = doc.getMetadata().get("boundingBoxes");
+                                    if (bboxes instanceof String) {
+                                        boundingBoxesJson = (String) bboxes;
+                                    } else {
+                                        try {
+                                            boundingBoxesJson = objectMapper.writeValueAsString(bboxes);
+                                        } catch (Exception e) {
+                                            log.warn("Failed to serialize bounding boxes", e);
+                                        }
                                     }
                                 }
                                 return DocumentChunk.builder()
@@ -559,7 +563,11 @@ public class EmbeddingService {
                         }
                     }
                     if (!boundingBoxes.isEmpty()) {
-                        meta.put("boundingBoxes", boundingBoxes);
+                        try {
+                            meta.put("boundingBoxes", objectMapper.writeValueAsString(boundingBoxes));
+                        } catch (Exception e) {
+                            log.warn("Failed to serialize bounding boxes for chunk", e);
+                        }
                         meta.put("page", firstPage);
                         // Add some context offsets
                         meta.put("charStart", cursor);

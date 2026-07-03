@@ -286,6 +286,13 @@ public class HybridRetrievalService {
         if (chunk.getSourceUrl() != null && !chunk.getSourceUrl().isBlank()) {
             metadata.put("sourceUrl", chunk.getSourceUrl());
         }
+        if (chunk.getPage() != null) metadata.put("page", chunk.getPage());
+        if (chunk.getCharStart() != null) metadata.put("charStart", chunk.getCharStart());
+        if (chunk.getCharEnd() != null) metadata.put("charEnd", chunk.getCharEnd());
+        if (chunk.getSectionPath() != null && !chunk.getSectionPath().isBlank()) metadata.put("sectionPath", chunk.getSectionPath());
+        if (chunk.getHeading() != null && !chunk.getHeading().isBlank()) metadata.put("heading", chunk.getHeading());
+        if (chunk.getBoundingBoxes() != null && !chunk.getBoundingBoxes().isBlank()) metadata.put("boundingBoxes", chunk.getBoundingBoxes());
+        
         return new Document(chunk.getVectorId(), chunk.getContent(), metadata);
     }
 

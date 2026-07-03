@@ -69,86 +69,133 @@ public class EvidenceStructuringService {
         }
         int duplicatesRemoved = initialSize - deduplicated.size();
 
-        // 3. Sort before merging: Primary: sourceName, Secondary: Page, Tertiary: charStart
-        deduplicated.sort(Comparator
-                .comparing((RetrievalCandidate c) -> (String) c.chunk().getMetadata().getOrDefault("sourceName", ""))
-                .thenComparing((RetrievalCandidate c) -> (Integer) c.chunk().getMetadata().getOrDefault("page", 0))
-                .thenComparing((RetrievalCandidate c) -> (Integer) c.chunk().getMetadata().getOrDefault("charStart", 0)));
-
-        // 4. Merge Overlapping/Adjacent Chunks
-        List<RetrievalCandidate> merged = new ArrayList<>();
-        int mergedCount = 0;
-        
-        if (!deduplicated.isEmpty()) {
-            RetrievalCandidate current = deduplicated.get(0);
-            for (int i = 1; i < deduplicated.size(); i++) {
-                RetrievalCandidate next = deduplicated.get(i);
-                
-                String currDoc = (String) current.chunk().getMetadata().getOrDefault("sourceName", "");
-                String nextDoc = (String) next.chunk().getMetadata().getOrDefault("sourceName", "");
-                
-                int currPage = (Integer) current.chunk().getMetadata().getOrDefault("page", -1);
-                int nextPage = (Integer) next.chunk().getMetadata().getOrDefault("page", -1);
-                
-                int currEnd = (Integer) current.chunk().getMetadata().getOrDefault("charEnd", -1);
-                int nextStart = (Integer) next.chunk().getMetadata().getOrDefault("charStart", -1);
-                
-                boolean sameDoc = currDoc.equals(nextDoc) && !currDoc.isEmpty();
-                boolean adjacentPage = Math.abs(currPage - nextPage) <= 1 && currPage != -1;
-                boolean overlappingOrAdjacentText = currEnd != -1 && nextStart != -1 && (nextStart <= currEnd + 50);
-                boolean similarScore = Math.abs(current.finalScore() - next.finalScore()) <= 0.15;
-                
-                int combinedLength = current.chunk().getText().length() + next.chunk().getText().length();
-                boolean withinLengthLimit = combinedLength <= 2500;
-
-                if (sameDoc && adjacentPage && overlappingOrAdjacentText && similarScore && withinLengthLimit) {
-                    // Merge text
-                    String newText = current.chunk().getText() + "\n... " + next.chunk().getText();
-                    current.chunk().getMetadata().put("charEnd", Math.max(currEnd, (Integer) next.chunk().getMetadata().getOrDefault("charEnd", currEnd)));
-                    
-                    // Merge bounding boxes
-                    try {
-                        String bboxes1 = (String) current.chunk().getMetadata().get("boundingBoxes");
-                        String bboxes2 = (String) next.chunk().getMetadata().get("boundingBoxes");
-                        
-                        if (bboxes1 != null && bboxes2 != null) {
-                            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                            com.fasterxml.jackson.databind.JsonNode arr1 = mapper.readTree(bboxes1);
-                            com.fasterxml.jackson.databind.JsonNode arr2 = mapper.readTree(bboxes2);
-                            if (arr1.isArray() && arr2.isArray()) {
-                                com.fasterxml.jackson.databind.node.ArrayNode mergedArr = mapper.createArrayNode();
-                                mergedArr.addAll((com.fasterxml.jackson.databind.node.ArrayNode) arr1);
-                                mergedArr.addAll((com.fasterxml.jackson.databind.node.ArrayNode) arr2);
-                                current.chunk().getMetadata().put("boundingBoxes", mapper.writeValueAsString(mergedArr));
-                            }
-                        } else if (bboxes2 != null) {
-                            current.chunk().getMetadata().put("boundingBoxes", bboxes2);
-                        }
-                    } catch (Exception e) {
-                        // ignore parsing errors, just keep the first chunk's boxes
-                    }
-
-                    // Update score to max
-                    double maxScore = Math.max(current.finalScore(), next.finalScore());
-                    
-                    current = new RetrievalCandidate(
-                            new org.springframework.ai.document.Document(current.chunk().getId(), newText, current.chunk().getMetadata()),
-                            maxScore
-                    );
-                    mergedCount++;
-                } else {
-                    merged.add(current);
-                    current = next;
-                }
-            }
-            merged.add(current);
+        // 3. Group by Document (sourceName) and SourceType
+        Map<String, List<RetrievalCandidate>> grouped = new HashMap<>();
+        for (RetrievalCandidate cand : deduplicated) {
+            String sourceName = (String) cand.chunk().getMetadata().getOrDefault("sourceName", "unknown");
+            grouped.computeIfAbsent(sourceName, k -> new ArrayList<>()).add(cand);
         }
 
-        // 5. Final Sort: Primary: Score, Secondary: Page, Tertiary: charStart
+        List<RetrievalCandidate> merged = new ArrayList<>();
+        int mergedCount = 0;
+
+        for (Map.Entry<String, List<RetrievalCandidate>> entry : grouped.entrySet()) {
+            List<RetrievalCandidate> docChunks = entry.getValue();
+            if (docChunks.isEmpty()) continue;
+            
+            String sourceType = (String) docChunks.get(0).chunk().getMetadata().getOrDefault("sourceType", "UNKNOWN");
+            
+            switch (sourceType.toUpperCase()) {
+                case "PDF": {
+                    // Sort PDF chunks
+                    docChunks.sort(Comparator
+                            .comparingInt((RetrievalCandidate c) -> getAsInt(c.chunk().getMetadata(), "page", 0))
+                            .thenComparingInt((RetrievalCandidate c) -> getAsInt(c.chunk().getMetadata(), "charStart", 0)));
+                    
+                    // Merge PDF chunks
+                    RetrievalCandidate current = docChunks.get(0);
+                    for (int i = 1; i < docChunks.size(); i++) {
+                        RetrievalCandidate next = docChunks.get(i);
+                        
+                        int currPage = getAsInt(current.chunk().getMetadata(), "page", -1);
+                        int nextPage = getAsInt(next.chunk().getMetadata(), "page", -1);
+                        
+                        int currEnd = getAsInt(current.chunk().getMetadata(), "charEnd", -1);
+                        int nextStart = getAsInt(next.chunk().getMetadata(), "charStart", -1);
+                        
+                        boolean adjacentPage = Math.abs(currPage - nextPage) <= 1 && currPage != -1;
+                        boolean overlappingOrAdjacentText = currEnd != -1 && nextStart != -1 && (nextStart <= currEnd + 50);
+                        boolean similarScore = Math.abs(current.finalScore() - next.finalScore()) <= 0.15;
+                        boolean withinLengthLimit = (current.chunk().getText().length() + next.chunk().getText().length()) <= 2500;
+                        
+                        if (adjacentPage && overlappingOrAdjacentText && similarScore && withinLengthLimit) {
+                            String newText = current.chunk().getText() + "\n... " + next.chunk().getText();
+                            current.chunk().getMetadata().put("charEnd", Math.max(currEnd, getAsInt(next.chunk().getMetadata(), "charEnd", currEnd)));
+                            
+                            // Merge bounding boxes
+                            try {
+                                String bboxes1 = (String) current.chunk().getMetadata().get("boundingBoxes");
+                                String bboxes2 = (String) next.chunk().getMetadata().get("boundingBoxes");
+                                if (bboxes1 != null && bboxes2 != null) {
+                                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                                    com.fasterxml.jackson.databind.JsonNode arr1 = mapper.readTree(bboxes1);
+                                    com.fasterxml.jackson.databind.JsonNode arr2 = mapper.readTree(bboxes2);
+                                    if (arr1.isArray() && arr2.isArray()) {
+                                        com.fasterxml.jackson.databind.node.ArrayNode mergedArr = mapper.createArrayNode();
+                                        mergedArr.addAll((com.fasterxml.jackson.databind.node.ArrayNode) arr1);
+                                        mergedArr.addAll((com.fasterxml.jackson.databind.node.ArrayNode) arr2);
+                                        current.chunk().getMetadata().put("boundingBoxes", mapper.writeValueAsString(mergedArr));
+                                    }
+                                } else if (bboxes2 != null) {
+                                    current.chunk().getMetadata().put("boundingBoxes", bboxes2);
+                                }
+                            } catch (Exception e) {}
+                            
+                            double maxScore = Math.max(current.finalScore(), next.finalScore());
+                            current = new RetrievalCandidate(new org.springframework.ai.document.Document(current.chunk().getId(), newText, current.chunk().getMetadata()), maxScore);
+                            mergedCount++;
+                        } else {
+                            merged.add(current);
+                            current = next;
+                        }
+                    }
+                    merged.add(current);
+                    break;
+                }
+                case "WIKIPEDIA":
+                case "TEXT":
+                case "MARKDOWN":
+                case "HTML": {
+                    // Sort Semantic/Text chunks
+                    docChunks.sort(Comparator.comparingInt((RetrievalCandidate c) -> getAsInt(c.chunk().getMetadata(), "chunkIndex", 0)));
+                    
+                    // Merge Semantic chunks
+                    RetrievalCandidate current = docChunks.get(0);
+                    for (int i = 1; i < docChunks.size(); i++) {
+                        RetrievalCandidate next = docChunks.get(i);
+                        
+                        String currSection = (String) current.chunk().getMetadata().getOrDefault("sectionPath", "");
+                        String nextSection = (String) next.chunk().getMetadata().getOrDefault("sectionPath", "");
+                        
+                        int currIdx = getAsInt(current.chunk().getMetadata(), "chunkIndex", -2);
+                        int nextIdx = getAsInt(next.chunk().getMetadata(), "chunkIndex", -1);
+                        
+                        boolean sameSection = currSection.equals(nextSection);
+                        boolean adjacentIdx = (nextIdx - currIdx) == 1;
+                        boolean similarScore = Math.abs(current.finalScore() - next.finalScore()) <= 0.15;
+                        boolean withinLengthLimit = (current.chunk().getText().length() + next.chunk().getText().length()) <= 2500;
+                        
+                        if (sameSection && adjacentIdx && similarScore && withinLengthLimit) {
+                            String newText = current.chunk().getText() + "\n\n" + next.chunk().getText();
+                            current.chunk().getMetadata().put("chunkIndex", nextIdx); // Update index to represent end of merge
+                            
+                            double maxScore = Math.max(current.finalScore(), next.finalScore());
+                            current = new RetrievalCandidate(new org.springframework.ai.document.Document(current.chunk().getId(), newText, current.chunk().getMetadata()), maxScore);
+                            mergedCount++;
+                        } else {
+                            merged.add(current);
+                            current = next;
+                        }
+                    }
+                    merged.add(current);
+                    break;
+                }
+                case "IMAGE":
+                case "PDF_IMAGE":
+                default: {
+                    // No merging for images or unknown
+                    merged.addAll(docChunks);
+                    break;
+                }
+            }
+        }
+
+        // 5. Final Sort: Primary: Score, Secondary: original internal chunking offsets/pages
         merged.sort(Comparator
                 .comparing(RetrievalCandidate::finalScore).reversed()
-                .thenComparing((RetrievalCandidate c) -> (Integer) c.chunk().getMetadata().getOrDefault("page", 0))
-                .thenComparing((RetrievalCandidate c) -> (Integer) c.chunk().getMetadata().getOrDefault("charStart", 0)));
+                .thenComparingInt((RetrievalCandidate c) -> getAsInt(c.chunk().getMetadata(), "page", 0))
+                .thenComparingInt((RetrievalCandidate c) -> getAsInt(c.chunk().getMetadata(), "charStart", 0))
+                .thenComparingInt((RetrievalCandidate c) -> getAsInt(c.chunk().getMetadata(), "chunkIndex", 0)));
 
 
         // 6. Split into Primary (>0.85) and Supporting (<0.85)
@@ -214,7 +261,7 @@ public class EvidenceStructuringService {
 
     private void appendCandidate(StringBuilder sb, RetrievalCandidate cand, int index) {
         String name = (String) cand.chunk().getMetadata().getOrDefault("sourceName", "unknown");
-        Integer page = (Integer) cand.chunk().getMetadata().getOrDefault("page", null);
+        Integer page = getAsInt(cand.chunk().getMetadata(), "page", null);
         String pageStr = page != null ? "Page " + page : "Unknown Page";
         double score = cand.finalScore();
         
@@ -223,5 +270,20 @@ public class EvidenceStructuringService {
         sb.append(String.format("%s\n", pageStr));
         sb.append(String.format("Score: %.2f\n\n", score));
         sb.append(cand.chunk().getText()).append("\n\n");
+    }
+
+    private Integer getAsInt(Map<String, Object> metadata, String key, Integer defaultValue) {
+        Object val = metadata.get(key);
+        if (val == null) return defaultValue;
+        if (val instanceof Integer) return (Integer) val;
+        if (val instanceof Number) return ((Number) val).intValue();
+        if (val instanceof String) {
+            try {
+                return Integer.parseInt((String) val);
+            } catch (NumberFormatException e) {
+                return defaultValue;
+            }
+        }
+        return defaultValue;
     }
 }

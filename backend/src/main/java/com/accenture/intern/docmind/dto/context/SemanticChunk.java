@@ -10,7 +10,6 @@ public record SemanticChunk(
         ChunkType type,
         String text,
         String sectionPath,
-        String page,
         int order,
         Map<String, Object> metadata
 ) {

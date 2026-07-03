@@ -64,20 +64,23 @@ public class WikipediaIngestionService {
                     .block();
 
             JsonNode root = objectMapper.readTree(json);
-            JsonNode pages = root.path("query").path("pages");
-            if (pages.elements().hasNext()) {
-                JsonNode pageNode = pages.elements().next();
-                JsonNode categoriesNode = pageNode.path("categories");
-                if (categoriesNode.isArray()) {
-                    List<String> cats = new ArrayList<>();
-                    for (JsonNode cat : categoriesNode) {
-                        String title = cat.path("title").asText();
-                        if (title.startsWith("Category:")) {
+            JsonNode queryNode = root.path("query");
+            if (!queryNode.isMissingNode()) {
+                JsonNode pages = queryNode.path("pages");
+                if (!pages.isMissingNode() && pages.elements().hasNext()) {
+                    JsonNode pageNode = pages.elements().next();
+                    JsonNode categoriesNode = pageNode.path("categories");
+                    if (categoriesNode.isArray()) {
+                        List<String> cats = new ArrayList<>();
+                        for (JsonNode cat : categoriesNode) {
+                            String title = cat.path("title").asText("");
+                            if (title.startsWith("Category:")) {
                             title = title.substring(9);
                         }
                         cats.add(title);
                     }
                     return cats;
+                }
                 }
             }
         } catch (Exception e) {
@@ -107,7 +110,7 @@ public class WikipediaIngestionService {
         List<SemanticChunk> chunks = new ArrayList<>();
         Document doc = Jsoup.parse(html);
         
-        Elements elements = doc.select("h1, h2, h3, h4, p, table.infobox, table.wikitable, figure, div.thumb");
+        Elements elements = doc.select("h1, h2, h3, h4, p, ul, ol, table.infobox, table.wikitable, figure, div.thumb");
         
         String currentH1 = pageTitle;
         String currentH2 = null;
@@ -117,6 +120,7 @@ public class WikipediaIngestionService {
         boolean hasSeenH2 = false;
         int chunkOrder = 1;
         int pCount = 1;
+        int listCount = 1;
         int imgCount = 1;
         int tableCount = 1;
         int infoCount = 1;
@@ -125,6 +129,11 @@ public class WikipediaIngestionService {
         baseMetadata.put("categories", categories);
 
         for (Element element : elements) {
+            // Skip elements that are nested inside our other block-level elements to avoid duplication
+            if (element.parents().stream().anyMatch(p -> p.is("table.infobox, table.wikitable, figure, div.thumb"))) {
+                continue;
+            }
+            
             String tagName = element.tagName().toLowerCase();
 
             if (tagName.equals("h1")) {
@@ -139,12 +148,23 @@ public class WikipediaIngestionService {
                 currentH4 = null;
             } else if (tagName.equals("h4")) {
                 currentH4 = element.text();
-            } else if (tagName.equals("p")) {
-                String text = element.text().trim();
-                if (text.isEmpty() || text.length() < 20) continue; // Skip empty or tiny paragraphs
+            } else if (tagName.equals("p") || tagName.equals("ul") || tagName.equals("ol")) {
+                String text;
+                if (tagName.equals("ul") || tagName.equals("ol")) {
+                    StringBuilder listText = new StringBuilder();
+                    for (Element li : element.select("li")) {
+                        listText.append("- ").append(li.text().trim()).append("\n");
+                    }
+                    text = listText.toString().trim();
+                } else {
+                    text = element.text().trim();
+                }
+                
+                if (text.isEmpty() || text.length() < 20) continue; // Skip empty or tiny paragraphs/lists
 
                 ChunkType type = hasSeenH2 ? ChunkType.PARAGRAPH : ChunkType.LEAD_SECTION;
-                String semanticId = pageTitle.replace(" ", "_") + (type == ChunkType.LEAD_SECTION ? ":summary_" : ":p") + pCount++;
+                String suffix = tagName.equals("p") ? (":p" + pCount++) : (":list" + listCount++);
+                String semanticId = pageTitle.replace(" ", "_") + (type == ChunkType.LEAD_SECTION ? ":summary_" : suffix);
                 
                 chunks.add(SemanticChunk.builder()
                         .semanticId(semanticId)
@@ -152,12 +172,11 @@ public class WikipediaIngestionService {
                         .type(type)
                         .text(text)
                         .sectionPath(buildSectionPath(currentH2, currentH3, currentH4))
-                        .page(pageTitle)
                         .order(chunkOrder++)
                         .metadata(new HashMap<>(baseMetadata))
                         .build());
 
-            } else if (tagName.equals("table") || tagName.equals("div")) { // div.thumb is also caught here, but select filters it
+            } else if (tagName.equals("table")) {
                 boolean isInfobox = element.hasClass("infobox");
                 boolean isWikitable = element.hasClass("wikitable");
                 
@@ -174,7 +193,6 @@ public class WikipediaIngestionService {
                             .type(type)
                             .text(tableData)
                             .sectionPath(buildSectionPath(currentH2, currentH3, currentH4))
-                            .page(pageTitle)
                             .order(chunkOrder++)
                             .metadata(new HashMap<>(baseMetadata))
                             .build());
@@ -207,7 +225,6 @@ public class WikipediaIngestionService {
                             .type(ChunkType.IMAGE)
                             .text("Image Caption: " + caption)
                             .sectionPath(buildSectionPath(currentH2, currentH3, currentH4))
-                            .page(pageTitle)
                             .order(chunkOrder++)
                             .metadata(imgMetadata)
                             .build());

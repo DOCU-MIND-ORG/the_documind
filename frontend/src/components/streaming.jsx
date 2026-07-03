@@ -1,6 +1,9 @@
 import React, { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import AccentureLoader from './AccentureLoader.jsx';
 
 export default function Streaming({ text, isStreaming, citations, onCitationClick }) {
@@ -41,10 +44,10 @@ export default function Streaming({ text, isStreaming, citations, onCitationClic
             <button
               type="button"
               onClick={(e) => { e.preventDefault(); onCitationClick(citation); }}
-              className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full bg-blue-100 text-blue-700 dark:bg-indigo-500/30 dark:text-indigo-200 dark:ring-1 dark:ring-indigo-400/50 text-[10px] font-bold mx-0.5 align-text-top translate-y-[-2px] hover:bg-blue-200 dark:hover:bg-indigo-500/50 transition-all shadow-sm"
+              className="inline-flex items-center justify-center text-blue-600 dark:text-indigo-400 text-[11px] font-medium mx-0.5 align-super hover:text-blue-800 dark:hover:text-indigo-300 transition-colors cursor-pointer"
               title={`Source: ${citation.sourceName}`}
             >
-              {citeIndex}
+              [{citeIndex}]
             </button>
           );
         }
@@ -56,7 +59,11 @@ export default function Streaming({ text, isStreaming, citations, onCitationClic
   return (
     <div className="streaming-markdown prose prose-sm dark:prose-invert max-w-none text-[14.5px] leading-relaxed break-words">
       {completedText && (
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        <ReactMarkdown 
+          remarkPlugins={[remarkGfm, remarkMath]} 
+          rehypePlugins={[rehypeKatex]}
+          components={components}
+        >
           {completedText}
         </ReactMarkdown>
       )}

@@ -242,7 +242,7 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
                     {/* ⋮ Three-dot menu */}
                     <button
                       onClick={(e) => toggleMenu(e, s.sessionId)}
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded-lg t-text-faint hover:t-text-main t-hover-bg transition-all shrink-0"
+                      className="p-1 rounded-lg t-text-faint hover:t-text-main t-hover-bg transition-all shrink-0"
                       title="More options"
                     >
                       <DotsIcon />
@@ -363,7 +363,14 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
             <CloseIcon />
           </button>
         </div>
-        <div className="px-2 mt-1 shrink-0 flex flex-col gap-1">
+        <div className="px-2 mt-2 shrink-0 flex flex-col gap-2">
+          <button
+            onClick={goNewChat}
+            className="flex items-center gap-3 w-full px-3 py-2.5 text-[13px] font-medium t-text-main rounded-xl t-hover-bg transition-all cursor-pointer"
+          >
+            <PlusIcon />
+            New chat
+          </button>
           <button
             onClick={goExplore}
             className={`flex items-center gap-3 w-full px-3 py-2.5 text-[13px] font-medium t-text-main rounded-xl transition-all cursor-pointer ${
@@ -372,13 +379,6 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
           >
             <GlobeIcon />
             Explore
-          </button>
-          <button
-            onClick={goNewChat}
-            className="flex items-center gap-3 w-full px-3 py-2.5 text-[13px] font-medium t-text-main rounded-xl t-hover-bg transition-all cursor-pointer"
-          >
-            <PlusIcon />
-            New chat
           </button>
           {deferredPrompt && (
             <button
@@ -421,7 +421,15 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
         </div>
 
         {/* Explore & New chat */}
-        <div className="px-2 mt-1 shrink-0 flex flex-col gap-1">
+        <div className="px-2 mt-2 shrink-0 flex flex-col gap-2">
+          <button
+            onClick={goNewChat}
+            title={!expanded ? 'New chat' : undefined}
+            className={`flex items-center gap-3 w-full px-2.5 py-[10px] text-[13px] font-medium t-text-main rounded-xl t-hover-bg transition-all active:scale-[0.97] cursor-pointer ${!expanded ? 'justify-center' : ''}`}
+          >
+            <PlusIcon />
+            {expanded && <span className="whitespace-nowrap">New chat</span>}
+          </button>
           <button
             onClick={goExplore}
             title={!expanded ? 'Explore' : undefined}
@@ -435,14 +443,6 @@ export default function AppSidebar({ expanded, setExpanded, mobileOpen, setMobil
           >
             <GlobeIcon />
             {expanded && <span className="whitespace-nowrap">Explore</span>}
-          </button>
-          <button
-            onClick={goNewChat}
-            title={!expanded ? 'New chat' : undefined}
-            className={`flex items-center gap-3 w-full px-2.5 py-[10px] text-[13px] font-medium t-text-main rounded-xl t-hover-bg transition-all active:scale-[0.97] cursor-pointer ${!expanded ? 'justify-center' : ''}`}
-          >
-            <PlusIcon />
-            {expanded && <span className="whitespace-nowrap">New chat</span>}
           </button>
           {deferredPrompt && (
             <button
