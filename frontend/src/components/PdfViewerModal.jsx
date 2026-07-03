@@ -103,7 +103,7 @@ export default function PdfViewerModal({ url, boundingBoxes, targetPage, onClose
         <div className="flex-1 overflow-auto bg-gray-950 p-6 flex justify-center custom-scrollbar">
           <div className="relative shadow-2xl bg-white text-gray-900" style={{ minHeight: '800px' }}>
             <Document
-              file={url}
+              file={typeof url === 'string' && url.startsWith('http') ? { url, httpHeaders: { 'ngrok-skip-browser-warning': 'true' } } : url}
               onLoadSuccess={onDocumentLoadSuccess}
               loading={<div className="flex items-center justify-center h-full text-white">Loading PDF...</div>}
               error={<div className="flex items-center justify-center h-full text-red-400">Failed to load PDF. Cross-Origin (CORS) might be blocking the request.</div>}
