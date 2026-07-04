@@ -28,12 +28,12 @@ export const chatService = {
           });
           if (!retryRes.ok) {
             window.dispatchEvent(new Event('auth-expired'));
-            throw new Error('UNAUTHORIZED');
+            throw new Error('Session expired. Please log in again.');
           }
           return retryRes.json();
         } else {
           window.dispatchEvent(new Event('auth-expired'));
-          throw new Error('UNAUTHORIZED');
+          throw new Error('Session expired. Please log in again.');
         }
       }
       throw new Error(`HTTP error! status: ${response.status}`);

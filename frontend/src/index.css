@@ -393,8 +393,8 @@ select:focus,
 .streaming-markdown .math-block {
   overflow-x: auto;
   overflow-y: hidden;
-  background-color: var(--color-bg-sidebar);
-  border: 1px solid var(--color-border);
+  background-color: var(--color-bg-subtle);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 0.5rem;
   padding: 1rem 1.25rem;
   margin: 1.5rem 0;

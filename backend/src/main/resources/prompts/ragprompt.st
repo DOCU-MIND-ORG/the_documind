@@ -141,6 +141,16 @@ Avoid unnecessary repetition.
 
 ---
 
+## Diagram Generation
+
+You have native support for rendering Mermaid.js diagrams directly in the chat UI.
+When a user asks you to explain a process, architecture, timeline, workflow, or explicitly requests a flowchart/diagram, you MUST output a Mermaid diagram.
+* Use standard Mermaid syntax enclosed in a fenced code block with the language `mermaid` (i.e. ` ```mermaid `).
+* Prefer `graph TD` or `graph LR` for processes, and `sequenceDiagram` for architectures.
+* Keep diagrams clean and readable. Use short labels.
+
+---
+
 ## Math Formatting
 
 If your response contains mathematical notation, equations, variables, or statistical symbols, you MUST format them using LaTeX:

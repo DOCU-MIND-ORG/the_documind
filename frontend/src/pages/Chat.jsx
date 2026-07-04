@@ -106,8 +106,10 @@ export default function Chat() {
   const [wikiUrl, setWikiUrl] = useState('');
   const [wikiSearchResults, setWikiSearchResults] = useState([]);
   const [isWikiSearching, setIsWikiSearching] = useState(false);
+  const [inputMessage, setInputMessage] = useState('');
   const [isInputOpen, setIsInputOpen] = useState(true);
   const bottomRef = useRef(null);
+  const virtuosoRef = useRef(null);
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
   const dragCounterRef = useRef(0);
@@ -246,10 +248,15 @@ export default function Chat() {
     sessionService.getMessages(state.sessionId)
       .then(res => { 
         if (!cancelled) {
+          const isArray = Array.isArray(res);
           dispatch({ 
             type: 'MESSAGES_LOADED', 
             sessionId: state.sessionId, 
-            payload: { messages: res.messages, hasMore: res.hasMore, nextCursor: res.nextCursor } 
+            payload: { 
+              messages: isArray ? res : res.messages, 
+              hasMore: isArray ? false : res.hasMore, 
+              nextCursor: isArray ? null : res.nextCursor 
+            } 
           }); 
         }
       })
@@ -647,12 +654,15 @@ export default function Chat() {
                             key={idx}
                             onClick={() => {
                               setShowQuestionsMenu(false);
-                              const el = document.getElementById(`message-${q.id}`);
-                              if (el) {
-                                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                el.style.transition = 'background-color 0.5s';
-                                el.style.backgroundColor = 'var(--color-bg-surface-hover)';
-                                setTimeout(() => el.style.backgroundColor = 'transparent', 1500);
+                              const filteredMessages = state.messages.filter(msg => !isUploadAnchorMessage(msg));
+                              const targetIndex = filteredMessages.findIndex(m => m.id === q.id);
+                              
+                              if (virtuosoRef.current && targetIndex !== -1) {
+                                virtuosoRef.current.scrollToIndex({
+                                  index: targetIndex,
+                                  align: 'center',
+                                  behavior: 'smooth'
+                                });
                               }
                             }}
                             className="flex flex-col w-full text-left px-3 py-2 hover:bg-[var(--color-bg-surface-hover)] transition-colors group"
@@ -748,7 +758,7 @@ export default function Chat() {
               Your AI-powered document assistant. Type a message below to get started.
             </p>
           </div>
-        ) : state.messagesLoading ? (
+        ) : (state.messagesLoading && state.messages.length === 0) ? (
           <div className="h-full flex items-center justify-center">
             <div className="flex flex-col items-center gap-3 text-secondary">
               <AccentureLoader />
@@ -757,6 +767,7 @@ export default function Chat() {
           </div>
         ) : (
           <Virtuoso
+            ref={virtuosoRef}
             className="w-full h-full custom-scrollbar"
             data={state.messages.filter(msg => !isUploadAnchorMessage(msg))}
             firstItemIndex={Math.max(0, 1000000 - state.messages.length)}

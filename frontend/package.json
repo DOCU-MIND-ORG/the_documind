@@ -12,6 +12,7 @@
   "dependencies": {
     "axios": "^1.17.0",
     "katex": "^0.17.0",
+    "mermaid": "^11.16.0",
     "nprogress": "^0.2.0",
     "react": "^19.2.6",
     "react-colorful": "^5.7.0",

@@ -51,6 +51,7 @@ export function chatReducer(state, action) {
         messages: [...action.payload.messages, ...state.messages],
         hasMoreMessages: action.payload.hasMore,
         nextCursor: action.payload.nextCursor,
+        messagesLoading: false,
       };
 
     case 'MESSAGES_LOAD_FAILED':

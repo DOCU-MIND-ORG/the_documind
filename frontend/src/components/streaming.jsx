@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
+import MermaidChart from './MermaidChart';
 import AccentureLoader from './AccentureLoader.jsx';
 
 /**
@@ -105,8 +106,19 @@ export default function Streaming({ text, isStreaming, citations, onCitationClic
         }
       }
       return <a {...props} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline" />;
+    },
+    code: ({ node, inline, className, children, ...props }) => {
+      const match = /language-(\w+)/.exec(className || '');
+      if (!inline && match && match[1] === 'mermaid') {
+        return <MermaidChart chart={String(children).replace(/\n$/, '')} isStreaming={isStreaming} />;
+      }
+      return (
+        <code className={className} {...props}>
+          {children}
+        </code>
+      );
     }
-  }), [citations, onCitationClick]);
+  }), [citations, onCitationClick, isStreaming]);
 
   return (
     <div className="streaming-markdown prose prose-sm dark:prose-invert max-w-none text-[14.5px] leading-relaxed break-words">

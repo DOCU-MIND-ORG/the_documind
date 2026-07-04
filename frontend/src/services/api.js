@@ -38,6 +38,10 @@ async function request(path, options = {}, isRetry = false) {
         window.dispatchEvent(new Event('auth-expired'));
       }
 
+      if (response.status === 401) {
+        throw new Error('Session expired. Please log in again.');
+      }
+
       throw new Error(data?.message || `Request failed: ${response.status}`);
     }
 
