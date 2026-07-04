@@ -1,5 +1,6 @@
 import React, { useEffect, useState, memo } from 'react';
 import mermaid from 'mermaid';
+import Modal from './Modal.jsx';
 
 // Initialize mermaid once
 mermaid.initialize({
@@ -13,6 +14,7 @@ mermaid.initialize({
 const MermaidChart = memo(({ chart, isStreaming }) => {
   const [error, setError] = useState(false);
   const [svgContent, setSvgContent] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -21,11 +23,18 @@ const MermaidChart = memo(({ chart, isStreaming }) => {
     const renderChart = async () => {
       try {
         setError(false);
-        const { svg } = await mermaid.render(id, chart);
-        if (isMounted) {
-          setSvgContent(svg);
+        const trimmedChart = chart.trim();
+        // Mermaid 11 check: validate syntax before rendering to catch errors 
+        // without getting the default error SVG bomb returned.
+        const isValid = await mermaid.parse(trimmedChart, { suppressErrors: false });
+        if (isValid !== false) {
+          const { svg } = await mermaid.render(id, trimmedChart);
+          if (isMounted) {
+            setSvgContent(svg);
+          }
         }
       } catch (err) {
+        console.error("Mermaid Parse Error:", err);
         if (isMounted) {
           setError(true);
         }
@@ -68,10 +77,30 @@ const MermaidChart = memo(({ chart, isStreaming }) => {
   }
 
   return (
-    <div 
-      className="mermaid-chart flex justify-center py-6 overflow-x-auto w-full my-4 bg-black/20 rounded-xl border border-white/5 shadow-inner"
-      dangerouslySetInnerHTML={{ __html: svgContent }}
-    />
+    <>
+      <div className="relative group my-4">
+        <div 
+          className="mermaid-chart flex justify-center py-6 overflow-x-auto w-full bg-black/20 rounded-xl border border-white/5 shadow-inner"
+          dangerouslySetInnerHTML={{ __html: svgContent }}
+        />
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="absolute top-2 right-2 p-2 bg-black/40 hover:bg-black/60 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer border border-white/10 backdrop-blur-sm"
+          title="Enlarge Diagram"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+          </svg>
+        </button>
+      </div>
+
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Diagram Viewer" size="xl">
+        <div 
+          className="mermaid-chart flex justify-center p-4 overflow-auto w-full bg-black/10 rounded-xl min-h-[50vh]"
+          dangerouslySetInnerHTML={{ __html: svgContent }}
+        />
+      </Modal>
+    </>
   );
 });
 

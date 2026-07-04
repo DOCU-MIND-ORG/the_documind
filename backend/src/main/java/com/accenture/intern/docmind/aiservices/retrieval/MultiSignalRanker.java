@@ -85,15 +85,16 @@ public class MultiSignalRanker {
 
         if (!rankedCandidates.isEmpty()) {
             double bestScore = rankedCandidates.get(0).finalScore();
-            double threshold = Math.max(bestScore * 0.8, 0.1);
+            // Lowered absolute minimum threshold from 0.1 to 0.005 to prevent aggressive filtering 
+            // of documents that might actually be relevant but received a low cross-encoder logit.
+            double threshold = Math.max(bestScore * 0.6, 0.005);
             
             // Filter out highly irrelevant candidates to avoid polluting the LLM context
             rankedCandidates = rankedCandidates.stream()
                     .filter(c -> {
                         String type = (String) c.chunk().getMetadata().get("type");
                         boolean isImage = "IMAGE".equals(type) || "PDF_IMAGE".equals(type);
-                        // Images have short captions, so they score lower semantically. Give them a lower threshold.
-                        return c.finalScore() >= threshold || (isImage && c.finalScore() >= 0.01);
+                        return c.finalScore() >= threshold || (isImage && c.finalScore() >= 0.001);
                     })
                     .collect(Collectors.toList());
         }
