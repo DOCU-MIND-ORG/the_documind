@@ -50,6 +50,8 @@ public class ContextBuilderService {
     private final com.accenture.intern.docmind.aiservices.understanding.plan.RetrievalController retrievalController;
     private final EvidenceStructuringService evidenceStructuringService;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+    private final com.accenture.intern.docmind.repository.ConversationTimelineRepository timelineRepository;
+    private final com.accenture.intern.docmind.aiservices.retrieval.MessagesPineconeVectorStore messagesVectorStore;
     private final String ragPrompt;
     private final String generalPrompt;
 
@@ -61,6 +63,8 @@ public class ContextBuilderService {
             com.accenture.intern.docmind.aiservices.understanding.plan.RetrievalController retrievalController,
             EvidenceStructuringService evidenceStructuringService,
             com.fasterxml.jackson.databind.ObjectMapper objectMapper,
+            com.accenture.intern.docmind.repository.ConversationTimelineRepository timelineRepository,
+            com.accenture.intern.docmind.aiservices.retrieval.MessagesPineconeVectorStore messagesVectorStore,
             @Value("classpath:prompts/ragprompt.st") Resource ragPromptResource,
             @Value("classpath:prompts/generalprompt.st") Resource generalPromptResource) throws IOException {
         this.hybridRetrievalService = hybridRetrievalService;
@@ -70,12 +74,14 @@ public class ContextBuilderService {
         this.retrievalController = retrievalController;
         this.evidenceStructuringService = evidenceStructuringService;
         this.objectMapper = objectMapper;
+        this.timelineRepository = timelineRepository;
+        this.messagesVectorStore = messagesVectorStore;
         this.ragPrompt = StreamUtils.copyToString(ragPromptResource.getInputStream(), StandardCharsets.UTF_8);
         this.generalPrompt = StreamUtils.copyToString(generalPromptResource.getInputStream(), StandardCharsets.UTF_8);
     }
 
     public Mono<ContextResult> buildContext(String question, Long sessionId, SessionContext sessionContext, boolean stillIndexing, reactor.core.publisher.Sinks.Many<org.springframework.http.codec.ServerSentEvent<String>> progressSink) {
-
+        log.info("BUILDER: Starting context assembly for session {}, query: '{}'", sessionId, question);
         boolean skipSemanticMemory = true; 
         return fetchHistoryBlock(sessionId, question, skipSemanticMemory).flatMap(historyBlock -> {
             return plannerService.routeQuery(question, historyBlock, sessionContext, progressSink).flatMap(execPlan -> {
@@ -114,6 +120,37 @@ public class ContextBuilderService {
                     String syntheticContext = "SESSION_INFO:\nActive session documents uploaded by the user:\n" + activeDocsStr;
                     return Mono.just(new ContextResult(ragPrompt, buildPrompt(question, syntheticContext, historyBlock, sessionContext), java.util.Collections.emptyList(), 1.0));
                 }
+                
+                // --- MEMORY INTENT ROUTER ---
+                if (decision != null && "TIMELINE_QUERY".equals(decision.purpose())) {
+                    List<com.accenture.intern.docmind.entity.ConversationTimeline> timelines = timelineRepository.findBySession_SessionIdOrderByStartTurnAsc(sessionId);
+                    String timelineContext = "CONVERSATION TIMELINE:\n" + timelines.stream()
+                        .map(t -> String.format("Turns %d-%d | Topic: %s | Summary: %s | Entities: %s", t.getStartTurn(), t.getEndTurn(), t.getTopic(), t.getSummary(), t.getEntities()))
+                        .collect(Collectors.joining("\n\n"));
+                    return Mono.just(new ContextResult(ragPrompt, buildPrompt(question, timelineContext, historyBlock, sessionContext), java.util.Collections.emptyList(), 1.0));
+                }
+                
+                if (decision != null && "EPISODIC_SUMMARY".equals(decision.purpose())) {
+                    log.info("BUILDER: Routing to Memory (EPISODIC_SUMMARY) for session {}", sessionId);
+                    // Fallback to TIMELINE for now, we can upgrade layer 4 later.
+                    List<com.accenture.intern.docmind.entity.ConversationTimeline> timelines = timelineRepository.findBySession_SessionIdOrderByStartTurnAsc(sessionId);
+                    String episodicContext = "EPISODIC MEMORY:\n" + timelines.stream()
+                        .map(t -> String.format("Topic: %s | Summary: %s", t.getTopic(), t.getSummary()))
+                        .collect(Collectors.joining("\n\n"));
+                    return Mono.just(new ContextResult(ragPrompt, buildPrompt(question, episodicContext, historyBlock, sessionContext), java.util.Collections.emptyList(), 1.0));
+                }
+                
+                if (decision != null && "SPECIFIC_TOPIC".equals(decision.purpose())) {
+                    org.springframework.ai.vectorstore.SearchRequest req = org.springframework.ai.vectorstore.SearchRequest.builder()
+                            .query(question).topK(5).filterExpression("sessionId == " + sessionId).build();
+                    List<org.springframework.ai.document.Document> docs = messagesVectorStore.similaritySearch(req);
+                    String specificContext = "SPECIFIC MEMORY (PAST MESSAGES):\n" + docs.stream()
+                        .map(org.springframework.ai.document.Document::getText)
+                        .collect(Collectors.joining("\n\n---\n\n"));
+                    return Mono.just(new ContextResult(ragPrompt, buildPrompt(question, specificContext, historyBlock, sessionContext), java.util.Collections.emptyList(), 1.0));
+                }
+                // --- END MEMORY INTENT ROUTER ---
+
 
                 if (!decompositionRequired && decision != null && (decision.scope() == Scope.SPECIFIC_DOC || stillIndexing)) {
                     List<String> targetDocs = decision.targetDocuments();
@@ -136,7 +173,7 @@ public class ContextBuilderService {
                                 .map(selectedDocs -> {
                                     com.accenture.intern.docmind.dto.chat.AggregatedEvidence agg = evidenceStructuringService.structure(selectedDocs, java.util.Collections.emptyList(), finalMergeOperation);
                                     return new ContextResult(
-                                        getSystemPrompt(selectedDocs.isEmpty(), "", historyBlock, sessionContext),
+                                        getSystemPrompt(selectedDocs.isEmpty(), execPlan.strategy(), finalMergeOperation, historyBlock, sessionContext),
                                         buildPrompt(question, agg.evidenceString(), historyBlock, sessionContext),
                                         selectedDocs, 1.0
                                     );
@@ -173,6 +210,7 @@ public class ContextBuilderService {
      */
     public Mono<ContextResult> buildContextAdaptive(String question, Long sessionId, SessionContext sessionContext) {
         AdaptiveExecutionPlan adaptivePlan = new AdaptiveExecutionPlan(
+                "ADAPTIVE",
                 "Adaptive retry retrieval for: " + question,
                 Collections.emptyList(),
                 1,
@@ -187,10 +225,10 @@ public class ContextBuilderService {
 
     private Mono<ContextResult> adaptiveLoop(AdaptiveExecutionPlan adaptivePlan, RetrievalPlan currentPlan, List<RetrievalCandidate> accumulatedCandidates, int iteration, Long sessionId, String originalQuestion, Mono<String> historyBlockMono, SessionContext sessionContext, reactor.core.publisher.Sinks.Many<org.springframework.http.codec.ServerSentEvent<String>> progressSink, RetrievalTrace trace) {
         if (iteration > adaptivePlan.maxIterations()) {
-            return buildFinalAdaptiveResult(originalQuestion, accumulatedCandidates, historyBlockMono, sessionContext, trace);
+            return buildFinalAdaptiveResult(adaptivePlan, originalQuestion, accumulatedCandidates, historyBlockMono, sessionContext, trace);
         }
         
-        StaticExecutionPlan singleStatic = new StaticExecutionPlan(List.of(currentPlan), MergeOperation.UNION, Collections.emptyList(), false);
+        StaticExecutionPlan singleStatic = new StaticExecutionPlan("ADAPTIVE_ITERATION", List.of(currentPlan), MergeOperation.UNION, Collections.emptyList(), false);
         return retrievalOrchestrator.orchestrate(originalQuestion, sessionId, singleStatic, progressSink)
             .flatMap(newResult -> {
                 if (progressSink != null) {
@@ -211,7 +249,7 @@ public class ContextBuilderService {
                     .flatMap(action -> {
                         trace.addStep(String.format("Action chosen: %s. Reason: %s", action.type().name(), action.reasoning()));
                         if (action.type() == com.accenture.intern.docmind.aiservices.understanding.plan.AdaptiveAction.AdaptiveActionType.STOP || action.nextPlan().isEmpty()) {
-                            return buildFinalAdaptiveResult(originalQuestion, accumulatedCandidates, historyBlockMono, sessionContext, trace);
+                            return buildFinalAdaptiveResult(adaptivePlan, originalQuestion, accumulatedCandidates, historyBlockMono, sessionContext, trace);
                         } else {
                             if (progressSink != null) {
                                 String targetStr = action.nextPlan().get().optimizedQuery();
@@ -228,7 +266,7 @@ public class ContextBuilderService {
             });
     }
 
-    private Mono<ContextResult> buildFinalAdaptiveResult(String question, List<RetrievalCandidate> candidates, Mono<String> historyBlockMono, SessionContext sessionContext, RetrievalTrace trace) {
+    private Mono<ContextResult> buildFinalAdaptiveResult(AdaptiveExecutionPlan adaptivePlan, String question, List<RetrievalCandidate> candidates, Mono<String> historyBlockMono, SessionContext sessionContext, RetrievalTrace trace) {
         return historyBlockMono.flatMap(historyBlock -> {
              trace.addStep(String.format("Adaptive Loop finished, returning %d chunks.", candidates.size()));
              double topScore = candidates.isEmpty() ? 0.0 : candidates.get(0).finalScore();
@@ -236,7 +274,7 @@ public class ContextBuilderService {
              com.accenture.intern.docmind.dto.chat.AggregatedEvidence agg = evidenceStructuringService.structure(candidates, Collections.emptyList(), MergeOperation.UNION);
              String augmentedPrompt = buildPrompt(question, agg.evidenceString(), historyBlock, sessionContext);
              return Mono.just(new ContextResult(
-                     getSystemPrompt(candidates.isEmpty(), "", historyBlock, sessionContext),
+                     getSystemPrompt(candidates.isEmpty(), adaptivePlan.strategy(), MergeOperation.UNION, historyBlock, sessionContext),
                      augmentedPrompt, candidates, candidates, Collections.emptyList(), Collections.emptyList(), agg.updatedVisuals(), trace, topScore));
         });
     }
@@ -253,13 +291,13 @@ public class ContextBuilderService {
 
                     double topScore = result.evidence().isEmpty() ? 0.0 : result.evidence().get(0).finalScore();
                     
-                    String primaryStrategy = "";
+                    String primaryStrategy = execPlan.strategy();
 
                     com.accenture.intern.docmind.dto.chat.AggregatedEvidence agg = evidenceStructuringService.structure(result.evidence(), result.visuals(), execPlan.getMergeOperation());
                     String augmentedPrompt = buildPrompt(question, agg.evidenceString(), historyBlock, sessionContext);
                     
                     return Mono.just(new ContextResult(
-                            getSystemPrompt(result.evidence().isEmpty(), primaryStrategy, historyBlock, sessionContext),
+                            getSystemPrompt(result.evidence().isEmpty(), primaryStrategy, execPlan.getMergeOperation(), historyBlock, sessionContext),
                             augmentedPrompt, result.evidence(), result.evidence(), Collections.emptyList(), Collections.emptyList(), agg.updatedVisuals(), trace, topScore));
                 });
     }
@@ -302,26 +340,38 @@ public class ContextBuilderService {
         return "Context Information:\n" + contextBlock + "\n\n" + sessionContextStr + "\nConversation History:\n" + historyBlock + "\n\nUser Question:\n" + question;
     }
 
-    private String getSystemPrompt(boolean isEmpty, String strategy, String historyBlock, SessionContext sessionContext) {
+    private String getSystemPrompt(boolean isEmpty, String strategy, MergeOperation mergeOp, String historyBlock, SessionContext sessionContext) {
         if (isEmpty && (historyBlock == null || historyBlock.isBlank())) return generalPrompt;
 
-        String directive;
+        List<String> directives = new ArrayList<>();
+        
+        // Base grounding directive
+        directives.add("Every statement must be grounded in the retrieved evidence. Do not invent facts or relationships.");
+
+        // Strategy-specific directives
         if ("CONCEPT_EXPANSION".equals(strategy)) {
-            directive = "Never say a concept is absent because the exact word is missing. " +
+            directives.add("Never say a concept is absent because the exact word is missing. " +
                     "Infer the concept from the underlying evidence present in the retrieved context. " +
-                    "Map thematic evidence to the abstract concept the user asked about and answer accordingly.";
+                    "Map thematic evidence to the abstract concept the user asked about and answer accordingly.");
         } else if ("META_DOC_SEARCH".equals(strategy)) {
-            directive = "Your task is to identify WHICH documents are relevant to the user's query and name them explicitly. " +
+            directives.add("Your task is to identify WHICH documents are relevant to the user's query and name them explicitly. " +
                     "CRITICAL RULE: Do NOT require the exact query word or phrase to appear verbatim in the document. " +
                     "Instead, identify the underlying theme or concept in the user's question, then evaluate each document's content " +
                     "to determine if it thematically relates to that concept — even if different vocabulary is used. " +
-                    "For example, if asked about 'leadership', a document about 'commanding troops' or 'guiding a team' qualifies. " +
-                    "If asked about 'innovation', a document describing 'a new invention' or 'a novel solution' qualifies. " +
-                    "Name every file whose content meaningfully relates to the queried theme and briefly explain why.";
-        } else {
-            directive = "Be literal. Extrapolate nothing. If the exact phrase or fact is missing, state that it is not present.";
+                    "Name every file whose content meaningfully relates to the queried theme and briefly explain why.");
         }
 
-        return ragPrompt.replace("<inferenceDirective>", directive);
+        // Merge-specific directives
+        if (mergeOp == MergeOperation.NONE) {
+            directives.add("If the evidence is insufficient, explain what is and is not supported.");
+        } else if (mergeOp == MergeOperation.UNION) {
+            directives.add("If different passages complement each other, integrate them into one coherent answer rather than treating each independently.");
+        } else if (mergeOp == MergeOperation.COMPARE) {
+            directives.add("Compare similarities and differences based on the user's request. " +
+                    "If multiple relevant entities are present but no explicit relationship exists, explain that they are discussed independently rather than inventing a relationship. " +
+                    "You may compare independent evidence, but do not invent causal or historical relationships.");
+        }
+
+        return ragPrompt.replace("<inferenceDirective>", String.join("\n\n", directives));
     }
 }

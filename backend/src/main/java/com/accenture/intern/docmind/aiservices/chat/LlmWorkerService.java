@@ -50,12 +50,13 @@ public class LlmWorkerService {
     private final ModelFactory modelFactory;
     private final MessagesPineconeVectorStore messagesVectorStore;
     private final MemoryGatingService memoryGatingService;
+    private final com.accenture.intern.docmind.aiservices.memory.TopicShiftDetectorService topicShiftDetectorService;
     private final com.accenture.intern.docmind.service.SessionCacheService sessionCacheService;
     private final RedisTemplate<String, Object> redisTemplate;
     
     private StreamOperations<String, Object, Object> streamOps;
     private static final String CONSUMER_GROUP = "llm-workers";
-    private final String consumerName = "worker-" + java.util.UUID.randomUUID().toString();
+    private final String consumerName = "llm-worker-1";
     private static final String STREAM_KEY = "chat_jobs";
     private volatile boolean running = true;
     private final java.util.concurrent.ExecutorService workerExecutor;
@@ -73,6 +74,7 @@ public class LlmWorkerService {
                             ModelFactory modelFactory,
                             MessagesPineconeVectorStore messagesVectorStore,
                             MemoryGatingService memoryGatingService,
+                            com.accenture.intern.docmind.aiservices.memory.TopicShiftDetectorService topicShiftDetectorService,
                             com.accenture.intern.docmind.service.SessionCacheService sessionCacheService,
                             com.accenture.intern.docmind.aiservices.context.SuggestedQuestionsService suggestedQuestionsService,
                             RedisTemplate<String, Object> redisTemplate,
@@ -88,6 +90,7 @@ public class LlmWorkerService {
         this.modelFactory = modelFactory;
         this.messagesVectorStore = messagesVectorStore;
         this.memoryGatingService = memoryGatingService;
+        this.topicShiftDetectorService = topicShiftDetectorService;
         this.sessionCacheService = sessionCacheService;
         this.suggestedQuestionsService = suggestedQuestionsService;
         this.redisTemplate = redisTemplate;
@@ -100,7 +103,7 @@ public class LlmWorkerService {
     public void init() {
         streamOps = redisTemplate.opsForStream();
         try {
-            streamOps.createGroup(STREAM_KEY, CONSUMER_GROUP);
+            streamOps.createGroup(STREAM_KEY, ReadOffset.from("0"), CONSUMER_GROUP);
         } catch (Exception e) {
             log.info("Consumer group likely exists already");
         }
@@ -113,6 +116,7 @@ public class LlmWorkerService {
     }
 
     public void runWorker() {
+        log.info("LlmWorkerService started polling for jobs...");
         while (running) {
             try {
                 List<MapRecord<String, Object, Object>> records = streamOps.read(
@@ -121,19 +125,42 @@ public class LlmWorkerService {
                         StreamOffset.create(STREAM_KEY, ReadOffset.lastConsumed())
                 );
 
-                if (records == null || records.isEmpty()) continue;
-
-                for (MapRecord<String, Object, Object> record : records) {
-                    processJob(record);
+                if (records != null && !records.isEmpty()) {
+                    for (MapRecord<String, Object, Object> record : records) {
+                        processJob(record);
+                    }
+                } else {
+                    // Try PEL (Pending Entries List) if no new messages
+                    records = streamOps.read(
+                            Consumer.from(CONSUMER_GROUP, consumerName),
+                            StreamReadOptions.empty().count(10),
+                            StreamOffset.create(STREAM_KEY, ReadOffset.from("0"))
+                    );
+                    if (records != null && !records.isEmpty()) {
+                        for (MapRecord<String, Object, Object> record : records) {
+                            log.info("Recovered job from PEL: {}", record.getId());
+                            processJob(record);
+                        }
+                    }
                 }
             } catch (Exception e) {
                 if (e.getMessage() != null && e.getMessage().contains("NOGROUP")) {
                     try {
-                        streamOps.createGroup(STREAM_KEY, CONSUMER_GROUP);
+                        streamOps.createGroup(STREAM_KEY, ReadOffset.from("0"), CONSUMER_GROUP);
                     } catch (Exception ignored) {
+                    }
+                    try {
+                        Thread.sleep(1000); // Backoff slightly to avoid tight loop
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
                     }
                 } else {
                     log.error("Error polling jobs from Redis stream", e);
+                    try {
+                        Thread.sleep(5000); // Backoff on error
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    }
                 }
             }
         }
@@ -142,6 +169,8 @@ public class LlmWorkerService {
     private void processJob(MapRecord<String, Object, Object> record) {
         Map<Object, Object> value = record.getValue();
         Long messageId = Long.parseLong((String) value.get("messageId"));
+        log.info("LlmWorkerService picked up job for messageId: {}", messageId);
+        
         Long sessionId = Long.parseLong((String) value.get("sessionId"));
         String query = (String) value.get("query");
         String model = (String) value.get("model");
@@ -177,6 +206,9 @@ public class LlmWorkerService {
     private void executeLlmGeneration(Long messageId, Long sessionId, String query, String model) {
         Session session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new RuntimeException("Session not found"));
+        
+        // Topic Shift Detection (Memory Architecture Layer 3/4)
+        boolean topicShifted = topicShiftDetectorService.detectTopicShift(sessionId, query);
         
         SessionUploadState state = sessionCacheService.getState(sessionId);
         
@@ -262,6 +294,9 @@ public class LlmWorkerService {
             metadata.put("conversationPairId", messageId);
             metadata.put("timestamp", System.currentTimeMillis());
             messagesVectorStore.add(List.of(new org.springframework.ai.document.Document(pairContent, metadata)));
+            
+            // Add to current episode for topic shift detection
+            topicShiftDetectorService.appendAssistantResponse(sessionId, fullResponse);
         }
     }
 

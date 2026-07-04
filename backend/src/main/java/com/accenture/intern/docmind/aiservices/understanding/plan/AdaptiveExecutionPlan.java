@@ -6,6 +6,7 @@ import com.accenture.intern.docmind.aiservices.understanding.EntityResolution;
 import java.util.List;
 
 public record AdaptiveExecutionPlan(
+    String strategy,
     String goal,
     List<String> expectedEntities,
     int expectedSources,

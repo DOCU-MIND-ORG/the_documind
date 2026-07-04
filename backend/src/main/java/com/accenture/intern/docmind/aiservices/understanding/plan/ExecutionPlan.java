@@ -16,6 +16,11 @@ public sealed interface ExecutionPlan permits
     String executionTier();
 
     /**
+     * @return The routing strategy classified for this query.
+     */
+    String strategy();
+
+    /**
      * @return The list of retrieval plans to execute.
      */
     List<RetrievalPlan> getPlans();

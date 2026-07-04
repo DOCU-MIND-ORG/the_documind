@@ -25,8 +25,23 @@ public class ProxyController {
             return Mono.just(ResponseEntity.badRequest().build());
         }
 
+        java.net.URI uri;
+        try {
+            // If the URL is already properly encoded (e.g. contains %20), this will succeed.
+            uri = new java.net.URI(url);
+        } catch (Exception e) {
+            try {
+                // If it contains raw spaces or unencoded chars, this will encode them.
+                java.net.URL parsedUrl = new java.net.URL(url);
+                uri = new java.net.URI(parsedUrl.getProtocol(), parsedUrl.getUserInfo(), parsedUrl.getHost(), parsedUrl.getPort(), parsedUrl.getPath(), parsedUrl.getQuery(), parsedUrl.getRef());
+            } catch (Exception ex) {
+                System.err.println("Failed to parse URL for proxy: " + url);
+                return Mono.just(ResponseEntity.badRequest().build());
+            }
+        }
+
         return webClient.get()
-                .uri(url)
+                .uri(uri)
                 .retrieve()
                 .bodyToMono(byte[].class)
                 .map(bytes -> {
@@ -43,6 +58,10 @@ public class ProxyController {
                             .contentType(mediaType)
                             .body(bytes);
                 })
-                .onErrorResume(e -> Mono.just(ResponseEntity.internalServerError().build()));
+                .onErrorResume(e -> {
+                    System.err.println("PROXY ERROR for URL " + url + ": " + e.getMessage());
+                    e.printStackTrace();
+                    return Mono.just(ResponseEntity.internalServerError().build());
+                });
     }
 }

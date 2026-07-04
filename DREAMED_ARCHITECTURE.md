@@ -26,10 +26,34 @@ flowchart TD
     User -->|1. submitMessage| ChatAPI
     ChatAPI -->|2. Push Job| RedisJobs
     RedisJobs -->|3. Poll & Lock| LlmWorker
-    LlmWorker -->|4. buildContext| ContextBuilder
-    ContextBuilder -->|5. routeQuery| Planner
+    
+    LlmWorker -->|4. detectTopicShift| TopicShift["TopicShiftDetectorService"]:::worker
+    TopicShift -- "Shift Detected (Async)" --> MemoryJobs{{"Redis Stream:<br/>'memory_jobs'"}}:::db
+    MemoryJobs --> MemoryWorker["MemoryWorkerService"]:::worker
+    MemoryWorker --> PostgresTimeline[("Postgres<br/>ConversationTimeline")]:::db
+    MemoryWorker --> PineconeEpisode[("Pinecone<br/>Episodic Memory")]:::db
+    
+    TopicShift -->|5. buildContext| ContextBuilder
+    ContextBuilder -->|6. routeQuery| Planner
 
-    %% Phase 1: Fast Intent Routing
+    %% Phase 1: Ingestion Pipeline (Asynchronous)
+    subgraph Ingestion Pipeline
+        Upload["File/Link Upload<br/>(AttachmentService)"]:::api
+        Upload -->|"Store File"| Cloudinary[("Cloudinary<br/>(Remote Storage)")]:::db
+        Upload -->|"Push Job"| IngestJobs{{"Redis Stream:<br/>'ingestion_jobs'"}}:::db
+        IngestJobs --> IngestWorker["IngestionWorkerService"]:::worker
+        IngestWorker --> Parser{"DocumentParserService<br/>(PDF/Text/Image)"}:::worker
+        IngestWorker --> WikiParser{"WikipediaIngestionService"}:::worker
+        Parser --> Embedder["EmbeddingService"]:::worker
+        WikiParser --> Embedder
+        Parser -- "Extract Images" --> VisionService["ImageVisionService<br/>(Gemini Vision)"]:::worker
+        VisionService -- "Semantic Image<br/>(Summary, OCR, Keywords)" --> Embedder
+        Embedder -->|"Hash Check & Chunking"| Chunking["Chunking (1000 char,<br/>200 overlap)"]:::process
+        Chunking --> PineconeStore[("Pinecone<br/>(Dense Embeddings)")]:::db
+        Chunking --> PostgresStore[("Postgres DB<br/>(document_chunks)")]:::db
+    end
+
+    %% Phase 2: Fast Intent Routing
     FastIntent{"FastIntentService<br/>(Regex/Rule Check)"}:::router
     Planner --> FastIntent
     
@@ -47,6 +71,7 @@ flowchart TD
         Strat_SINGLE["Strategy: SINGLE_SOURCE"]:::process
         Strat_META["Strategy: META_DOC_SEARCH"]:::process
         Strat_CONCEPT["Strategy: CONCEPT_EXPANSION"]:::process
+        Strat_MEMORY["Strategy: TIMELINE_QUERY /<br/>EPISODIC_SUMMARY /<br/>SPECIFIC_TOPIC"]:::process
         
         Tier_DIRECT["Tier: DIRECT<br/>(1 Plan)"]:::process
         Tier_DECOMPOSE["Tier: DECOMPOSE<br/>(Multiple Plans)"]:::process
@@ -54,11 +79,13 @@ flowchart TD
         
         Mode_RANKED["Mode: RANKED_RETRIEVAL"]:::process
         Mode_WHOLE["Mode: WHOLE_DOCUMENT"]:::process
+        
+        Visual_FLAG["Visual Search:<br/>true / false"]:::process
     end
     
-    LLMRouter -.-> Strat_SINGLE & Strat_META & Strat_CONCEPT
+    LLMRouter -.-> Strat_SINGLE & Strat_META & Strat_CONCEPT & Strat_MEMORY
     LLMRouter -.-> Tier_DIRECT & Tier_DECOMPOSE & Tier_ADAPTIVE
-    LLMRouter -.-> Mode_RANKED & Mode_WHOLE
+    LLMRouter -.-> Mode_RANKED & Mode_WHOLE & Visual_FLAG
     
     LLMRouter -->|"Outputs ExecutionPlan"| ExecPlanSwitch{"Execution Plan Type"}:::router
 
@@ -69,13 +96,19 @@ flowchart TD
     ExecPlanSwitch -- "AdaptiveExecutionPlan" --> AdaptiveLoop{"Adaptive Loop<br/>iteration <= max?"}:::router
     AdaptiveLoop -- "Yes" --> Orchestrator
     
-    %% Phase 4: Hybrid Retrieval Orchestration
+    %% Phase 4: Parallel Orchestration (Text + Visual)
+    Orchestrator --> VisualCheck{"Is Visual Search?"}:::router
+    VisualCheck -- "Yes" --> VisualHybrid["HybridRetrieval<br/>(imageOnly=true)"]:::worker
+    VisualHybrid --> VisualRerank["Rerank & Score Images"]:::worker
+    VisualRerank --> VisualEvid["Extract VisualEvidence"]:::process
+    
     Orchestrator --> ModeSwitch{"Retrieval Mode"}:::router
     
+    %% 4a. Text Retrieval Branch
     ModeSwitch -- "WHOLE_DOCUMENT<br/>& target docs exist" --> WholeDocRet["Fetch all chunks of document<br/>(Cap at 60 chunks)"]:::process
     WholeDocRet --> RankAssembly
     
-    ModeSwitch -- "RANKED_RETRIEVAL" --> HybridRet["HybridRetrievalService"]:::worker
+    ModeSwitch -- "RANKED_RETRIEVAL" --> HybridRet["HybridRetrievalService<br/>(Text Chunks)"]:::worker
     
     HybridRet --> ParallelSearch{"Parallel Search"}:::router
     ParallelSearch --> Pinecone[("Pinecone Vector DB<br/>Dense Search")]:::db
@@ -103,10 +136,12 @@ flowchart TD
     AdaptiveCheck -- "No" --> MergeSwitch{"Merge Operation"}:::router
     AdaptiveLoop -- "Max Iterations Reached<br/>or STOP action" --> MergeSwitch
     
-    %% Phase 6: Prompt Assembly
+    %% Phase 6: Prompt Assembly (Combining Text & Visuals)
     MergeSwitch -- "UNION<br/>(Combine all evidence)" --> PromptBuilder["ContextBuilderService<br/>Assemble Context Block"]:::worker
     MergeSwitch -- "COMPARE<br/>(Group evidence by source/entity)" --> PromptBuilder
     MergeSwitch -- "NONE" --> PromptBuilder
+    
+    VisualEvid -->|"Injects Images"| PromptBuilder
     
     PromptBuilder --> FinalPrompt["Inject System Directives<br/>History & Session State"]:::process
     
@@ -126,16 +161,25 @@ flowchart TD
 
 ## Advanced Pipeline Breakdown
 
-### 1. Ingestion & Fast Routing
+### 1. Asynchronous Ingestion Pipeline
+- Files (PDF, Image, Text) or Wikipedia links are uploaded via `AttachmentService`, which immediately returns success to the UI and pushes a job to the `ingestion_jobs` Redis Stream.
+- A background `IngestionWorkerService` picks up the job and delegates to the appropriate parser (`DocumentParserService` or `WikipediaIngestionService`).
+- For PDFs, embedded images are extracted and sent to `ImageVisionService` (Gemini Vision) to generate semantic descriptions.
+- `EmbeddingService` computes a whole-document SHA-256 hash for deduplication. New documents are chunked (1000 chars, 200 overlap) and dual-written to **Pinecone** (dense embeddings) and **Postgres** (BM25 keyword index).
+
+### 2. Fast Routing
 - The user query is picked up asynchronously from a Redis Stream. 
 - The **FastIntentService** acts as a cheap regex-based guardrail. If the user just says "Hi" or asks "What can you do?", it bypasses the LLM router and vector search entirely to save compute, immediately emitting a `DirectExecutionPlan`.
 
-### 2. Unified LLM Routing (Gemini 3.1 Flash Lite)
+### 3. Unified LLM Routing (Gemini 3.1 Flash Lite)
 For complex queries, a small, fast LLM acts as the router to output a structured JSON plan:
 - **Strategy Classifications:**
   - `SINGLE_SOURCE`: Standard factual lookup.
   - `META_DOC_SEARCH`: Searching *about* documents (e.g., "Which files discuss X?").
   - `CONCEPT_EXPANSION`: Expanding abstract concepts (e.g., "resilience") into multiple concrete keyword searches.
+  - `TIMELINE_QUERY`: Chronological questions about conversation history (e.g., "What did we discuss today?").
+  - `EPISODIC_SUMMARY`: Broad summary of past conversations on a topic (e.g., "Remind me about our past discussion on X.").
+  - `SPECIFIC_TOPIC`: Specific factual lookup from past conversations (e.g., "What did you say the distance to the moon was?").
 - **Execution Tiers:**
   - `DIRECT`: Resolves in one pass.
   - `DECOMPOSE`: Multiple queries run in parallel (e.g., comparing two distinct entities).
@@ -166,5 +210,7 @@ Based on the `MergeOperation` defined by the router (`UNION` or `COMPARE`), the 
 - Up to 10 previous conversation turns.
 - System instructions tailored to the chosen retrieval strategy (e.g., instructing the LLM to deduce implicit themes for `CONCEPT_EXPANSION`).
 
-### 7. Streaming & Memory Injection
-Tokens are streamed real-time back to the user over Redis Pub/Sub -> SSE. Finally, the interaction is passed to the `MemoryGatingService`. If the generated answer is substantive (and retrieved context was highly relevant), the `User-Assistant` conversational pair is stored into a dedicated Pinecone index for long-term user profile memory.
+### 7. Streaming & Dual-Layer Memory Architecture
+Tokens are streamed real-time back to the user over Redis Pub/Sub -> SSE. The platform employs a dual-layer memory architecture:
+- **Episodic Memory (Topic Shift):** At the start of a query, the `TopicShiftDetectorService` evaluates if the user's query shifts away from the current conversation topic. If a shift is detected, it asynchronously pushes the closed episode to a `memory_jobs` Redis stream. A background `MemoryWorkerService` extracts a high-level summary, key entities, and importance scores, saving this structured episodic memory into Postgres (`ConversationTimeline`) and Pinecone (as an `EPISODE_SUMMARY` vector).
+- **Conversational Memory (Gating):** After generation, the interaction is passed to the `MemoryGatingService`. If the generated answer is substantive and not just conversational filler (e.g., "Hi", "Thanks"), the raw `User-Assistant` pair is embedded and stored into a Pinecone index for long-term user profile memory.

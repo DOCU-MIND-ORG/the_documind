@@ -6,6 +6,7 @@ import com.accenture.intern.docmind.aiservices.understanding.EntityResolution;
 import java.util.List;
 
 public record DirectExecutionPlan(
+    String strategy,
     RetrievalPlan retrievalPlan,
     List<EntityResolution> entities,
     boolean visualSearch

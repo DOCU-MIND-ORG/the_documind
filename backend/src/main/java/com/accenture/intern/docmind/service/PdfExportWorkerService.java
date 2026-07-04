@@ -91,7 +91,7 @@ public class PdfExportWorkerService {
     public void init() {
         streamOps = redisTemplate.opsForStream();
         try {
-            streamOps.createGroup(STREAM_KEY, CONSUMER_GROUP);
+            streamOps.createGroup(STREAM_KEY, ReadOffset.from("0"), CONSUMER_GROUP);
         } catch (Exception e) {
             log.info("PDF export consumer group likely exists already");
         }
@@ -120,8 +120,13 @@ public class PdfExportWorkerService {
             } catch (Exception e) {
                 if (e.getMessage() != null && e.getMessage().contains("NOGROUP")) {
                     try {
-                        streamOps.createGroup(STREAM_KEY, CONSUMER_GROUP);
+                        streamOps.createGroup(STREAM_KEY, ReadOffset.from("0"), CONSUMER_GROUP);
                     } catch (Exception ignored) {
+                    }
+                    try {
+                        Thread.sleep(1000); // Backoff slightly to avoid tight loop
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
                     }
                 } else {
                     log.error("Error polling jobs from Redis stream {}", STREAM_KEY, e);

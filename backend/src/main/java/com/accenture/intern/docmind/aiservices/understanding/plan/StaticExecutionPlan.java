@@ -6,6 +6,7 @@ import com.accenture.intern.docmind.aiservices.understanding.EntityResolution;
 import java.util.List;
 
 public record StaticExecutionPlan(
+    String strategy,
     List<RetrievalPlan> plans,
     MergeOperation mergeOperation,
     List<EntityResolution> entities,

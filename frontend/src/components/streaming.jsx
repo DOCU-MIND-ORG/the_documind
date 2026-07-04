@@ -22,9 +22,6 @@ export default function Streaming({ text, isStreaming, citations, onCitationClic
         // This regex finds ** followed by spaces, captures the text, and removes the extra spaces.
         replaced = replaced.replace(/\*\*\s+([^*]+?)\s*\*\*/g, '**$1**');
         
-        // Escape dollar signs used for currency (e.g., "$1.5") to prevent KaTeX from rendering them as inline math.
-        replaced = replaced.replace(/\$(\d)/g, '\\$$1');
-        
         return replaced;
       }
       return part;
@@ -59,6 +56,9 @@ export default function Streaming({ text, isStreaming, citations, onCitationClic
               [{citeIndex}]
             </button>
           );
+        } else {
+          // The LLM hallucinated a citation ID that doesn't exist
+          return <span className="text-gray-500 dark:text-gray-400 text-[11px] font-medium mx-0.5 align-super">[{citeIndex}]</span>;
         }
       }
       return <a {...props} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline" />;

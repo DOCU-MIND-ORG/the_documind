@@ -11,4 +11,5 @@ import java.util.List;
 public interface ConversationTimelineRepository extends JpaRepository<ConversationTimeline, Long> {
     List<ConversationTimeline> findBySessionOrderByStartTurnAsc(Session session);
     List<ConversationTimeline> findBySessionOrderByCreatedAtAsc(Session session);
+    List<ConversationTimeline> findBySession_SessionIdOrderByStartTurnAsc(Long sessionId);
 }

@@ -384,16 +384,24 @@ select:focus,
   margin-bottom: 0.25rem;
 }
 
-/* Fix KaTeX/math overflow on mobile */
+/* KaTeX Math Styling */
 .katex {
   max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
   display: inline-block;
 }
-.katex-display {
+
+.streaming-markdown .katex-display {
   overflow-x: auto;
   overflow-y: hidden;
+  background-color: var(--color-bg-sidebar);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  padding: 1rem 1.25rem;
+  margin: 1.5rem 0;
+  box-shadow: var(--shadow-sm);
+  display: block;
 }
 
 /* Markdown Table Styling */

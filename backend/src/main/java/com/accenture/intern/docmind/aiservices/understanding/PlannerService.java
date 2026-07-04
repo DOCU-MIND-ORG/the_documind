@@ -49,6 +49,7 @@ public class PlannerService {
             log.info("ROUTER: Fast-pass triggered: {}", fastIntent);
             return Mono
                     .just(new DirectExecutionPlan(
+                            "FAST_PASS",
                             new RetrievalPlan(fastIntent.name(), cleanQuery, Collections.emptyList(),
                                     RetrievalExecutionMode.WHOLE_DOCUMENT, Scope.NONE),
                             Collections.emptyList(), false));
@@ -69,7 +70,7 @@ public class PlannerService {
                             initialPlan = buildRetrievalPlan(response.plans().get(0), response, cleanQuery,
                                     sessionContext);
                         }
-                        return Mono.just(new AdaptiveExecutionPlan("Adaptive retrieval for: " + query, expectedEntities,
+                        return Mono.just(new AdaptiveExecutionPlan(response.strategy(), "Adaptive retrieval for: " + query, expectedEntities,
                                 1, 2, initialPlan, response.entities(), Boolean.TRUE.equals(response.visualSearch())));
                     }
 
@@ -86,6 +87,7 @@ public class PlannerService {
                     }
 
                     if ("DECOMPOSE".equals(tier) || retrievalPlans.size() > 1) {
+                        log.info("ROUTER: DECOMPOSE execution triggered for query: {}. Generated {} sub-plans.", query, retrievalPlans.size());
                         MergeOperation mergeOp = MergeOperation.NONE;
                         if (response.mergeOperation() != null) {
                             try {
@@ -94,11 +96,12 @@ public class PlannerService {
                                 mergeOp = MergeOperation.NONE;
                             }
                         }
-                        return Mono.just(new StaticExecutionPlan(retrievalPlans, mergeOp, response.entities(),
+                        return Mono.just(new StaticExecutionPlan(response.strategy(), retrievalPlans, mergeOp, response.entities(),
                                 Boolean.TRUE.equals(response.visualSearch())));
                     }
 
-                    return Mono.just(new DirectExecutionPlan(retrievalPlans.get(0), response.entities(),
+                    log.info("ROUTER: DIRECT execution triggered for query: {}", query);
+                    return Mono.just(new DirectExecutionPlan(response.strategy(), retrievalPlans.get(0), response.entities(),
                             Boolean.TRUE.equals(response.visualSearch())));
                 });
     }
@@ -217,8 +220,23 @@ public class PlannerService {
                    → Set "execution_tier": "DIRECT" and generate exactly 1 plan.
 
                 3. SINGLE_SOURCE
-                   Default. Standard factual lookup targeting a specific topic.
+                   Default. Standard factual lookup targeting a specific topic within the ACTIVE DOCUMENTS.
                    → Depending on the complexity, this might be "DIRECT" (1 plan) or "DECOMPOSE" (multiple plans).
+
+                4. TIMELINE_QUERY
+                   Triggered when the user asks chronological questions about the conversation history itself.
+                   (e.g. "What did we discuss today?", "What topics did we cover?", "Did we talk about X earlier?")
+                   → Set "execution_tier": "DIRECT" and generate exactly 1 plan with "purpose": "TIMELINE_QUERY".
+
+                5. EPISODIC_SUMMARY
+                   Triggered when the user asks for a broad summary of past conversations on a specific topic.
+                   (e.g. "Remind me about our past discussion on SpaceX.", "What were the key takeaways from our chat about black holes?")
+                   → Set "execution_tier": "DIRECT" and generate exactly 1 plan with "purpose": "EPISODIC_SUMMARY".
+
+                6. SPECIFIC_TOPIC
+                   Triggered when the user asks a very specific factual lookup from PAST CONVERSATIONS (not uploaded documents).
+                   (e.g. "What did you say the distance to the moon was?", "What was that python library you mentioned?")
+                   → Set "execution_tier": "DIRECT" and generate exactly 1 plan with "purpose": "SPECIFIC_TOPIC".
 
                 ═══════════════════════════════════════════════════════════════════
                 PART B — COMPLEX QUERY DECOMPOSITION & EXECUTION TIER
@@ -261,7 +279,7 @@ public class PlannerService {
                 ═══════════════════════════════════════════════════════════════════
                 PART F — VISUAL SEARCH
                 ═══════════════════════════════════════════════════════════════════        
-                Set "visual_search": true if the user explicitly asks for an image, OR if the query involves:
+                Set "visual_search": true if the user explicitly asks for an image, picture, visual, diagram, or photo (e.g. "show me images", "are there pictures"), OR if the query involves:
                 - Architectures, system designs, or workflows
                 - Geographical or spatial relationships
                 - Data trends, comparisons, or financial metrics
@@ -284,7 +302,7 @@ public class PlannerService {
                      {
                         "purpose": "What this plan searches for",
                         "optimized_query": "keyword-dense query",
-                        "target_documents": ["resolved exact filenames"]
+                        "target_documents": ["resolved exact filenames"]                                                                                                                                        
                      }
                   ]
                 }

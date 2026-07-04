@@ -56,6 +56,8 @@ public class RetrievalOrchestrator {
         List<Mono<RetrievalResult>> retrieves = new ArrayList<>();
         
         for (RetrievalPlan plan : execPlan.getPlans()) {
+            log.info("ORCHESTRATOR: Executing Plan: Purpose='{}', Mode={}, Scope={}, Query='{}'", 
+                     plan.purpose(), plan.executionMode(), plan.scope(), plan.optimizedQuery());
             Mono<List<RetrievalCandidate>> planRetrievalMono = orchestratePlan(question, sessionId, plan, execPlan.getEntities(), progressSink);
 
             Mono<List<VisualEvidence>> visualMono = Mono.just(List.of());
@@ -129,6 +131,10 @@ public class RetrievalOrchestrator {
             } else if (execPlan.getMergeOperation() == MergeOperation.COMPARE) {
                 // Keep everything to compare across sources
             }
+            
+            
+            log.info("ORCHESTRATOR: Finished orchestrating all plans. Combined {} chunks and {} visuals (MergeOp: {})", 
+                     combined.size(), combinedVisuals.size(), execPlan.getMergeOperation());
             
             return new RetrievalResult(combined, combinedVisuals, reqScope, actScope, anyExpanded, reason);
         });

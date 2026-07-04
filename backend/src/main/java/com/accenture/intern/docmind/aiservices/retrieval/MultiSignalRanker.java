@@ -89,7 +89,12 @@ public class MultiSignalRanker {
             
             // Filter out highly irrelevant candidates to avoid polluting the LLM context
             rankedCandidates = rankedCandidates.stream()
-                    .filter(c -> c.finalScore() >= threshold)
+                    .filter(c -> {
+                        String type = (String) c.chunk().getMetadata().get("type");
+                        boolean isImage = "IMAGE".equals(type) || "PDF_IMAGE".equals(type);
+                        // Images have short captions, so they score lower semantically. Give them a lower threshold.
+                        return c.finalScore() >= threshold || (isImage && c.finalScore() >= 0.01);
+                    })
                     .collect(Collectors.toList());
         }
 
