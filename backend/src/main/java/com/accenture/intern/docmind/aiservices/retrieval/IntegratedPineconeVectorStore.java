@@ -62,7 +62,15 @@ public class IntegratedPineconeVectorStore implements VectorStore {
                 }
                 
                 record.put("_id", id);
-                record.put("text", doc.getText());
+                
+                String text = doc.getText();
+                if (text != null && text.length() > 32000) {
+                    // Pinecone has a 40KB metadata limit per vector.
+                    // The embedding model will truncate long text anyway,
+                    // so we truncate here to prevent ingestion crashes on massive chunks (like huge Wikipedia tables).
+                    text = text.substring(0, 32000);
+                }
+                record.put("text", text);
                 
                 for (Map.Entry<String, Object> entry : doc.getMetadata().entrySet()) {
                     record.put(entry.getKey(), entry.getValue());

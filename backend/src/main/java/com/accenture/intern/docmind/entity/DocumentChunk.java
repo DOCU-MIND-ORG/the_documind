@@ -48,7 +48,7 @@ public class DocumentChunk {
     @Column(name = "content", nullable = false, columnDefinition = "text")
     private String content;
 
-    @Column(name = "source_name")
+    @Column(name = "source_name", columnDefinition = "text")
     private String sourceName;
 
     @Column(name = "source_type")
@@ -71,10 +71,10 @@ public class DocumentChunk {
     @Column(name = "content_hash", length = 64)
     private String contentHash;
 
-    @Column(name = "original_file_name")
+    @Column(name = "original_file_name", columnDefinition = "text")
     private String originalFileName;
 
-    @Column(name = "enriched_file_name")
+    @Column(name = "enriched_file_name", columnDefinition = "text")
     private String enrichedFileName;
 
     @Column(name = "asset_classification")
@@ -96,14 +96,14 @@ public class DocumentChunk {
      * text chunks. Lets the frontend render the actual image next to a citation
      * instead of just the text description.
      */
-    @Column(name = "image_url")
+    @Column(name = "image_url", columnDefinition = "text")
     private String imageUrl;
 
     /**
      * The URL pointing to the original source file (e.g., Cloudinary URL or Wikipedia URL).
      * Rendered as "View Source" link in citations.
      */
-    @Column(name = "source_url", length = 1024)
+    @Column(name = "source_url", columnDefinition = "text")
     private String sourceUrl;
 
     @Column(name = "bounding_boxes", columnDefinition = "text")
@@ -112,10 +112,10 @@ public class DocumentChunk {
     @Column(name = "page_number")
     private Integer page;
 
-    @Column(name = "section_path", length = 1024)
+    @Column(name = "section_path", columnDefinition = "text")
     private String sectionPath;
 
-    @Column(name = "heading")
+    @Column(name = "heading", columnDefinition = "text")
     private String heading;
 
     @Column(name = "char_start")
