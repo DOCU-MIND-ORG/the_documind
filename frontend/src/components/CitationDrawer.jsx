@@ -37,8 +37,9 @@ export default function CitationDrawer({ citations, onClose }) {
     const handleMouseMove = (e) => {
       if (!isResizing) return;
       const newWidth = window.innerWidth - e.clientX;
+      const maxWidth = window.innerWidth - 280; // Reserve space for left sidebar
       if (newWidth >= 350) {
-        setDrawerWidth(newWidth);
+        setDrawerWidth(Math.min(newWidth, maxWidth));
       }
     };
     const handleMouseUp = () => setIsResizing(false);

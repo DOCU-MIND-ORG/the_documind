@@ -10,6 +10,7 @@ import { useState, useCallback } from "react";
 export default function ImageDeck({ images = [], maxStack = 3 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [hoveredId, setHoveredId] = useState(null);
+  const [activeOverlayImage, setActiveOverlayImage] = useState(null);
 
   const expand = useCallback(() => setIsExpanded(true), []);
   const collapse = useCallback(() => setIsExpanded(false), []);
@@ -31,6 +32,7 @@ export default function ImageDeck({ images = [], maxStack = 3 }) {
           hoveredId={hoveredId}
           onHover={setHoveredId}
           onCollapse={collapse}
+          onImageClick={setActiveOverlayImage}
         />
       ) : (
         <StackedDeck
@@ -39,6 +41,28 @@ export default function ImageDeck({ images = [], maxStack = 3 }) {
           onExpand={expand}
           onKeyDown={handleStackKeyDown}
         />
+      )}
+
+      {activeOverlayImage && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4 cursor-pointer"
+          onClick={() => setActiveOverlayImage(null)}
+        >
+          <img 
+            src={activeOverlayImage} 
+            alt="Enlarged view" 
+            className="max-w-full max-h-full object-contain rounded-md shadow-2xl cursor-default"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button 
+            className="absolute top-4 right-4 text-white hover:text-gray-300 p-2 bg-black/50 rounded-full"
+            onClick={() => setActiveOverlayImage(null)}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
       )}
     </div>
   );
@@ -98,7 +122,7 @@ function StackCard({ img, index, isTop }) {
 
 /* ─── Expanded state ─────────────────────────────────────────────────────────── */
 
-function ExpandedGrid({ images, hoveredId, onHover, onCollapse }) {
+function ExpandedGrid({ images, hoveredId, onHover, onCollapse, onImageClick }) {
   return (
     <div className="flex flex-wrap gap-2.5 animate-in fade-in slide-in-from-bottom-1 duration-200">
       {images.map((img) => (
@@ -108,6 +132,7 @@ function ExpandedGrid({ images, hoveredId, onHover, onCollapse }) {
           isHovered={hoveredId === img.semanticId}
           onHover={() => onHover(img.semanticId)}
           onLeave={() => onHover(null)}
+          onClick={() => onImageClick(img.imageUrl)}
         />
       ))}
 
@@ -133,20 +158,14 @@ function CollapseIcon() {
   );
 }
 
-function ImageCard({ img, isHovered, onHover, onLeave }) {
-  // We don't have a reliable sourceUrl right now, but if we did, we could link it.
-  const Tag = img.imageUrl ? "a" : "div";
-  const linkProps = img.imageUrl
-    ? { href: img.imageUrl, target: "_blank", rel: "noreferrer noopener" }
-    : {};
-
+function ImageCard({ img, isHovered, onHover, onLeave, onClick }) {
   return (
-    <Tag
+    <div
       className={`relative w-[120px] h-[90px] rounded-lg overflow-hidden border border-white/10 bg-gray-800 block no-underline transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${isHovered ? 'scale-[1.04] border-blue-400/50' : ''} ${img.imageUrl ? 'cursor-pointer' : 'cursor-default'}`}
       onMouseEnter={onHover}
       onMouseLeave={onLeave}
-      aria-label={img.imageUrl ? `Open ${img.caption ?? "image"} in new tab` : img.caption}
-      {...linkProps}
+      onClick={img.imageUrl ? onClick : undefined}
+      aria-label={img.imageUrl ? `Open ${img.caption ?? "image"}` : img.caption}
     >
       <img src={img.imageUrl} alt={img.caption ?? "Extracted content"} className="w-full h-full object-cover block" />
 
@@ -161,7 +180,7 @@ function ImageCard({ img, isHovered, onHover, onLeave }) {
           {img.caption}
         </div>
       )}
-    </Tag>
+    </div>
   );
 }
 
