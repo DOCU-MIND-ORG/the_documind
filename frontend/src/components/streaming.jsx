@@ -22,6 +22,9 @@ export default function Streaming({ text, isStreaming, citations, onCitationClic
         // This regex finds ** followed by spaces, captures the text, and removes the extra spaces.
         replaced = replaced.replace(/\*\*\s+([^*]+?)\s*\*\*/g, '**$1**');
         
+        // Escape dollar signs used for currency (e.g., "$1.5") to prevent KaTeX from rendering them as inline math.
+        replaced = replaced.replace(/\$(\d)/g, '\\$$1');
+        
         return replaced;
       }
       return part;
