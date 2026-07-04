@@ -58,10 +58,21 @@ export default function PdfViewerModal({ url, boundingBoxes, targetPage, onClose
       <div className="bg-gray-900 rounded-xl shadow-2xl flex flex-col w-full max-w-5xl h-full max-h-[90vh] overflow-hidden border border-gray-700">
         
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700 shrink-0 flex-wrap gap-2">
-          <div className="flex items-center gap-2 sm:gap-4">
+        <div className="flex flex-col sm:flex-row items-center justify-between px-2 sm:px-4 py-2 sm:py-3 bg-gray-800 border-b border-gray-700 shrink-0 gap-2 sm:gap-0 relative">
+          
+          {/* Mobile Close Button */}
+          <button onClick={onClose} className="sm:hidden absolute top-1.5 right-1.5 p-1.5 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white transition-colors z-10">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+
+          <div className="flex items-center w-full sm:w-auto justify-center sm:justify-start">
             <h3 className="text-white font-bold text-sm hidden sm:block">Source Document Viewer</h3>
-            <div className="flex items-center gap-2 bg-gray-900 rounded-md px-2 py-1">
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto justify-center">
+            
+            {/* Page Controls */}
+            <div className="flex items-center gap-1 sm:gap-2 bg-gray-900 rounded-md px-1 sm:px-2 py-1">
               <button 
                 onClick={() => setPageNumber(p => Math.max(1, p - 1))}
                 disabled={pageNumber <= 1}
@@ -69,7 +80,7 @@ export default function PdfViewerModal({ url, boundingBoxes, targetPage, onClose
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
               </button>
-              <span className="text-xs text-gray-300 font-medium w-16 text-center">
+              <span className="text-[11px] sm:text-xs text-gray-300 font-medium w-14 sm:w-16 text-center">
                 Page {pageNumber} of {numPages || '--'}
               </span>
               <button 
@@ -80,20 +91,20 @@ export default function PdfViewerModal({ url, boundingBoxes, targetPage, onClose
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
               </button>
             </div>
-          </div>
 
-          <div className="flex items-center gap-2 sm:gap-4">
-            <div className="flex items-center gap-2 bg-gray-900 rounded-md px-2 py-1">
+            {/* Zoom Controls */}
+            <div className="flex items-center gap-1 sm:gap-2 bg-gray-900 rounded-md px-1 sm:px-2 py-1">
               <button onClick={() => setScale(s => Math.max(0.5, s - 0.2))} className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700 transition-colors">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" /></svg>
               </button>
-              <span className="text-xs text-gray-300 font-medium w-12 text-center">{Math.round(scale * 100)}%</span>
+              <span className="text-[11px] sm:text-xs text-gray-300 font-medium w-10 sm:w-12 text-center">{Math.round(scale * 100)}%</span>
               <button onClick={() => setScale(s => Math.min(3.0, s + 0.2))} className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700 transition-colors">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
               </button>
             </div>
 
-            <button onClick={onClose} className="p-1.5 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white transition-colors">
+            {/* Desktop Close Button */}
+            <button onClick={onClose} className="hidden sm:block p-1.5 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white transition-colors">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
           </div>
@@ -101,7 +112,7 @@ export default function PdfViewerModal({ url, boundingBoxes, targetPage, onClose
 
         {/* Viewer Body */}
         <div className="flex-1 overflow-auto bg-gray-950 p-6 flex justify-center custom-scrollbar">
-          <div className="relative shadow-2xl bg-white text-gray-900" style={{ minHeight: '800px' }}>
+          <div className="relative shadow-2xl bg-white text-gray-900 min-h-[50vh] sm:min-h-[800px]">
             <Document
               file={typeof url === 'string' && url.startsWith('http') ? { url, httpHeaders: { 'ngrok-skip-browser-warning': 'true' } } : url}
               onLoadSuccess={onDocumentLoadSuccess}
