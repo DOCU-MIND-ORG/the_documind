@@ -119,6 +119,7 @@ export default function Chat() {
   const suggestionsPollRef = useRef(null);
 
   const [showShareMenu, setShowShareMenu] = useState(false);
+  const [showQuestionsMenu, setShowQuestionsMenu] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [shareEmailAddress, setShareEmailAddress] = useState('');
   const [isExportingPdf, setIsExportingPdf] = useState(false);
@@ -465,6 +466,7 @@ export default function Chat() {
 
   const firstName = user?.name?.split(' ')[0] || 'there';
   const isNewChat = !state.sessionId;
+  const userQuestions = state.messages.filter(m => m.role === 'USER' && m.text && m.text.trim().length > 0);
 
   const greetings = [
     `Hello, ${firstName}! How can I help you today?`,
@@ -581,6 +583,58 @@ export default function Chat() {
                   {session?.title || 'Loading…'}
                 </h1>
               </div>
+              
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowQuestionsMenu(prev => !prev)}
+                  className={`p-1 sm:p-1.5 rounded-md transition-colors shrink-0 ${showQuestionsMenu ? 'text-blue-500 bg-blue-500/10' : 'text-secondary hover:text-primary hover:bg-[var(--color-bg-surface-hover)]'}`}
+                  title="Session History"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </button>
+                
+                {showQuestionsMenu && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowQuestionsMenu(false)} />
+                    <div className="absolute top-full right-0 mt-2 z-50 w-64 md:w-80 max-h-[300px] overflow-y-auto menu-popup py-1.5 animate-fade-in-up">
+                      <div className="px-3 py-2 text-xs font-semibold text-secondary uppercase tracking-wider border-b border-[var(--color-border)] mb-1">
+                        Questions Asked
+                      </div>
+                      {userQuestions.length === 0 ? (
+                        <div className="px-4 py-3 text-[12px] text-tertiary">No questions asked yet.</div>
+                      ) : (
+                        userQuestions.map((q, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => {
+                              setShowQuestionsMenu(false);
+                              const el = document.getElementById(`message-${q.id}`);
+                              if (el) {
+                                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                el.style.transition = 'background-color 0.5s';
+                                el.style.backgroundColor = 'var(--color-bg-surface-hover)';
+                                setTimeout(() => el.style.backgroundColor = 'transparent', 1500);
+                              }
+                            }}
+                            className="flex flex-col w-full text-left px-3 py-2 hover:bg-[var(--color-bg-surface-hover)] transition-colors group"
+                          >
+                            <span className="text-[12px] text-primary line-clamp-2 group-hover:text-blue-500 transition-colors">
+                              {q.text}
+                            </span>
+                            <span className="text-[10px] text-tertiary mt-0.5">
+                              {new Date(q.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+
               <button
                 type="button"
                 onClick={() => setShowShareMenu(prev => !prev)}
@@ -670,7 +724,7 @@ export default function Chat() {
             {state.messages.filter(msg => !isUploadAnchorMessage(msg)).map((msg) => {
               const isBot = msg.role === 'ASSISTANT';
               return (
-                <div key={msg.id} className={`flex items-start gap-2.5 ${isBot ? '' : 'flex-row-reverse'}`}>
+                <div key={msg.id} id={`message-${msg.id}`} className={`flex items-start gap-2.5 ${isBot ? '' : 'flex-row-reverse'}`}>
                   <div className={`flex flex-col gap-1 max-w-[85%] ${isBot ? '' : 'items-end'}`}>
                     <div className={`px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${isBot
                         ? 'text-primary'
