@@ -43,12 +43,12 @@ export default function PdfViewerModal({ url, boundingBoxes, targetPage, onClose
   // Calculate overlay dimensions based on the scale and bounding box coordinates
   // Note: PDF coordinates are usually from bottom-left, but react-pdf page might be top-left depending on the stripper logic.
   // Assuming our stripper gives top-left coordinates relative to page cropbox.
-  const renderHighlights = () => {
+  const renderHighlights = () => {    
     if (!boundingBoxes || boundingBoxes.length === 0) return null;
     
-    return boundingBoxes
-      .filter(box => box.page === pageNumber)
-      .map((box, idx) => (
+    const boxesForPage = boundingBoxes.filter(box => box.page === pageNumber);    
+    
+    return boxesForPage.map((box, idx) => (
         <div
           key={idx}
           className="absolute bg-yellow-300/40 rounded-sm"
