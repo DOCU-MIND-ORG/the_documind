@@ -45,7 +45,7 @@ export default function Login() {
     try {
       const res = await fetch(`${endpoint}/auth/login`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ email: form.email, password: form.password }),
       });
