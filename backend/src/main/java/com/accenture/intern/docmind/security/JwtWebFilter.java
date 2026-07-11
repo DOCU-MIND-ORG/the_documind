@@ -22,6 +22,10 @@ public class JwtWebFilter implements WebFilter {
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
+        if (exchange.getRequest().getMethod().name().equals("OPTIONS")) {
+            return chain.filter(exchange);
+        }
+
         HttpCookie cookie = exchange.getRequest().getCookies().getFirst("access_token");
 
         if (cookie != null) {

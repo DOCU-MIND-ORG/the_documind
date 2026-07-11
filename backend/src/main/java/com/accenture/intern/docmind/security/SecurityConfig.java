@@ -11,6 +11,8 @@ import org.springframework.web.cors.reactive.CorsConfigurationSource;
 import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
 import reactor.core.publisher.Mono;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpMethod;
+import org.springframework.web.cors.reactive.CorsWebFilter;
 
 import java.util.List;
 
@@ -27,6 +29,11 @@ public class SecurityConfig {
     @Bean
     public BCryptPasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    public CorsWebFilter corsWebFilter() {
+        return new CorsWebFilter(corsConfigurationSource());
     }
 
     @Bean
@@ -52,6 +59,7 @@ public class SecurityConfig {
                 .addFilterAt(jwtWebFilter,
                         org.springframework.security.config.web.server.SecurityWebFiltersOrder.AUTHENTICATION)
                 .authorizeExchange(exchanges -> exchanges
+                        .pathMatchers(HttpMethod.OPTIONS).permitAll()
                         .pathMatchers(
                                 "/auth/login",
                                 "/auth/signup",
