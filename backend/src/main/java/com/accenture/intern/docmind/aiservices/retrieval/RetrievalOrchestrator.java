@@ -29,15 +29,18 @@ public class RetrievalOrchestrator {
     private final MultiSignalRanker multiSignalRanker;
     private final RetrievalProperties retrievalProperties;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+    private final com.accenture.intern.docmind.repository.DocumentChunkRepository documentChunkRepository;
 
     public RetrievalOrchestrator(HybridRetrievalService hybridRetrievalService,
             RerankService rerankService, MultiSignalRanker multiSignalRanker,
-            RetrievalProperties retrievalProperties, com.fasterxml.jackson.databind.ObjectMapper objectMapper) {
+            RetrievalProperties retrievalProperties, com.fasterxml.jackson.databind.ObjectMapper objectMapper,
+            com.accenture.intern.docmind.repository.DocumentChunkRepository documentChunkRepository) {
         this.hybridRetrievalService = hybridRetrievalService;
         this.rerankService = rerankService;
         this.multiSignalRanker = multiSignalRanker;
         this.retrievalProperties = retrievalProperties;
         this.objectMapper = objectMapper;
+        this.documentChunkRepository = documentChunkRepository;
     }
 
     public Mono<RetrievalResult> orchestrate(String question, Long sessionId, ExecutionPlan execPlan, reactor.core.publisher.Sinks.Many<org.springframework.http.codec.ServerSentEvent<String>> progressSink) {
@@ -71,15 +74,24 @@ public class RetrievalOrchestrator {
                 visualMono = hybridRetrievalService.retrieve(execPlan.getEntities(), retrievalQuery, sessionId, 15, skipWholeDocument, plan.targetDocuments(), true)
                     .map(docs -> rerankService.rerank(question, docs, 3, sessionId))
                     .map(docs -> multiSignalRanker.rank(docs, plan, execPlan.getEntities(), sessionId))
-                    .map(docs -> docs.stream().limit(3).map(cand -> new VisualEvidence(
-                            (String) cand.chunk().getMetadata().get("semanticId"),
-                            null,
-                            (String) cand.chunk().getMetadata().get("imageUrl"),
-                            null,
-                            cand.chunk().getText(),
-                            cand.finalScore(),
-                            (String) cand.chunk().getMetadata().get("sourceName")
-                    )).collect(Collectors.toList()));
+                    .map(docs -> {
+                        java.util.Set<String> seenUrls = new java.util.HashSet<>();
+                        return docs.stream()
+                            .filter(cand -> {
+                                String url = (String) cand.chunk().getMetadata().get("imageUrl");
+                                return url == null || seenUrls.add(url);
+                            })
+                            .limit(3)
+                            .map(cand -> new VisualEvidence(
+                                (String) cand.chunk().getMetadata().get("semanticId"),
+                                null,
+                                (String) cand.chunk().getMetadata().get("imageUrl"),
+                                null,
+                                cand.chunk().getText(),
+                                cand.finalScore(),
+                                (String) cand.chunk().getMetadata().get("sourceName")
+                            )).collect(Collectors.toList());
+                    });
             }
 
             Mono<RetrievalResult> planRetrieval = planRetrievalMono
@@ -140,7 +152,7 @@ public class RetrievalOrchestrator {
         });
     }
     
-    public RetrievalObservation generateObservation(List<RetrievalCandidate> candidates, RetrievalPlan plan) {
+    public RetrievalObservation generateObservation(List<RetrievalCandidate> candidates, RetrievalPlan plan, List<RetrievalCandidate> previousCandidates) {
         if (candidates.isEmpty()) {
             return new RetrievalObservation(
                 ObservationType.EVIDENCE_MISSING,
@@ -156,24 +168,56 @@ public class RetrievalOrchestrator {
             .collect(Collectors.toList());
             
         double topScore = candidates.get(0).finalScore();
+        
+        // Coverage tracking for ADAPTIVE completeness checks
+        java.util.Set<String> newSections = new java.util.HashSet<>();
+        int chunksWithSections = 0;
+        for (RetrievalCandidate c : candidates) {
+            String sp = (String) c.chunk().getMetadata().get("sectionPath");
+            if (sp != null && !sp.isBlank()) {
+                newSections.add(sp);
+                chunksWithSections++;
+            }
+        }
+        
+        java.util.Set<String> oldSections = new java.util.HashSet<>();
+        if (previousCandidates != null) {
+            for (RetrievalCandidate c : previousCandidates) {
+                String sp = (String) c.chunk().getMetadata().get("sectionPath");
+                if (sp != null && !sp.isBlank()) {
+                    oldSections.add(sp);
+                }
+            }
+        }
+        
+        int totalSectionsBefore = oldSections.size();
+        newSections.removeAll(oldSections);
+        int newlyDiscovered = newSections.size();
+        
+        // Only report coverage if the document has structural metadata
+        String coverageMsg = "";
+        if (chunksWithSections > 0) {
+            coverageMsg = String.format(" (Found %d new sections. Previous sections: %d)", newlyDiscovered, totalSectionsBefore);
+        }
+        
         if (topScore > 0.8) {
             return new RetrievalObservation(
                 ObservationType.EVIDENCE_FOUND,
-                "Strong evidence found",
+                "Strong evidence found" + coverageMsg,
                 explanations,
                 null
             );
         } else if (topScore > 0.5) {
             return new RetrievalObservation(
                 ObservationType.PARTIAL_EVIDENCE,
-                "Partial/weak evidence found",
+                "Partial/weak evidence found" + coverageMsg,
                 explanations,
                 new RetrievalGap("Low confidence results", "Requires broader search or different keywords")
             );
         } else {
             return new RetrievalObservation(
                 ObservationType.OUT_OF_SCOPE,
-                "Results are out of scope/unrelated",
+                "Results are out of scope/unrelated" + coverageMsg,
                 explanations,
                 new RetrievalGap("Unrelated results", "Need to change search direction entirely")
             );
@@ -248,13 +292,67 @@ public class RetrievalOrchestrator {
         String retrievalQuery = (plan.optimizedQuery() != null && !plan.optimizedQuery().isBlank()) ? plan.optimizedQuery() : question;
         boolean skipWholeDocument = plan.executionMode() != RetrievalExecutionMode.WHOLE_DOCUMENT;
         
-        log.info("ORCHESTRATOR: skipWholeDocument={} | sessionId={} | retrievalQuery='{}' | executionMode={}",
-                skipWholeDocument, sessionId, retrievalQuery, plan.executionMode());
+        log.info("ORCHESTRATOR: skipWholeDocument={} | sessionId={} | retrievalQuery='{}' | executionMode={} | isStructuralQuery={}",
+                skipWholeDocument, sessionId, retrievalQuery, plan.executionMode(), plan.isStructuralQuery());
 
-        return hybridRetrievalService.retrieve(entities, retrievalQuery, sessionId, 15, skipWholeDocument, plan.targetDocuments(), false)
-                .map(candidates -> rerankService.rerank(retrievalQuery, candidates, 5, sessionId))
+        Mono<List<RetrievalCandidate>> baseRetrievalMono;
+        
+        if (plan.isStructuralQuery()) {
+            baseRetrievalMono = hybridRetrievalService.retrieveDocumentStructure(plan.targetDocuments(), sessionId)
+                .flatMap(structuralChunks -> {
+                    boolean sectionMapRetrieved = !structuralChunks.isEmpty();
+                    log.info("ORCHESTRATOR: isStructuralQuery=true, sectionMapRetrieved={}", sectionMapRetrieved);
+                    if (sectionMapRetrieved) {
+                        return Mono.just(structuralChunks);
+                    } else {
+                        // Fallback to normal retrieval if no structural chunk is found
+                        return hybridRetrievalService.retrieve(entities, retrievalQuery, sessionId, 15, skipWholeDocument, plan.targetDocuments(), false);
+                    }
+                });
+        } else {
+            baseRetrievalMono = hybridRetrievalService.retrieve(entities, retrievalQuery, sessionId, 15, skipWholeDocument, plan.targetDocuments(), false);
+        }
+
+
+        return baseRetrievalMono
+                .map(candidates -> {
+                    boolean isOrderPreserved = candidates.stream().anyMatch(c ->
+                            "WHOLE_DOCUMENT".equals(c.chunk().getMetadata().get("retrievalModeUsed"))
+                            || "CONTIGUOUS".equals(c.chunk().getMetadata().get("retrievalModeUsed")));
+                    if (isOrderPreserved) {
+                        return candidates; // Bypass reranking: order was already set during retrieval
+                    }
+                    return rerankService.rerank(retrievalQuery, candidates, 5, sessionId);
+                })
                 .doOnNext(reranked -> emitRanking(progressSink))
-                .map(reranked -> multiSignalRanker.rank(reranked, plan, entities, sessionId));
+                .map(reranked -> {
+                    boolean isOrderPreserved = reranked.stream().anyMatch(c ->
+                            "WHOLE_DOCUMENT".equals(c.chunk().getMetadata().get("retrievalModeUsed"))
+                            || "CONTIGUOUS".equals(c.chunk().getMetadata().get("retrievalModeUsed")));
+                    if (isOrderPreserved) {
+                        return reranked; // Bypass multi-signal ranker: preserve reading order
+                    }
+                    return multiSignalRanker.rank(reranked, plan, entities, sessionId);
+                })
+                .flatMap(ranked -> {
+                    if (plan.executionMode() == RetrievalExecutionMode.CONTIGUOUS) {
+                        return hybridRetrievalService.expandContiguous(ranked, retrievalQuery, sessionId, plan.targetDocuments());
+                    }
+                    return Mono.just(ranked);
+                })
+                .map(ranked -> {
+                    if (plan.isStructuralQuery()) {
+                        boolean sectionMapIncluded = ranked.stream().anyMatch(c -> Boolean.TRUE.equals(c.chunk().getMetadata().get("structuralMatch")));
+                        log.info("ORCHESTRATOR: sectionMapIncluded={}", sectionMapIncluded);
+                    }
+                    return ranked;
+                })
+                .flatMap(ranked -> {
+                    boolean isOrderPreserved = ranked.stream().anyMatch(c ->
+                            "WHOLE_DOCUMENT".equals(c.chunk().getMetadata().get("retrievalModeUsed"))
+                            || "CONTIGUOUS".equals(c.chunk().getMetadata().get("retrievalModeUsed")));
+                    return isOrderPreserved ? Mono.just(ranked) : expandContext(ranked);
+                });
     }
 
     private void emitRanking(reactor.core.publisher.Sinks.Many<org.springframework.http.codec.ServerSentEvent<String>> progressSink) {
@@ -265,5 +363,65 @@ public class RetrievalOrchestrator {
                     "Ranking evidence...", null, null, null).toJson(objectMapper);
             progressSink.tryEmitNext(org.springframework.http.codec.ServerSentEvent.<String>builder(msg).event("progress").build());
         }
+    }
+
+    private Mono<List<RetrievalCandidate>> expandContext(List<RetrievalCandidate> candidates) {
+        if (candidates.isEmpty()) return Mono.just(candidates);
+
+        return Mono.fromCallable(() -> {
+            List<RetrievalCandidate> expanded = new ArrayList<>();
+            for (RetrievalCandidate cand : candidates) {
+                if (cand.chunk().getMetadata() == null) {
+                    expanded.add(cand);
+                    continue;
+                }
+                String sourceName = (String) cand.chunk().getMetadata().get("sourceName");
+                Object idxObj = cand.chunk().getMetadata().get("chunkIndex");
+                if (sourceName == null || idxObj == null) {
+                    expanded.add(cand);
+                    continue;
+                }
+                
+                int idx = -1;
+                if (idxObj instanceof Integer) {
+                    idx = (Integer) idxObj;
+                } else if (idxObj instanceof String) {
+                    try { idx = Integer.parseInt((String) idxObj); } catch (Exception ignored) {}
+                }
+                
+                if (idx < 0) {
+                    expanded.add(cand);
+                    continue;
+                }
+
+                List<Integer> neighborsToFetch = java.util.List.of(idx - 1, idx + 1);
+                List<com.accenture.intern.docmind.entity.DocumentChunk> neighbors = documentChunkRepository.findBySourceNameAndChunkIndexIn(sourceName, neighborsToFetch);
+                
+                if (neighbors.isEmpty()) {
+                    expanded.add(cand);
+                    continue;
+                }
+                
+                String prevText = "";
+                String nextText = "";
+                for (com.accenture.intern.docmind.entity.DocumentChunk n : neighbors) {
+                    if (n.getChunkIndex() != null) {
+                        if (n.getChunkIndex() == idx - 1) prevText = "[Previous Context]:\\n" + n.getContent() + "\\n\\n";
+                        if (n.getChunkIndex() == idx + 1) nextText = "\\n\\n[Next Context]:\\n" + n.getContent();
+                    }
+                }
+                
+                String newText = prevText + cand.chunk().getText() + nextText;
+                
+                java.util.Map<String, Object> newMeta = new java.util.HashMap<>(cand.chunk().getMetadata());
+                newMeta.put("contextExpanded", true);
+                
+                Document newDoc = new Document(cand.chunk().getId(), newText, newMeta);
+                expanded.add(new RetrievalCandidate(newDoc, cand.semanticScore(), cand.entityScore(),
+                        cand.metadataScore(), cand.sessionScore(), cand.finalScore(),
+                        cand.matchedEntities(), cand.explanation()));
+            }
+            return expanded;
+        }).subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic());
     }
 }

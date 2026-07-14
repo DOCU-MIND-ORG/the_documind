@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -488,12 +489,56 @@ public class EmbeddingService {
      *    whole paragraphs together whenever the budget allows it.
      * 2. The last sentence boundary (. ! ? followed by whitespace) before the
      *    budget — used when a single paragraph is longer than CHUNK_SIZE.
-     * 3. The old space/newline snap — only as a last resort, e.g. for text with no
-     *    punctuation at all (a single very long line, code, etc.).
+                    //    punctuation at all (a single very long line, code, etc.).
      */
-    private List<Document> chunkText(String text, List<LayoutTextStripper.PdfTextElement> elements, String sourceType, String originalFileName, String enrichedFileName,
-                                     String assetClassification, String assetTags, Long sessionId, String imageUrl, String sourceUrl) {
+    private record DetectedHeading(String text, int docCharStart, int docCharEnd, int level) {}
+
+    /**
+     * @deprecated Superseded by {@link BlockClassifier} + {@link SemanticChunkBuilder}.
+     * Kept as a fallback for plain-text ingestion paths where no PdfTextElements are available.
+     */
+    @Deprecated(since = "semantic-chunker")
+    private List<DetectedHeading> detectHeadings(List<LayoutTextStripper.PdfTextElement> elements) {
+        if (elements == null || elements.isEmpty()) return List.of();
+        
+        List<Float> fontSizes = elements.stream().map(e -> e.fontSize()).sorted().toList();
+        if (fontSizes.isEmpty()) return List.of();
+        float medianFontSize = fontSizes.get(fontSizes.size() / 2);
+        float maxFontSize = fontSizes.get(fontSizes.size() - 1);
+        
+        List<DetectedHeading> headings = new ArrayList<>();
+        for (LayoutTextStripper.PdfTextElement el : elements) {
+            if (el.text() == null || el.text().trim().isEmpty() || el.text().length() < 3 || el.text().length() > 200) continue;
+            
+            float fs = el.fontSize();
+            if (fs > medianFontSize * 1.15f) {
+                int level;
+                if (fs >= maxFontSize * 0.9f) level = 1;
+                else if (fs >= maxFontSize * 0.75f) level = 2;
+                else level = 3;
+                
+                String cleanText = el.text().trim().replaceAll("\\s+", " ");
+                headings.add(new DetectedHeading(cleanText, el.docCharStart(), el.docCharEnd(), level));
+            }
+        }
+        return headings;
+    }
+
+    /**
+     * @deprecated Legacy character-cursor chunker.
+     * Only called when BlockClassifier returns 0 blocks (e.g., PDFs with no
+     * extractable layout elements or plain-text ingestion paths).
+     */
+    @Deprecated(since = "semantic-chunker")
+    private List<Document> chunkTextLegacy(String text,
+                                            List<LayoutTextStripper.PdfTextElement> elements,
+                                            String sourceType, String originalFileName,
+                                            String enrichedFileName, String assetClassification,
+                                            String assetTags, Long sessionId,
+                                            String imageUrl, String sourceUrl) {
         List<Document> chunks = new ArrayList<>();
+        if (text == null || text.isBlank()) return chunks;
+
         int totalLen = text.length();
         int cursor = 0;
         int chunkIndex = 0;
@@ -501,23 +546,16 @@ public class EmbeddingService {
 
         while (cursor < totalLen) {
             int end = Math.min(cursor + CHUNK_SIZE, totalLen);
-
             if (end < totalLen) {
                 int snap = findBoundary(text, cursor, end);
-                if (snap > cursor) {
-                    end = snap;
-                }
+                if (snap > cursor) end = snap;
             }
-
             if (end <= cursor) {
                 end = Math.min(cursor + CHUNK_SIZE, totalLen);
-                if (end <= cursor) {
-                    break;
-                }
+                if (end <= cursor) break;
             }
 
             String chunk = text.substring(cursor, end).strip();
-
             if (!chunk.isEmpty() && !chunk.equals(previousChunk)) {
                 Map<String, Object> meta = new HashMap<>();
                 meta.put("sourceType", sourceType);
@@ -528,75 +566,77 @@ public class EmbeddingService {
                 if (assetTags != null) meta.put("assetTags", assetTags);
                 meta.put("chunkIndex", chunkIndex);
                 meta.put("sessionId", sessionId);
-                if (imageUrl != null && !imageUrl.isBlank()) {
-                    meta.put("imageUrl", imageUrl);
-                    meta.put("isImage", true);
-                }
-                if (sourceUrl != null && !sourceUrl.isBlank()) {
-                    meta.put("sourceUrl", sourceUrl);
-                }
-
-                if (chunkIndex > 0) {
-                    meta.put("previousChunk", chunkIndex - 1);
-                }
-                // nextChunk will be added later if needed, but it's derivable in frontend by doing index+1
-
-                if (elements != null && !elements.isEmpty()) {
-                    List<Map<String, Object>> boundingBoxes = new ArrayList<>();
-                    List<Integer> pages = new ArrayList<>();
-                    int firstPage = -1;
-                    
-                    for (LayoutTextStripper.PdfTextElement el : elements) {
-                        if (el.docCharEnd() > cursor && el.docCharStart() < end) {
-                            Map<String, Object> bboxMap = new HashMap<>();
-                            bboxMap.put("page", el.pageNumber());
-                            bboxMap.put("x", el.bbox().x());
-                            bboxMap.put("y", el.bbox().y());
-                            bboxMap.put("width", el.bbox().width());
-                            bboxMap.put("height", el.bbox().height());
-                            boundingBoxes.add(bboxMap);
-                            
-                            if (firstPage == -1) firstPage = el.pageNumber();
-                            if (!pages.contains(el.pageNumber())) {
-                                pages.add(el.pageNumber());
-                            }
-                        }
-                    }
-                    if (!boundingBoxes.isEmpty()) {
-                        try {
-                            meta.put("boundingBoxes", objectMapper.writeValueAsString(boundingBoxes));
-                        } catch (Exception e) {
-                            log.warn("Failed to serialize bounding boxes for chunk", e);
-                        }
-                        meta.put("page", firstPage);
-                        // Add some context offsets
-                        meta.put("charStart", cursor);
-                        meta.put("charEnd", end);
-                    }
-                }
-
-                // Explicit, stable id (rather than letting Pinecone/Spring AI auto-generate
-                // one) so the same chunk can be referenced from the Postgres side for fusion.
-                String vectorId = UUID.randomUUID().toString();
-                chunks.add(new Document(vectorId, chunk, meta));
-
+                if (imageUrl != null && !imageUrl.isBlank()) { meta.put("imageUrl", imageUrl); meta.put("isImage", true); }
+                if (sourceUrl != null && !sourceUrl.isBlank()) meta.put("sourceUrl", sourceUrl);
+                if (chunkIndex > 0) meta.put("previousChunk", chunkIndex - 1);
+                chunks.add(new Document(UUID.randomUUID().toString(), chunk, meta));
                 previousChunk = chunk;
                 chunkIndex++;
             }
-
             int nextCursor = end - OVERLAP;
-            if (nextCursor <= cursor) {
-                nextCursor = end;
-            }
+            if (nextCursor <= cursor) nextCursor = end;
             cursor = nextCursor;
         }
 
-        int totalChunks = chunks.size();
-        for (Document doc : chunks) {
-            doc.getMetadata().put("totalChunks", totalChunks);
+        int total = chunks.size();
+        for (Document doc : chunks) doc.getMetadata().put("totalChunks", total);
+        return chunks;
+    }
+
+    /**
+     * Entry point for PDF chunking.
+     * Replaces the old character-cursor loop with a semantic block pipeline:
+     *
+     *   PdfTextElements
+     *     → BlockClassifier (merge + classify)
+     *     → SemanticChunkBuilder (group into semantic chunks)
+     *     → List<Document>
+     *
+     * Falls back to the deprecated character-cursor chunker if the element
+     * list is null or empty (e.g. plain-text ingestion paths).
+     */
+    private List<Document> chunkText(String text,
+                                     List<LayoutTextStripper.PdfTextElement> elements,
+                                     String sourceType, String originalFileName,
+                                     String enrichedFileName, String assetClassification,
+                                     String assetTags, Long sessionId,
+                                     String imageUrl, String sourceUrl) {
+
+        // If no layout elements, fall back to legacy character chunker
+        if (elements == null || elements.isEmpty()) {
+            log.warn("No layout elements available for '{}' — falling back to character-cursor chunker", originalFileName);
+            return chunkTextLegacy(text, null, sourceType, originalFileName, enrichedFileName,
+                    assetClassification, assetTags, sessionId, imageUrl, sourceUrl);
         }
 
-        return chunks;
+        // Compute page heights from the elements (LayoutTextStripper stores them internally;
+        // here we approximate from element bboxes if the stripper didn't expose them directly).
+        // The caller passes pageHeights via DocumentParserService — for now we derive them.
+        Map<Integer, Float> pageHeights = new java.util.HashMap<>();
+        for (LayoutTextStripper.PdfTextElement el : elements) {
+            // Use the max Y seen per page as a proxy for page height (conservative lower bound)
+            pageHeights.merge(el.pageNumber(), el.bbox().y() + el.bbox().height(), Math::max);
+        }
+
+        List<DocumentBlock> blocks = BlockClassifier.classify(elements, pageHeights);
+        if (blocks.isEmpty()) {
+            log.warn("BlockClassifier returned 0 blocks for '{}' — falling back to legacy chunker", originalFileName);
+            return chunkTextLegacy(text, elements, sourceType, originalFileName, enrichedFileName,
+                    assetClassification, assetTags, sessionId, imageUrl, sourceUrl);
+        }
+
+        List<Document> docs = SemanticChunkBuilder.build(blocks, sourceType, originalFileName,
+                enrichedFileName, assetClassification, assetTags, sessionId, sourceUrl, objectMapper);
+
+        // Attach imageUrl if this is an image-backed chunk
+        if (imageUrl != null && !imageUrl.isBlank()) {
+            for (Document doc : docs) {
+                doc.getMetadata().put("imageUrl", imageUrl);
+                doc.getMetadata().put("isImage", true);
+            }
+        }
+
+        return docs;
     }
 
     /**

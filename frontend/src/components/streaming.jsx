@@ -53,7 +53,7 @@ export default function Streaming({ text, isStreaming, citations, onCitationClic
     const processedText = parts.map((part, index) => {
 
       if (index % 2 === 0) {
-        let replaced = part.replace(/\[CITE:\s*([\d,\s]+)\]/gi, (match, p1) => {
+        let replaced = part.replace(/\[(?:CITE:\s*)?([\d,\s]+)\]/gi, (match, p1) => {
           const ids = p1.split(',').map(s => s.trim()).filter(Boolean);
           return ids.map(id => `[${id}](#cite-${id})`).join(' ');
         });
@@ -89,7 +89,7 @@ export default function Streaming({ text, isStreaming, citations, onCitationClic
     a: ({ node, ...props }) => {
       if (props.href && props.href.startsWith('#cite-')) {
         const citeIndex = parseInt(props.href.replace('#cite-', ''), 10);
-        const citation = citations && citations[citeIndex - 1];
+        const citation = citations && citations.find(c => c.citationNumber === citeIndex);
         if (citation) {
           return (
             <button

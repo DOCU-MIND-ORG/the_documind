@@ -59,14 +59,11 @@ public class VectorStoreService {
                     org.springframework.ai.vectorstore.filter.Filter.Expression filter = null;
                     
                     if (targetDocuments != null && !targetDocuments.isEmpty()) {
-                        List<String> normalizedTargets = targetDocuments.stream()
-                                .map(com.accenture.intern.docmind.util.FilenameNormalizer::normalize)
-                                .collect(java.util.stream.Collectors.toList());
-                        filter = new org.springframework.ai.vectorstore.filter.FilterExpressionBuilder().in("sourceName", normalizedTargets.toArray()).build();
+                        filter = new org.springframework.ai.vectorstore.filter.FilterExpressionBuilder().in("sourceName", targetDocuments.toArray()).build();
                     }
 
                     if (imageOnly) {
-                        org.springframework.ai.vectorstore.filter.Filter.Expression imgFilter = new org.springframework.ai.vectorstore.filter.FilterExpressionBuilder().in("type", "IMAGE", "PDF_IMAGE").build();
+                        org.springframework.ai.vectorstore.filter.Filter.Expression imgFilter = new org.springframework.ai.vectorstore.filter.FilterExpressionBuilder().eq("isImage", true).build();
                         if (filter != null) {
                             filter = new org.springframework.ai.vectorstore.filter.Filter.Expression(org.springframework.ai.vectorstore.filter.Filter.ExpressionType.AND, filter, imgFilter);
                         } else {

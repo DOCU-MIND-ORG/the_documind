@@ -12,7 +12,7 @@ const ChatMessage = memo(function ChatMessage({ msg, isStreaming, setActiveCitat
         <div className={`px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${isBot
             ? 'text-primary'
             : 'bg-blue-600 text-white rounded-tr-sm'
-          } ${msg.status === 'error' ? 'border-red-500/40' : ''}`}
+          } ${msg.status === 'error' ? 'border border-red-500/40' : ''}`}
           style={isBot ? {} : {}}>
           
           {isBot && msg.progressEvents && msg.progressEvents.length > 0 && (
@@ -82,7 +82,9 @@ const ChatMessage = memo(function ChatMessage({ msg, isStreaming, setActiveCitat
           })()}
         </div>
         {msg.status === 'error' && (
-          <span className="text-[11px] text-red-400">Failed to send</span>
+          <div className="mt-1 flex flex-col items-start gap-2">
+            <span className="text-[11px] text-red-400">Stream disconnected prematurely.</span>
+          </div>
         )}
       </div>
     </div>
@@ -96,10 +98,11 @@ const ChatMessage = memo(function ChatMessage({ msg, isStreaming, setActiveCitat
     prevProps.msg.id === nextProps.msg.id &&
     prevProps.msg.text === nextProps.msg.text &&
     prevProps.msg.status === nextProps.msg.status &&
-    // Simple length check for complex objects since they only append in this architecture
-    (prevProps.msg.progressEvents?.length || 0) === (nextProps.msg.progressEvents?.length || 0) &&
-    (prevProps.msg.citations?.length || 0) === (nextProps.msg.citations?.length || 0) &&
-    (prevProps.msg.visuals?.length || 0) === (nextProps.msg.visuals?.length || 0)
+    // Strict equality check on arrays rather than length, so we catch 
+    // content/confidence updates even if the array length stays the same.
+    prevProps.msg.progressEvents === nextProps.msg.progressEvents &&
+    prevProps.msg.citations === nextProps.msg.citations &&
+    prevProps.msg.visuals === nextProps.msg.visuals
   );
 });
 

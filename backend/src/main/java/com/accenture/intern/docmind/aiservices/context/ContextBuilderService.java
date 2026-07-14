@@ -152,7 +152,9 @@ public class ContextBuilderService {
                 // --- END MEMORY INTENT ROUTER ---
 
 
-                if (!decompositionRequired && decision != null && (decision.scope() == Scope.SPECIFIC_DOC || stillIndexing)) {
+                if (!decompositionRequired && decision != null
+                        && (decision.executionMode() == com.accenture.intern.docmind.aiservices.understanding.RetrievalExecutionMode.WHOLE_DOCUMENT || stillIndexing)
+                        && decision.executionMode() != com.accenture.intern.docmind.aiservices.understanding.RetrievalExecutionMode.CONTIGUOUS) {
                     List<String> targetDocs = decision.targetDocuments();
                     if (targetDocs == null || targetDocs.isEmpty()) {
                         if (sessionContext != null && sessionContext.activeDocument() != null) {
@@ -175,7 +177,7 @@ public class ContextBuilderService {
                                     return new ContextResult(
                                         getSystemPrompt(selectedDocs.isEmpty(), execPlan.strategy(), finalMergeOperation, historyBlock, sessionContext),
                                         buildPrompt(question, agg.evidenceString(), historyBlock, sessionContext),
-                                        selectedDocs, 1.0
+                                        agg.orderedCandidates(), 1.0
                                     );
                                 });
                     }
@@ -240,7 +242,7 @@ public class ContextBuilderService {
                     progressSink.tryEmitNext(org.springframework.http.codec.ServerSentEvent.<String>builder(msg).event("progress").build());
                 }
 
-                com.accenture.intern.docmind.aiservices.understanding.plan.RetrievalObservation obs = retrievalOrchestrator.generateObservation(newResult.evidence(), currentPlan);
+                com.accenture.intern.docmind.aiservices.understanding.plan.RetrievalObservation obs = retrievalOrchestrator.generateObservation(newResult.evidence(), currentPlan, accumulatedCandidates);
                 trace.addObservation(obs);
                 trace.addStep(String.format("Iteration %d: %s", iteration, obs.message()));
                 accumulatedCandidates.addAll(newResult.evidence());
@@ -275,7 +277,7 @@ public class ContextBuilderService {
              String augmentedPrompt = buildPrompt(question, agg.evidenceString(), historyBlock, sessionContext);
              return Mono.just(new ContextResult(
                      getSystemPrompt(candidates.isEmpty(), adaptivePlan.strategy(), MergeOperation.UNION, historyBlock, sessionContext),
-                     augmentedPrompt, candidates, candidates, Collections.emptyList(), Collections.emptyList(), agg.updatedVisuals(), trace, topScore));
+                     augmentedPrompt, agg.orderedCandidates(), agg.orderedCandidates(), Collections.emptyList(), Collections.emptyList(), agg.updatedVisuals(), trace, topScore));
         });
     }
 
@@ -298,7 +300,7 @@ public class ContextBuilderService {
                     
                     return Mono.just(new ContextResult(
                             getSystemPrompt(result.evidence().isEmpty(), primaryStrategy, execPlan.getMergeOperation(), historyBlock, sessionContext),
-                            augmentedPrompt, result.evidence(), result.evidence(), Collections.emptyList(), Collections.emptyList(), agg.updatedVisuals(), trace, topScore));
+                            augmentedPrompt, agg.orderedCandidates(), agg.orderedCandidates(), Collections.emptyList(), Collections.emptyList(), agg.updatedVisuals(), trace, topScore));
                 });
     }
 

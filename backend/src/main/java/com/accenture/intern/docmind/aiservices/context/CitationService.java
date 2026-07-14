@@ -28,53 +28,53 @@ public class CitationService {
             return List.of();
         }
 
-        List<RetrievalCandidate> relevant = filterToRelevantSources(candidates);
+        List<Map<String, Object>> result = new java.util.ArrayList<>();
+        for (int i = 0; i < candidates.size(); i++) {
+            RetrievalCandidate cand = candidates.get(i);
+            Double score = cand.finalScore();
+            if (score == 0.0) score = cand.semanticScore();
 
-        return relevant.stream()
-                .map(cand -> {
-                    Double score = cand.finalScore();
-                    if (score == 0.0) score = cand.semanticScore();
+            Object imageUrlObj = cand.chunk().getMetadata().get("imageUrl");
+            String imageUrl = imageUrlObj instanceof String s && !s.isBlank() ? s : null;
+            boolean isImage = imageUrl != null;
 
-                    Object imageUrlObj = cand.chunk().getMetadata().get("imageUrl");
-                    String imageUrl = imageUrlObj instanceof String s && !s.isBlank() ? s : null;
-                    boolean isImage = imageUrl != null;
+            if (score != null) {
+                score = Math.round(score * 1000.0) / 1000.0;
+            }
 
-                    if (score != null) {
-                        score = Math.round(score * 1000.0) / 1000.0;
-                    }
+            Map<String, Object> citation = new LinkedHashMap<>();
+            citation.put("citationNumber", i + 1); // 1-based to match LLM output
+            citation.put("sourceName", cand.chunk().getMetadata().getOrDefault("sourceName", "unknown"));
+            citation.put("sourceType", cand.chunk().getMetadata().getOrDefault("sourceType", ""));
+            citation.put("chunkIndex", cand.chunk().getMetadata().getOrDefault("chunkIndex", 0));
+            citation.put("excerpt", cand.chunk().getText().substring(0, Math.min(200, cand.chunk().getText().length())) + "…");
+            citation.put("fullExcerpt", cand.chunk().getText());
+            citation.put("score", score);
+            citation.put("documentId", cand.chunk().getMetadata().getOrDefault("documentId", ""));
+            citation.put("isImage", isImage);
+            citation.put("imageUrl", imageUrl);
 
-                    Map<String, Object> citation = new LinkedHashMap<>();
-                    citation.put("sourceName", cand.chunk().getMetadata().getOrDefault("sourceName", "unknown"));
-                    citation.put("sourceType", cand.chunk().getMetadata().getOrDefault("sourceType", ""));
-                    citation.put("chunkIndex", cand.chunk().getMetadata().getOrDefault("chunkIndex", 0));
-                    citation.put("excerpt", cand.chunk().getText().substring(0, Math.min(200, cand.chunk().getText().length())) + "…");
-                    citation.put("fullExcerpt", cand.chunk().getText());
-                    citation.put("score", score);
-                    citation.put("documentId", cand.chunk().getMetadata().getOrDefault("documentId", ""));
-                    citation.put("isImage", isImage);
-                    citation.put("imageUrl", imageUrl);
-
-                    Object sourceUrlObj = cand.chunk().getMetadata().get("sourceUrl");
-                    String sourceUrl = sourceUrlObj instanceof String s && !s.isBlank() ? s : null;
-                    citation.put("url", sourceUrl);
-                    
-                    if (cand.explanation() != null) {
-                        citation.put("rankingExplanation", cand.explanation().reasoning());
-                    }
-                    
-                    if (cand.chunk().getMetadata().containsKey("page")) {
-                        citation.put("page", cand.chunk().getMetadata().get("page"));
-                    }
-                    if (cand.chunk().getMetadata().containsKey("boundingBoxes")) {
-                        citation.put("boundingBoxes", cand.chunk().getMetadata().get("boundingBoxes"));
-                    }
-                    if (cand.chunk().getMetadata().containsKey("sectionPath")) {
-                        citation.put("sectionPath", cand.chunk().getMetadata().get("sectionPath"));
-                    }
-                    
-                    return citation;
-                })
-                .collect(Collectors.toList());
+            Object sourceUrlObj = cand.chunk().getMetadata().get("sourceUrl");
+            String sourceUrl = sourceUrlObj instanceof String s && !s.isBlank() ? s : null;
+            citation.put("url", sourceUrl);
+            
+            if (cand.explanation() != null) {
+                citation.put("rankingExplanation", cand.explanation().reasoning());
+            }
+            
+            if (cand.chunk().getMetadata().containsKey("page")) {
+                citation.put("page", cand.chunk().getMetadata().get("page"));
+            }
+            if (cand.chunk().getMetadata().containsKey("boundingBoxes")) {
+                citation.put("boundingBoxes", cand.chunk().getMetadata().get("boundingBoxes"));
+            }
+            if (cand.chunk().getMetadata().containsKey("sectionPath")) {
+                citation.put("sectionPath", cand.chunk().getMetadata().get("sectionPath"));
+            }
+            
+            result.add(citation);
+        }
+        return result;
     }
 
     /**

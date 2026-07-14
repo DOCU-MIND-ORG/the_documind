@@ -24,12 +24,31 @@ public class ChatController {
     }
 
     @GetMapping(value = "/{sessionId}/stream/{messageId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public ResponseEntity<Flux<ServerSentEvent<String>>> streamChat(@PathVariable Long sessionId, @PathVariable Long messageId) {
+    public ResponseEntity<Flux<ServerSentEvent<String>>> streamChat(
+            @PathVariable Long sessionId,
+            @PathVariable Long messageId,
+            @RequestHeader(value = "Last-Event-ID", required = false) String lastEventId) {
+        
         return ResponseEntity.ok()
                 .header("Content-Type", "text/event-stream")
                 .header("Cache-Control", "no-cache")
                 .header("Connection", "keep-alive")
-                .body(chatService.streamChat(messageId));
+                .body(chatService.streamChat(messageId, lastEventId));
+    }
+
+    @GetMapping("/{sessionId}/active-generation")
+    public ResponseEntity<java.util.Map<Object, Object>> getActiveGeneration(@PathVariable Long sessionId) {
+        java.util.Map<Object, Object> state = chatService.getActiveGeneration(sessionId);
+        if (state == null || state.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(state);
+    }
+    
+    @DeleteMapping("/generations/{messageId}")
+    public ResponseEntity<Void> cancelGeneration(@PathVariable Long messageId) {
+        chatService.cancelGeneration(messageId);
+        return ResponseEntity.noContent().build();
     }
 }
 

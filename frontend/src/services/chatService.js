@@ -41,15 +41,31 @@ export const chatService = {
     return response.json();
   },
 
-  consumeStream: async (sessionId, messageId, onChunk, onCitations, onVisuals, onProgress, onError, onComplete, onRetry) => {
+  getActiveGeneration: async (sessionId) => {
+    try {
+      const response = await fetch(`${BASE_URL}/api/chat/${sessionId}/active-generation`, {
+        credentials: 'include'
+      });
+      if (!response.ok) return null;
+      return response.json();
+    } catch (e) {
+      return null;
+    }
+  },
+
+  consumeStream: async (sessionId, messageId, onChunk, onCitations, onVisuals, onProgress, onError, onComplete, onRetry, lastEventId = null) => {
     const streamUrl = `${BASE_URL}/api/chat/${sessionId}/stream/${messageId}`;
     try {
+      const headers = {
+        'Accept': 'text/event-stream',
+        'ngrok-skip-browser-warning': 'true',
+      };
+      if (lastEventId) {
+        headers['Last-Event-ID'] = lastEventId;
+      }
       const response = await fetch(streamUrl, {
         method: 'GET',
-        headers: {
-          'Accept': 'text/event-stream',
-          'ngrok-skip-browser-warning': 'true',
-        },
+        headers: headers,
         credentials: 'include',
       });
 
@@ -155,11 +171,15 @@ export const chatService = {
               }
             }
           }
-          break;
+          // If we reach here, the stream ended without an explicit 'done' event.
+          // This usually means the backend crashed or the connection dropped.
+          throw new Error("Stream disconnected prematurely");
         }
       }
 
-      if (onComplete) onComplete();
+      // We should only reach here if the while loop breaks normally, which it doesn't unless `done` is true.
+      // But the `done` block either returns or throws.
+
     } catch (error) {
       console.error('Error in consumeStream:', error);
       if (onError) onError(error);

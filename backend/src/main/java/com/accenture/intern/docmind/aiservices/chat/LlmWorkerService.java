@@ -53,6 +53,7 @@ public class LlmWorkerService {
     private final com.accenture.intern.docmind.aiservices.memory.TopicShiftDetectorService topicShiftDetectorService;
     private final com.accenture.intern.docmind.service.SessionCacheService sessionCacheService;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final org.springframework.data.redis.core.StringRedisTemplate stringRedisTemplate;
     
     private StreamOperations<String, Object, Object> streamOps;
     private static final String CONSUMER_GROUP = "llm-workers";
@@ -78,6 +79,7 @@ public class LlmWorkerService {
                             com.accenture.intern.docmind.service.SessionCacheService sessionCacheService,
                             com.accenture.intern.docmind.aiservices.context.SuggestedQuestionsService suggestedQuestionsService,
                             RedisTemplate<String, Object> redisTemplate,
+                            org.springframework.data.redis.core.StringRedisTemplate stringRedisTemplate,
                             java.util.concurrent.ExecutorService workerExecutor,
                             com.accenture.intern.docmind.service.AnalyticsService analyticsService,
                             TransactionTemplate transactionTemplate) {
@@ -94,6 +96,7 @@ public class LlmWorkerService {
         this.sessionCacheService = sessionCacheService;
         this.suggestedQuestionsService = suggestedQuestionsService;
         this.redisTemplate = redisTemplate;
+        this.stringRedisTemplate = stringRedisTemplate;
         this.workerExecutor = workerExecutor;
         this.analyticsService = analyticsService;
         this.transactionTemplate = transactionTemplate;
@@ -182,6 +185,20 @@ public class LlmWorkerService {
             return;
         }
 
+        // Set active generation state
+        String stateKey = "generation-state:" + messageId;
+        Map<String, String> stateMap = new HashMap<>();
+        stateMap.put("sessionId", sessionId.toString());
+        stateMap.put("messageId", messageId.toString());
+        stateMap.put("status", "RUNNING");
+        stateMap.put("startedAt", String.valueOf(System.currentTimeMillis()));
+        redisTemplate.opsForHash().putAll(stateKey, stateMap);
+        redisTemplate.expire(stateKey, 30, TimeUnit.MINUTES);
+
+        // Point the session to the active generation
+        String sessionActiveKey = "active-generation:" + sessionId;
+        redisTemplate.opsForValue().set(sessionActiveKey, messageId.toString(), 30, TimeUnit.MINUTES);
+
         try {
             transactionTemplate.executeWithoutResult(status -> {
                 long startTime = System.currentTimeMillis();
@@ -194,12 +211,18 @@ public class LlmWorkerService {
                 analyticsService.recordLlmGeneration(tokens, duration);
             });
             
-            streamOps.acknowledge(STREAM_KEY, CONSUMER_GROUP, record.getId());
+            redisTemplate.opsForHash().put(stateKey, "status", "COMPLETED");
+            redisTemplate.delete(sessionActiveKey);
         } catch (Exception e) {
             log.error("Failed to process job {}", messageId, e);
             updateMessageStatus(messageId, MessageStatus.FAILED);
             publishToken(messageId, "error", "Generation failed: " + e.getMessage());
             publishToken(messageId, "done", ""); // End stream
+            
+            redisTemplate.opsForHash().put(stateKey, "status", "FAILED");
+            redisTemplate.delete(sessionActiveKey);
+        } finally {
+            streamOps.acknowledge(STREAM_KEY, CONSUMER_GROUP, record.getId());
         }
     }
 
@@ -336,14 +359,15 @@ public class LlmWorkerService {
     }
 
     private void publishToken(Long messageId, String event, String data) {
-        Map<String, Object> map = new HashMap<>();
+        Map<String, String> map = new HashMap<>();
         map.put("event", event);
-        map.put("data", data);
+        map.put("data", data != null ? data : "");
         try {
-            String json = objectMapper.writeValueAsString(map);
-            redisTemplate.convertAndSend("chat-tokens:" + messageId, json);
+            String streamKey = "chat-stream:" + messageId;
+            stringRedisTemplate.opsForStream().add(streamKey, map);
+            stringRedisTemplate.expire(streamKey, 30, TimeUnit.MINUTES);
         } catch(Exception e) {
-            log.error("Failed to publish token", e);
+            log.error("Failed to publish token to stream", e);
         }
     }
     

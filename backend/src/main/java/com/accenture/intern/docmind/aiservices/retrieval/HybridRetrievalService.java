@@ -84,11 +84,14 @@ public class HybridRetrievalService {
 
     private final VectorStoreService vectorStoreService;
     private final DocumentChunkRepository documentChunkRepository;
+    private final com.accenture.intern.docmind.config.RetrievalProperties retrievalProperties;
 
     public HybridRetrievalService(VectorStoreService vectorStoreService,
-            DocumentChunkRepository documentChunkRepository) {
+            DocumentChunkRepository documentChunkRepository,
+            com.accenture.intern.docmind.config.RetrievalProperties retrievalProperties) {
         this.vectorStoreService = vectorStoreService;
         this.documentChunkRepository = documentChunkRepository;
+        this.retrievalProperties = retrievalProperties;
     }
 
     /**
@@ -111,6 +114,32 @@ public class HybridRetrievalService {
 
     public Mono<List<RetrievalCandidate>> retrieve(String query, Long sessionId) {
         return retrieve(List.of(), query, sessionId, CANDIDATE_POOL_SIZE, false, List.of(), false);
+    }
+
+    /**
+     * Bypasses semantic/lexical search and directly fetches the SECTION_MAP structural 
+     * overview chunk from Postgres. If targetDocuments is provided, restricts to those; 
+     * otherwise searches by sessionId.
+     */
+    public Mono<List<RetrievalCandidate>> retrieveDocumentStructure(List<String> targetDocuments, Long sessionId) {
+        return Mono.fromCallable(() -> {
+            List<DocumentChunk> chunks;
+            if (targetDocuments != null && !targetDocuments.isEmpty()) {
+                chunks = documentChunkRepository.findSectionMapsBySourceNames(targetDocuments);
+            } else if (sessionId != null) {
+                chunks = documentChunkRepository.findSectionMapsBySession(sessionId);
+            } else {
+                return List.<RetrievalCandidate>of();
+            }
+
+            return chunks.stream()
+                    .map(this::toDocument)
+                    .map(doc -> {
+                        doc.getMetadata().put("structuralMatch", true);
+                        return new RetrievalCandidate(doc, 1.0); // Perfect score for explicit structural requests
+                    })
+                    .collect(Collectors.toList());
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     /**
@@ -200,30 +229,139 @@ public class HybridRetrievalService {
      * resume and miss the rest.
      */
     public Mono<List<RetrievalCandidate>> wholeDocumentRetrieve(String sourceName) {
-        // Callers (e.g. ContextBuilderService's SPECIFIC_DOC path) may pass the
-        // raw filename the LLM resolved (e.g. "Jio_5G_Rollout_Project.pdf"), but
-        // DocumentChunk.sourceName is always persisted in normalized form
-        // (extension stripped, underscores/hyphens -> spaces, lowercased - see
-        // EmbeddingService / FilenameNormalizer). Without normalizing here first,
-        // findBySourceNameIgnoreCaseOrderByChunkIndexAsc never matches anything
-        // and whole-document retrieval silently returns 0 chunks, forcing a fall
-        // back to noisy, company-wide adaptive search for what should have been
-        // an instant, exact lookup.
         String normalizedSourceName = com.accenture.intern.docmind.util.FilenameNormalizer.normalize(sourceName);
-        return Mono.fromCallable(() -> documentChunkRepository.findBySourceNameIgnoreCaseOrderByChunkIndexAsc(normalizedSourceName))
+        return Mono.fromCallable(() -> {
+            List<DocumentChunk> chunks = documentChunkRepository.findBySourceNameIgnoreCaseOrderByChunkIndexAsc(sourceName);
+            if (chunks.isEmpty() && !sourceName.equalsIgnoreCase(normalizedSourceName)) {
+                chunks = documentChunkRepository.findBySourceNameIgnoreCaseOrderByChunkIndexAsc(normalizedSourceName);
+            }
+            return chunks;
+        })
                 .subscribeOn(Schedulers.boundedElastic())
                 .map(chunks -> {
                     List<RetrievalCandidate> docs = chunks.stream()
                             .map(this::toDocument)
                             .map(doc -> {
-                                doc.getMetadata().put("wholeDocumentMatch", true);
+                                doc.getMetadata().put("retrievalModeUsed", "WHOLE_DOCUMENT");
                                 return new RetrievalCandidate(doc, 1.0);
                             })
                             .collect(Collectors.toList());
+                    
+                    if (docs.size() > 500) {
+                        log.warn("WHOLE_DOCUMENT retrieval fetched {} chunks. Truncating to 500 to avoid context blowout before Map-Reduce is implemented.", docs.size());
+                        docs = docs.subList(0, 500);
+                    }
+                    
                     log.info("Whole-document retrieval: {} chunks from '{}'", docs.size(), sourceName);
                     return docs;
                 });
     }
+
+    /**
+     * CONTIGUOUS expansion: groups fully reranked anchor candidates by sectionPath,
+     * selects the highest-scoring section, then returns all chunks in that section
+     * in original reading order.
+     */
+    public Mono<List<RetrievalCandidate>> expandContiguous(
+            List<RetrievalCandidate> anchors,
+            String query,
+            Long sessionId,
+            List<String> targetDocuments) {
+
+        return Mono.just(anchors)
+                .flatMap(rankedAnchors -> {
+                    // Filter: only chunks with a non-null sectionPath participate in grouping
+                    List<RetrievalCandidate> validAnchors = anchors.stream()
+                            .filter(c -> c.chunk().getMetadata().get("sectionPath") != null
+                                    && !((String) c.chunk().getMetadata().get("sectionPath")).isBlank())
+                            .collect(Collectors.toList());
+
+                    if (validAnchors.isEmpty()) {
+                        log.warn("CONTIGUOUS: no anchor chunks with sectionPath found for query='{}'. Falling back to ranked.", query);
+                        return Mono.just(rankedAnchors);
+                    }
+
+                    // Group by sourceName|sectionPath, accumulate sum/max/count
+                    Map<String, double[]> sectionScores = new LinkedHashMap<>(); // [sum, max, count]
+                    Map<String, String[]> sectionMeta = new LinkedHashMap<>();  // [sourceName, sectionPath]
+                    for (RetrievalCandidate c : validAnchors) {
+                        String sourceName = (String) c.chunk().getMetadata().getOrDefault("sourceName", "");
+                        String sectionPath = (String) c.chunk().getMetadata().get("sectionPath");
+                        String key = sourceName + "|" + sectionPath;
+                        sectionScores.computeIfAbsent(key, k -> new double[]{0.0, 0.0, 0.0});
+                        double[] stats = sectionScores.get(key);
+                        stats[0] += c.finalScore();                          // sum
+                        stats[1] = Math.max(stats[1], c.finalScore());       // max
+                        stats[2]++;                                           // count
+                        sectionMeta.put(key, new String[]{sourceName, sectionPath});
+                    }
+
+                    // Pick winner by aggregate sum score
+                    String winnerKey = sectionScores.entrySet().stream()
+                            .max(Comparator.comparingDouble(e -> e.getValue()[0]))
+                            .map(Map.Entry::getKey)
+                            .orElse(null);
+
+                    if (winnerKey == null) {
+                        log.warn("CONTIGUOUS: section grouping produced no winner for query='{}'. Falling back to ranked.", query);
+                        return Mono.just(rankedAnchors);
+                    }
+
+                    double[] winnerStats = sectionScores.get(winnerKey);
+                    double winnerSum   = winnerStats[0];
+                    double winnerMax   = winnerStats[1];
+                    double winnerCount = winnerStats[2];
+                    double winnerAvg   = winnerCount > 0 ? winnerSum / winnerCount : 0.0;
+                    String[] meta = sectionMeta.get(winnerKey);
+                    String sourceName  = meta[0];
+                    String sectionPath = meta[1];
+
+                    String sumStr = String.format("%.3f", winnerSum);
+                    String avgStr = String.format("%.3f", winnerAvg);
+                    String maxStr = String.format("%.3f", winnerMax);
+
+                    log.info("CONTIGUOUS: anchor_query='{}' | anchor_chunks={} | winner_section='{}' | score[sum={} avg={} max={} count={}]",
+                            query, validAnchors.size(), sectionPath,
+                            sumStr, avgStr, maxStr, (int) winnerCount);
+
+                    // Confidence check: if the winning section's aggregate score is below the
+                    // configured threshold, don't expand — return ranked results instead
+                    if (winnerSum < retrievalProperties.getContiguousMinConfidence()) {
+                        log.warn("CONTIGUOUS: low expansion confidence (sum={} < threshold={}) for section='{}'. Falling back to ranked retrieval.",
+                                sumStr, String.format("%.3f", retrievalProperties.getContiguousMinConfidence()), sectionPath);
+                        return Mono.just(rankedAnchors);
+                    }
+
+                    // Expand: fetch all chunks in the winning section, in order
+                    return Mono.fromCallable(
+                            () -> documentChunkRepository.findBySourceNameAndSectionPathOrderByChunkIndexAsc(sourceName, sectionPath)
+                    ).subscribeOn(Schedulers.boundedElastic()).map(chunks -> {
+                        int totalChars = chunks.stream().mapToInt(c -> c.getContent() != null ? c.getContent().length() : 0).sum();
+                        boolean withinBudget = totalChars <= retrievalProperties.getContiguousMaxChars();
+
+                        // Always log — build the histogram from day one
+                        log.info("CONTIGUOUS: expansion_section='{}' | expansion_chunks={} | expansion_chars={} | budget={} | within_budget={}",
+                                sectionPath, chunks.size(), totalChars,
+                                retrievalProperties.getContiguousMaxChars(), withinBudget);
+
+                        if (!withinBudget) {
+                            log.warn("CONTIGUOUS: section '{}' exceeds character budget ({} > {}). " +
+                                    "Returning full section — LLM will handle context. " +
+                                    "Consider level-walking or summarization if this is frequent.",
+                                    sectionPath, totalChars, retrievalProperties.getContiguousMaxChars());
+                        }
+
+                        return chunks.stream()
+                                .map(this::toDocument)
+                                .map(doc -> {
+                                    doc.getMetadata().put("retrievalModeUsed", "CONTIGUOUS");
+                                    return new RetrievalCandidate(doc, 1.0);
+                                })
+                                .collect(Collectors.toList());
+                    });
+                });
+    }
+
 
     private Mono<List<RetrievalCandidate>> rankedRetrieve(String query, Long sessionId, long t0, int candidatePoolSize, List<String> targetDocuments, boolean imageOnly) {
         Mono<List<Document>> denseMono = vectorStoreService.retrieve(query, candidatePoolSize, targetDocuments, imageOnly)

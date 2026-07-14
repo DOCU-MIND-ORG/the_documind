@@ -28,9 +28,18 @@ public class EvidenceStructuringService {
             for (VisualEvidence ve : visualEvidence) {
                 String stableId = String.format("IMG_%02d", imgCounter++);
                 String displayTitle = "Image from " + ve.sourceDocument();
-                Matcher m = Pattern.compile("\\[Summary: (.*?)\\]").matcher(ve.caption() != null ? ve.caption() : "");
+                String captionText = ve.caption() != null ? ve.caption() : "";
+                Matcher m = Pattern.compile("(?s)\\[Summary: (.*?)\\]").matcher(captionText);
+                Matcher wikiM = Pattern.compile("(?i)Image Caption: (.*?)(?:\\n|$)").matcher(captionText);
+                
+                String summary = null;
                 if (m.find()) {
-                    String summary = m.group(1).trim();
+                    summary = m.group(1).trim();
+                } else if (wikiM.find()) {
+                    summary = wikiM.group(1).trim();
+                }
+                
+                if (summary != null) {
                     String[] parts = summary.split("\\.");
                     String title = parts[0];
                     title = title.replaceAll("^(?i)(A|The|This) (detailed |descriptive )?(diagram|image|chart|screenshot|photo) (showing|of|illustrating|comparing) ", "");
@@ -53,7 +62,7 @@ public class EvidenceStructuringService {
             if (updatedVisuals.isEmpty()) {
                 structuredOutput.append("No relevant evidence found.");
             }
-            return new AggregatedEvidence(structuredOutput.toString().trim(), updatedVisuals);
+            return new AggregatedEvidence(structuredOutput.toString().trim(), updatedVisuals, Collections.emptyList());
         }
 
         // 2. Remove Duplicates (by exact chunk ID or text)
@@ -256,7 +265,11 @@ public class EvidenceStructuringService {
         structuredOutput.append(String.format("Merged: %d chunks\n", mergedCount));
         structuredOutput.append(String.format("Duplicates removed: %d\n", duplicatesRemoved));
 
-        return new AggregatedEvidence(structuredOutput.toString().trim(), updatedVisuals);
+        List<RetrievalCandidate> orderedCandidates = new ArrayList<>();
+        orderedCandidates.addAll(primary);
+        orderedCandidates.addAll(supporting);
+
+        return new AggregatedEvidence(structuredOutput.toString().trim(), updatedVisuals, orderedCandidates);
     }
 
     private void appendCandidate(StringBuilder sb, RetrievalCandidate cand, int index) {

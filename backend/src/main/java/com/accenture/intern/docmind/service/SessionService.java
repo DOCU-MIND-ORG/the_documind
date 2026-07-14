@@ -261,6 +261,7 @@ public class SessionService {
                     .id(String.valueOf(m.getMessageId()))
                     .role(m.getRole())
                     .text(m.getContent())
+                    .status(m.getStatus() != null ? m.getStatus().name() : null)
                     .createdAt(m.getCreatedAt())
                     .citations(citations)
                     .visuals(visuals)

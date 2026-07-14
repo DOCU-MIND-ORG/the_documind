@@ -54,6 +54,7 @@ public class EvidenceAggregatorService {
         }
 
         // 2. Process Text Evidence
+        List<RetrievalCandidate> orderedCandidates = new ArrayList<>();
         if (textEvidence != null && !textEvidence.isEmpty()) {
             aggregatedString.append("=== Text Evidence ===\n");
             
@@ -68,6 +69,7 @@ public class EvidenceAggregatorService {
                 for (java.util.Map.Entry<String, List<RetrievalCandidate>> entry : grouped.entrySet()) {
                     aggregatedString.append("--- Evidence for: ").append(entry.getKey()).append(" ---\n");
                     for (RetrievalCandidate cand : entry.getValue()) {
+                        orderedCandidates.add(cand);
                         String name = (String) cand.chunk().getMetadata().getOrDefault("sourceName", "unknown");
                         String type = (String) cand.chunk().getMetadata().getOrDefault("sourceType", "");
                         aggregatedString.append(String.format("<CITATION id=\"%d\">\nSource: %s | Type: %s\n%s\n</CITATION>\n\n",
@@ -77,6 +79,7 @@ public class EvidenceAggregatorService {
             } else {
                 int index = 1;
                 for (RetrievalCandidate cand : textEvidence) {
+                    orderedCandidates.add(cand);
                     String name = (String) cand.chunk().getMetadata().getOrDefault("sourceName", "unknown");
                     String type = (String) cand.chunk().getMetadata().getOrDefault("sourceType", "");
                     aggregatedString.append(String.format("<CITATION id=\"%d\">\nSource: %s | Type: %s\n%s\n</CITATION>\n\n",
@@ -87,6 +90,6 @@ public class EvidenceAggregatorService {
             aggregatedString.append("No relevant evidence found.");
         }
 
-        return new AggregatedEvidence(aggregatedString.toString().trim(), updatedVisuals);
+        return new AggregatedEvidence(aggregatedString.toString().trim(), updatedVisuals, orderedCandidates);
     }
 }

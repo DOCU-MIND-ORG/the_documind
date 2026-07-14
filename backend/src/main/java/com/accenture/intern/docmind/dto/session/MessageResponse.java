@@ -17,6 +17,7 @@ public class MessageResponse {
     private String id;
     private MessageRole role;
     private String text;
+    private String status;
     private LocalDateTime createdAt;
     private Object citations;
     private Object visuals;

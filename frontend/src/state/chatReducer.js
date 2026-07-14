@@ -71,6 +71,17 @@ export function chatReducer(state, action) {
       };
     }
 
+    case 'RECONNECT_STREAM': {
+      const { assistantPlaceholder } = action.payload;
+      const filteredMessages = state.messages.filter(m => m.id !== assistantPlaceholder.id);
+      return {
+        ...state,
+        messages: filteredMessages,
+        isStreaming: true,
+        streamingMessage: { ...assistantPlaceholder, progressEvents: [] },
+      };
+    }
+
     case 'APPEND_STREAM_CHUNK':
       if (state.streamingMessage && state.streamingMessage.id === action.payload.messageId) {
         return {

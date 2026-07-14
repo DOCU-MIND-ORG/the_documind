@@ -288,8 +288,87 @@ export default function Chat() {
     }
   }, [state.hasMoreMessages, state.messagesLoading, state.sessionId, state.nextCursor, showToast]);
 
+  // Background polling for responses generated while offline/reloaded
+  useEffect(() => {
+    if (!state.sessionId || state.isStreaming || state.messagesLoading) return;
+    
+    const visibleMessages = state.messages.filter(msg => !isUploadAnchorMessage(msg));
+    if (visibleMessages.length === 0) return;
+    
+    const lastMessage = visibleMessages[visibleMessages.length - 1];
+    
+    // If the last visible message is an uncompleted assistant placeholder, check for active generation
+    if (lastMessage.role === 'ASSISTANT' && lastMessage.status === 'PROCESSING') {
+      let cancelled = false;
+      
+      const checkActive = async () => {
+        try {
+          const activeState = await chatService.getActiveGeneration(state.sessionId);
+          if (cancelled) return;
+          
+          if (activeState && activeState.status === 'RUNNING' && activeState.messageId) {
+            // Backend is still generating! Reconnect to the stream.
+            const assistantId = parseInt(activeState.messageId, 10);
+            
+            const placeholder = {
+              id: assistantId,
+              role: 'ASSISTANT',
+              text: '',
+              status: 'streaming',
+              progressEvents: [],
+              citations: [],
+              visuals: [],
+              createdAt: lastMessage.createdAt || new Date().toISOString(),
+            };
+            
+            dispatch({
+              type: 'RECONNECT_STREAM',
+              payload: {
+                assistantPlaceholder: placeholder
+              }
+            });
+            
+            // Reconnect! (passing no lastEventId so the backend streams from 0-0)
+            await chatService.consumeStream(
+              state.sessionId, assistantId,
+              (chunk) => dispatch({ type: 'APPEND_STREAM_CHUNK', sessionId: state.sessionId, payload: { messageId: assistantId, chunk } }),
+              (citations) => dispatch({ type: 'SET_CITATIONS', sessionId: state.sessionId, payload: { messageId: assistantId, citations } }),
+              (visuals) => dispatch({ type: 'SET_VISUALS', sessionId: state.sessionId, payload: { messageId: assistantId, visuals } }),
+              (progress) => dispatch({ type: 'UPDATE_PROGRESS', sessionId: state.sessionId, payload: { messageId: assistantId, progress } }),
+              (err) => { dispatch({ type: 'STREAM_ERROR', sessionId: state.sessionId, payload: { messageId: assistantId } }); showToast(err.message || 'Stream error', 'error'); },
+              () => {
+                dispatch({ type: 'STREAM_DONE', sessionId: state.sessionId, payload: { messageId: assistantId } });
+                pollSuggestedQuestions(state.sessionId);
+              },
+              () => dispatch({ type: 'RESET_STREAM_TEXT', sessionId: state.sessionId, payload: { messageId: assistantId } })
+            );
+          } else {
+            // Not running (404). Generation might have completed just as we reloaded. 
+            // Pull the latest from Postgres once.
+            const res = await sessionService.getMessages(state.sessionId);
+            if (cancelled) return;
+            const isArray = Array.isArray(res);
+            dispatch({ 
+              type: 'MESSAGES_LOADED', 
+              sessionId: state.sessionId, 
+              payload: { 
+                messages: isArray ? res : res.messages, 
+                hasMore: isArray ? false : res.hasMore, 
+                nextCursor: isArray ? null : res.nextCursor 
+              } 
+            });
+          }
+        } catch (e) {
+          // ignore
+        }
+      };
+      
+      checkActive();
+      return () => { cancelled = true; };
+    }
+  }, [state.sessionId, state.messages, state.isStreaming, state.messagesLoading]);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [state.messages]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [state.messages, state.streamingMessage]);
 
   // Polls GET /api/sessions/{id}/suggested-questions every 2s until ingestion's
   // question-generation step reports READY or FAILED, then stops. Started after
@@ -769,6 +848,40 @@ export default function Chat() {
               <span className="text-xs">Loading messages…</span>
             </div>
           </div>
+        ) : (!state.messagesLoading && state.messages.length === 0 && !isNewChat) ? (
+          <div className="h-full flex items-center justify-center">
+            <div className="flex flex-col items-center gap-4 text-secondary max-w-sm text-center">
+              <svg className="w-12 h-12 text-red-500/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <span className="text-sm">Failed to load chat history. The server might be unreachable or restarting.</span>
+              <button 
+                onClick={() => {
+                  dispatch({ type: 'MESSAGES_LOADING', sessionId: state.sessionId });
+                  sessionService.getMessages(state.sessionId)
+                    .then(res => {
+                      const isArray = Array.isArray(res);
+                      dispatch({ 
+                        type: 'MESSAGES_LOADED', 
+                        sessionId: state.sessionId, 
+                        payload: { 
+                          messages: isArray ? res : res.messages, 
+                          hasMore: isArray ? false : res.hasMore, 
+                          nextCursor: isArray ? null : res.nextCursor 
+                        } 
+                      });
+                    })
+                    .catch(err => {
+                      dispatch({ type: 'MESSAGES_LOAD_FAILED', sessionId: state.sessionId });
+                      showToast(err.message || 'Failed to load messages', 'error');
+                    });
+                }}
+                className="px-6 py-2 mt-2 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 rounded-md transition-colors font-medium"
+              >
+                Retry Connection
+              </button>
+            </div>
+          </div>
         ) : (
           <Virtuoso
             ref={virtuosoRef}
@@ -795,7 +908,11 @@ export default function Chat() {
                   </div>
                 ) : null
               ),
-              Footer: () => (
+              Footer: () => {
+                const visibleMsgs = state.messages.filter(msg => !isUploadAnchorMessage(msg));
+                const isWaitingForBackend = !state.isStreaming && visibleMsgs.length > 0 && visibleMsgs[visibleMsgs.length - 1].role === 'USER';
+                
+                return (
                 <div className="max-w-2xl mx-auto py-6 pb-8 space-y-12">
                   {state.streamingMessage && (
                     <ChatMessage
@@ -804,7 +921,16 @@ export default function Chat() {
                       setActiveCitation={setActiveCitation}
                     />
                   )}
-                  {state.suggestedQuestions.length > 0 && !state.isStreaming && (
+                  {isWaitingForBackend && (
+                    <div className="flex items-start gap-2.5">
+                      <div className="flex flex-col gap-1 max-w-[85%]">
+                        <div className="px-4 py-3 rounded-2xl text-[13px] text-primary">
+                          <AccentureLoader />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {state.suggestedQuestions.length > 0 && !state.isStreaming && !isWaitingForBackend && (
                     <div className="flex items-start gap-2.5">
                       <div className="w-7 shrink-0" />
                       <div className="flex flex-col gap-2 max-w-[85%] animate-fade-in-up">
@@ -827,7 +953,8 @@ export default function Chat() {
                   )}
                   <div ref={bottomRef} />
                 </div>
-              )
+                );
+              }
             }}
           />
         )}

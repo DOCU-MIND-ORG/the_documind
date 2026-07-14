@@ -33,7 +33,7 @@ public class RetrievalController {
                 - REFINE: If you need to filter or refine the search terms.
                 - EXPAND: If you need to expand search to other concepts.
                 - SWITCH_SOURCE: If you need to search a different document.
-                - STOP: If the goal is met or the max iterations are reached.
+                - STOP: The goal is fully met. For queries asking for "all" or "every" instance, only stop when you have evidence from multiple distinct sections and the latest observation shows 0 new sections discovered. If the observation does not mention sections, stop when evidence quality is strong.
                 
                 Respond in valid JSON format:
                 {

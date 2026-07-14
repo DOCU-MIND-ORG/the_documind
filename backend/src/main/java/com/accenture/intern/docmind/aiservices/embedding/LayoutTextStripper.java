@@ -5,7 +5,9 @@ import org.apache.pdfbox.text.TextPosition;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class LayoutTextStripper extends PDFTextStripper {
 
@@ -24,6 +26,7 @@ public class LayoutTextStripper extends PDFTextStripper {
     ) {}
 
     private final List<PdfTextElement> elements = new ArrayList<>();
+    private final Map<Integer, Float> pageHeights = new HashMap<>();
     private int globalCharOffset = 0;
     private int pageCharOffset = 0;
     private int currentPageNumber = 1;
@@ -37,11 +40,18 @@ public class LayoutTextStripper extends PDFTextStripper {
         return elements;
     }
 
+    public Map<Integer, Float> getPageHeights() {
+        return pageHeights;
+    }
+
     @Override
     protected void startPage(org.apache.pdfbox.pdmodel.PDPage page) throws IOException {
         super.startPage(page);
         this.pageCharOffset = 0;
         this.currentPageNumber = getCurrentPageNo();
+        // Capture page height for relative header/footer detection in BlockClassifier
+        float height = page.getMediaBox() != null ? page.getMediaBox().getHeight() : 842.0f;
+        pageHeights.put(currentPageNumber, height);
     }
 
     @Override

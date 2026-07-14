@@ -51,7 +51,8 @@ public record LlmRoutingResponse(
     public record Plan(
         String purpose,
         @JsonProperty("optimized_query") String optimizedQuery,
-        @JsonProperty("target_documents") List<String> targetDocuments
+        @JsonProperty("target_documents") List<String> targetDocuments,
+        @JsonProperty("is_structural_query") Boolean isStructuralQuery
     ) {}
 }
 

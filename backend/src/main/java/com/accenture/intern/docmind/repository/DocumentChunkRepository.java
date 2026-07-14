@@ -67,6 +67,24 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, Lo
     List<DocumentChunk> findBySourceNameIgnoreCaseOrderByChunkIndexAsc(String sourceName);
 
     /**
+     * All chunks sharing the exact same section path within a given source document,
+     * in original reading order. Used by CONTIGUOUS retrieval mode to expand an anchor
+     * chunk into its full containing section. chunkIndex >= 0 excludes SECTION_MAP rows.
+     */
+    @Query("SELECT dc FROM DocumentChunk dc WHERE dc.sourceName = :sourceName " +
+           "AND dc.sectionPath = :sectionPath AND dc.chunkIndex >= 0 " +
+           "ORDER BY dc.chunkIndex ASC")
+    List<DocumentChunk> findBySourceNameAndSectionPathOrderByChunkIndexAsc(
+            @Param("sourceName") String sourceName,
+            @Param("sectionPath") String sectionPath);
+
+    /**
+     * Retrieve specific chunks by their index. Used for neighbor context expansion.
+     */
+    @Query("SELECT dc FROM DocumentChunk dc WHERE dc.sourceName = :sourceName AND dc.chunkIndex IN :chunkIndices")
+    List<DocumentChunk> findBySourceNameAndChunkIndexIn(@Param("sourceName") String sourceName, @Param("chunkIndices") List<Integer> chunkIndices);
+
+    /**
      * Every chunk of an already-ingested document with this exact content hash,
      * if one exists anywhere in the corpus (empty list means this is new
      * content). Used to detect a duplicate re-upload and re-point those
@@ -82,8 +100,16 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, Lo
      * AttachmentService#deleteExploreAttachment to find exactly which chunks
      * — and, via their vectorId, which Pinecone vectors — belong to a file
      * before hard-deleting it. Only meaningful once a chunk's sourceUrl is
-     * that Attachment's real url rather than a placeholder (see
      * IngestionJobPayload#sourceUrl / IngestionWorkerService).
      */
     List<DocumentChunk> findBySourceUrl(String sourceUrl);
+
+    /**
+     * Retrieve structural overview chunks (SECTION_MAP) where chunkIndex is -1.
+     */
+    @Query("SELECT dc FROM DocumentChunk dc WHERE dc.chunkIndex = -1 AND dc.sourceName IN :targetDocuments")
+    List<DocumentChunk> findSectionMapsBySourceNames(@Param("targetDocuments") List<String> targetDocuments);
+
+    @Query("SELECT dc FROM DocumentChunk dc WHERE dc.chunkIndex = -1 AND dc.sessionId = :sessionId")
+    List<DocumentChunk> findSectionMapsBySession(@Param("sessionId") Long sessionId);
 }

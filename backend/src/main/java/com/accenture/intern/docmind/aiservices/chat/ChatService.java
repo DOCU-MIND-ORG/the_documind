@@ -32,15 +32,18 @@ public class ChatService {
     private final SessionRepository sessionRepository;
     private final RedisTemplate<String, Object> redisTemplate;
     private final ReactiveRedisTemplate<String, Object> reactiveRedisTemplate;
+    private final org.springframework.data.redis.core.ReactiveStringRedisTemplate reactiveStringRedisTemplate;
 
     public ChatService(MessageRepository messageRepository,
                        SessionRepository sessionRepository,
                        RedisTemplate<String, Object> redisTemplate,
-                       ReactiveRedisTemplate<String, Object> reactiveRedisTemplate) {
+                       ReactiveRedisTemplate<String, Object> reactiveRedisTemplate,
+                       org.springframework.data.redis.core.ReactiveStringRedisTemplate reactiveStringRedisTemplate) {
         this.messageRepository = messageRepository;
         this.sessionRepository = sessionRepository;
         this.redisTemplate = redisTemplate;
         this.reactiveRedisTemplate = reactiveRedisTemplate;
+        this.reactiveStringRedisTemplate = reactiveStringRedisTemplate;
     }
 
     public ChatJobResponse submitMessage(Long sessionId, ChatRequest request) {
@@ -96,25 +99,53 @@ public class ChatService {
                 .build();
     }
 
-    public Flux<ServerSentEvent<String>> streamChat(Long messageId) {
-        String channelKey = "chat-tokens:" + messageId;
-        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+    public java.util.Map<Object, Object> getActiveGeneration(Long sessionId) {
+        String sessionActiveKey = "active-generation:" + sessionId;
+        String messageId = (String) redisTemplate.opsForValue().get(sessionActiveKey);
+        if (messageId == null) {
+            return null;
+        }
+        String stateKey = "generation-state:" + messageId;
+        return redisTemplate.opsForHash().entries(stateKey);
+    }
+    
+    public void cancelGeneration(Long messageId) {
+        String stateKey = "generation-state:" + messageId;
+        redisTemplate.opsForHash().put(stateKey, "status", "CANCELLED");
+    }
 
-        return reactiveRedisTemplate.listenToChannel(channelKey)
+    public Flux<ServerSentEvent<String>> streamChat(Long messageId, String lastEventId) {
+        String streamKey = "chat-stream:" + messageId;
+
+        var options = org.springframework.data.redis.stream.StreamReceiver.StreamReceiverOptions.builder()
+                .pollTimeout(java.time.Duration.ofMillis(500)).build();
+        
+        var receiver = org.springframework.data.redis.stream.StreamReceiver.create(reactiveStringRedisTemplate.getConnectionFactory(), options);
+
+        org.springframework.data.redis.connection.stream.StreamOffset<String> offset = org.springframework.data.redis.connection.stream.StreamOffset.create(streamKey, 
+                (lastEventId != null && !lastEventId.isEmpty()) ? org.springframework.data.redis.connection.stream.ReadOffset.from(lastEventId) : org.springframework.data.redis.connection.stream.ReadOffset.from("0-0"));
+
+        return receiver.receive(offset)
                 .map(message -> {
                     try {
-                        String json = (String) message.getMessage();
-                        java.util.Map<String, String> map = mapper.readValue(json, java.util.Map.class);
-                        return map;
+                        java.util.Map<?, ?> map = message.getValue();
+                        String event = "message";
+                        String data = "";
+                        for (java.util.Map.Entry<?, ?> entry : map.entrySet()) {
+                            String key = entry.getKey() instanceof byte[] ? new String((byte[]) entry.getKey()) : entry.getKey().toString();
+                            String val = entry.getValue() instanceof byte[] ? new String((byte[]) entry.getValue()) : (entry.getValue() != null ? entry.getValue().toString() : "");
+                            if ("event".equals(key)) event = val;
+                            if ("data".equals(key)) data = val;
+                        }
+                        
+                        return ServerSentEvent.<String>builder(data)
+                                .id(message.getId().getValue())
+                                .event(event)
+                                .build();
                     } catch (Exception e) {
-                        return java.util.Map.of("event", "message", "data", message.getMessage().toString());
+                        return ServerSentEvent.<String>builder(message.getValue().toString()).id(message.getId().getValue()).build();
                     }
                 })
-                .takeUntil(map -> "done".equals(map.get("event")))
-                .map(map -> {
-                    String event = map.get("event");
-                    String data = map.get("data");
-                    return ServerSentEvent.<String>builder(data).event(event != null ? event : "message").build();
-                });
+                .takeUntil(sse -> "done".equals(sse.event()));
     }
 }
