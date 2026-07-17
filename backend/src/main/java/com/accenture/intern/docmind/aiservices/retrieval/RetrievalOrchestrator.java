@@ -71,17 +71,17 @@ public class RetrievalOrchestrator {
                 log.info("ORCHESTRATOR: Starting VISUAL PIPELINE | skipWholeDocument={} | sessionId={} | retrievalQuery='{}'",
                          skipWholeDocument, sessionId, retrievalQuery);
                          
-                visualMono = hybridRetrievalService.retrieve(execPlan.getEntities(), retrievalQuery, sessionId, 15, skipWholeDocument, plan.targetDocuments(), true)
-                    .map(docs -> rerankService.rerank(question, docs, 3, sessionId))
+                visualMono = hybridRetrievalService.retrieve(execPlan.getEntities(), retrievalQuery, sessionId, 30, skipWholeDocument, plan.targetDocuments(), true, execPlan.getImageType())
+                    .map(docs -> rerankService.rerank(question, docs, 15, sessionId))
                     .map(docs -> multiSignalRanker.rank(docs, plan, execPlan.getEntities(), sessionId))
                     .map(docs -> {
                         java.util.Set<String> seenUrls = new java.util.HashSet<>();
                         return docs.stream()
                             .filter(cand -> {
                                 String url = (String) cand.chunk().getMetadata().get("imageUrl");
-                                return url == null || seenUrls.add(url);
+                                return url != null && seenUrls.add(url);
                             })
-                            .limit(3)
+                            .limit(15)
                             .map(cand -> new VisualEvidence(
                                 (String) cand.chunk().getMetadata().get("semanticId"),
                                 null,
@@ -249,7 +249,15 @@ public class RetrievalOrchestrator {
         return orchestratePlan(question, sessionId, globalPlan, entities, progressSink)
             .map(globalPrimary -> {
                 log.info("TopK = {}\n?\nGeneration", globalPrimary.size());
-                return new RetrievalResult(globalPrimary, List.of(), plan.scope(), globalPlan.scope(), true, reason);
+                List<RetrievalCandidate> merged = new ArrayList<>(primary);
+                java.util.Set<String> seenIds = primary.stream().map(c -> c.chunk().getId()).collect(Collectors.toSet());
+                for (RetrievalCandidate gc : globalPrimary) {
+                    if (seenIds.add(gc.chunk().getId())) {
+                        merged.add(gc);
+                    }
+                }
+                merged.sort((a, b) -> Double.compare(b.finalScore(), a.finalScore()));
+                return new RetrievalResult(merged, List.of(), plan.scope(), globalPlan.scope(), true, reason);
             });
     }
 
@@ -306,11 +314,11 @@ public class RetrievalOrchestrator {
                         return Mono.just(structuralChunks);
                     } else {
                         // Fallback to normal retrieval if no structural chunk is found
-                        return hybridRetrievalService.retrieve(entities, retrievalQuery, sessionId, 15, skipWholeDocument, plan.targetDocuments(), false);
+                        return hybridRetrievalService.retrieve(entities, retrievalQuery, sessionId, 15, skipWholeDocument, plan.targetDocuments(), false, null);
                     }
                 });
         } else {
-            baseRetrievalMono = hybridRetrievalService.retrieve(entities, retrievalQuery, sessionId, 15, skipWholeDocument, plan.targetDocuments(), false);
+            baseRetrievalMono = hybridRetrievalService.retrieve(entities, retrievalQuery, sessionId, 15, skipWholeDocument, plan.targetDocuments(), false, null);
         }
 
 

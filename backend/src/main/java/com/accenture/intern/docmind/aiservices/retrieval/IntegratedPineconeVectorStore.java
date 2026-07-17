@@ -4,6 +4,7 @@ import io.pinecone.clients.Pinecone;
 import org.openapitools.db_data.client.ApiClient;
 import org.openapitools.db_data.client.api.VectorOperationsApi;
 import org.openapitools.db_data.client.model.*;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
@@ -13,7 +14,7 @@ import org.springframework.stereotype.Component;
 import java.util.*;
 import java.util.stream.Collectors;
 
-
+@Slf4j
 @Component
 @org.springframework.context.annotation.Primary
 public class IntegratedPineconeVectorStore implements VectorStore {
@@ -22,6 +23,9 @@ public class IntegratedPineconeVectorStore implements VectorStore {
     private final String namespace;
     private final String apiBasePath;
     private final String apiKey;
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER = new com.fasterxml.jackson.databind.ObjectMapper();
+    private static final java.net.http.HttpClient HTTP_CLIENT = java.net.http.HttpClient.newHttpClient();
 
     public IntegratedPineconeVectorStore(
             @Value("${spring.ai.vectorstore.pinecone.api-key}") String apiKey,
@@ -44,42 +48,41 @@ public class IntegratedPineconeVectorStore implements VectorStore {
         }
     }
 
-    
     @Override
     public void add(List<Document> documents) {
-        if (documents == null || documents.isEmpty()) return;
+        if (documents == null || documents.isEmpty())
+            return;
 
         try {
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             StringBuilder ndjson = new StringBuilder();
-            
+
             for (Document doc : documents) {
                 Map<String, Object> record = new HashMap<>();
-                
+
                 String id = doc.getId();
                 if (id == null || id.isBlank()) {
                     id = UUID.randomUUID().toString();
                 }
-                
+
                 record.put("_id", id);
-                
+
                 String text = doc.getText();
                 if (text != null && text.length() > 32000) {
                     // Pinecone has a 40KB metadata limit per vector.
                     // The embedding model will truncate long text anyway,
-                    // so we truncate here to prevent ingestion crashes on massive chunks (like huge Wikipedia tables).
+                    // so we truncate here to prevent ingestion crashes on massive chunks (like huge
+                    // Wikipedia tables).
                     text = text.substring(0, 32000);
                 }
                 record.put("text", text);
-                
+
                 for (Map.Entry<String, Object> entry : doc.getMetadata().entrySet()) {
                     record.put(entry.getKey(), entry.getValue());
                 }
-                
-                ndjson.append(mapper.writeValueAsString(record)).append("\n");
+
+                ndjson.append(MAPPER.writeValueAsString(record)).append("\n");
             }
 
-            java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
             java.net.http.HttpRequest httpRequest = java.net.http.HttpRequest.newBuilder()
                     .uri(java.net.URI.create(this.apiBasePath + "/records/namespaces/" + namespace + "/upsert"))
                     .header("Api-Key", this.apiKey)
@@ -88,8 +91,9 @@ public class IntegratedPineconeVectorStore implements VectorStore {
                     .POST(java.net.http.HttpRequest.BodyPublishers.ofString(ndjson.toString()))
                     .build();
 
-            java.net.http.HttpResponse<String> response = client.send(httpRequest, java.net.http.HttpResponse.BodyHandlers.ofString());
-            
+            java.net.http.HttpResponse<String> response = HTTP_CLIENT.send(httpRequest,
+                    java.net.http.HttpResponse.BodyHandlers.ofString());
+
             if (response.statusCode() >= 300) {
                 throw new RuntimeException("Pinecone HTTP Error " + response.statusCode() + ": " + response.body());
             }
@@ -99,14 +103,19 @@ public class IntegratedPineconeVectorStore implements VectorStore {
         }
     }
 
+    private static final int PINECONE_DELETE_BATCH_SIZE = 1000;
+
     @Override
     public void delete(List<String> idList) {
-        // We will just use the deleteVectors method from VectorOperationsApi which takes DeleteRequest
+        // Pinecone enforces a max of 1000 IDs per request.
         try {
-            DeleteRequest deleteRequest = new DeleteRequest();
-            deleteRequest.setIds(idList);
-            deleteRequest.setNamespace(namespace);
-            api.deleteVectors(deleteRequest);
+            for (int i = 0; i < idList.size(); i += PINECONE_DELETE_BATCH_SIZE) {
+                List<String> batch = idList.subList(i, Math.min(i + PINECONE_DELETE_BATCH_SIZE, idList.size()));
+                DeleteRequest deleteRequest = new DeleteRequest();
+                deleteRequest.setIds(batch);
+                deleteRequest.setNamespace(namespace);
+                api.deleteVectors(deleteRequest);
+            }
         } catch (Exception e) {
             throw new RuntimeException("Failed to delete records from Pinecone", e);
         }
@@ -114,9 +123,12 @@ public class IntegratedPineconeVectorStore implements VectorStore {
 
     @Override
     public void delete(org.springframework.ai.vectorstore.filter.Filter.Expression filterExpression) {
-        // Pinecone SearchRecords API currently does not support deleting by filter expression natively in the Java SDK REST wrapper easily.
-        // Or we could use the Control plane. Since this is an integrated store, we'll throw unsupported for now.
-        throw new UnsupportedOperationException("Deleting by filter expression is not supported yet for IntegratedPineconeVectorStore.");
+        // Pinecone SearchRecords API currently does not support deleting by filter
+        // expression natively in the Java SDK REST wrapper easily.
+        // Or we could use the Control plane. Since this is an integrated store, we'll
+        // throw unsupported for now.
+        throw new UnsupportedOperationException(
+                "Deleting by filter expression is not supported yet for IntegratedPineconeVectorStore.");
     }
 
     @Override
@@ -124,18 +136,18 @@ public class IntegratedPineconeVectorStore implements VectorStore {
         try {
             SearchRecordsRequestQuery query = new SearchRecordsRequestQuery();
             query.setInputs(Collections.singletonMap("text", request.getQuery()));
-            
+
             int topK = request.getTopK() > 0 ? request.getTopK() : 5;
             query.setTopK(topK);
 
             if (request.getFilterExpression() != null) {
-                org.springframework.ai.vectorstore.filter.converter.PineconeFilterExpressionConverter converter = 
-                        new org.springframework.ai.vectorstore.filter.converter.PineconeFilterExpressionConverter();
+                org.springframework.ai.vectorstore.filter.converter.PineconeFilterExpressionConverter converter = new org.springframework.ai.vectorstore.filter.converter.PineconeFilterExpressionConverter();
                 String filterJson = converter.convertExpression(request.getFilterExpression());
                 if (filterJson != null && !filterJson.isBlank()) {
                     try {
-                        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                        Map<String, Object> filterMap = mapper.readValue(filterJson, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+                        Map<String, Object> filterMap = MAPPER.readValue(filterJson,
+                                new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {
+                                });
                         query.setFilter(filterMap);
                     } catch (Exception e) {
                         // ignore or log
@@ -149,9 +161,8 @@ public class IntegratedPineconeVectorStore implements VectorStore {
             long pineconeStart = System.currentTimeMillis();
             SearchRecordsResponse response = api.searchRecordsNamespace(namespace, searchRequest);
             long duration = System.currentTimeMillis() - pineconeStart;
-            org.slf4j.LoggerFactory.getLogger(IntegratedPineconeVectorStore.class)
-                    .info("[TIMING] Pinecone searchRecords API call (Integrated Inference): {}ms", duration);
-            
+            log.info("[TIMING] Pinecone searchRecords API call (Integrated Inference): {}ms", duration);
+
             if (response.getResult() == null || response.getResult().getHits() == null) {
                 return Collections.emptyList();
             }
@@ -187,4 +198,3 @@ public class IntegratedPineconeVectorStore implements VectorStore {
         return similaritySearch(SearchRequest.builder().query(query).build());
     }
 }
-

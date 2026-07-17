@@ -113,7 +113,7 @@ public class HybridRetrievalService {
     private static final int MIN_SOURCE_MATCH_WORD_LENGTH = 4;
 
     public Mono<List<RetrievalCandidate>> retrieve(String query, Long sessionId) {
-        return retrieve(List.of(), query, sessionId, CANDIDATE_POOL_SIZE, false, List.of(), false);
+        return retrieve(List.of(), query, sessionId, CANDIDATE_POOL_SIZE, false, List.of(), false, null);
     }
 
     /**
@@ -146,7 +146,7 @@ public class HybridRetrievalService {
      * Overload used by the MULTI_SOURCE wide-pool path and META_DOC_SEARCH.
      */
     public Mono<List<RetrievalCandidate>> retrieve(String query, Long sessionId, int candidatePoolSize) {
-        return retrieve(List.of(), query, sessionId, candidatePoolSize, false, List.of(), false);
+        return retrieve(List.of(), query, sessionId, candidatePoolSize, false, List.of(), false, null);
     }
 
     /**
@@ -154,7 +154,7 @@ public class HybridRetrievalService {
      */
     public Mono<List<RetrievalCandidate>> retrieve(String query, Long sessionId, int candidatePoolSize,
             boolean skipWholeDocument) {
-        return retrieve(List.of(), query, sessionId, candidatePoolSize, skipWholeDocument, List.of(), false);
+        return retrieve(List.of(), query, sessionId, candidatePoolSize, skipWholeDocument, List.of(), false, null);
     }
 
     /**
@@ -173,11 +173,11 @@ public class HybridRetrievalService {
      * @param imageOnly          when true, restricts both dense and keyword retrieval to chunks of type IMAGE.
      */
     public Mono<List<RetrievalCandidate>> retrieve(List<EntityResolution> entities, String retrievalQuery,
-            Long sessionId, int candidatePoolSize, boolean skipWholeDocument, List<String> targetDocuments, boolean imageOnly) {
+            Long sessionId, int candidatePoolSize, boolean skipWholeDocument, List<String> targetDocuments, boolean imageOnly, String imageType) {
         long t0 = System.currentTimeMillis();
 
         if (skipWholeDocument) {
-            return rankedRetrieve(retrievalQuery, sessionId, t0, candidatePoolSize, targetDocuments, imageOnly);
+            return rankedRetrieve(retrievalQuery, sessionId, t0, candidatePoolSize, targetDocuments, imageOnly, entities, imageType);
         }
 
         Mono<String> matchedSourceMono;
@@ -197,7 +197,7 @@ public class HybridRetrievalService {
                                 List<DocumentChunk> chunks = documentChunkRepository.findBySourceNameIgnoreCaseOrderByChunkIndexAsc(matchedSource);
                                 if (imageOnly) {
                                     chunks = chunks.stream()
-                                            .filter(c -> c.getImageUrl() != null && !c.getImageUrl().isEmpty())
+                                            .filter(c -> (c.getImageUrl() != null && !c.getImageUrl().isEmpty()) || "IMAGE".equalsIgnoreCase(c.getSourceType()) || "PDF_IMAGE".equalsIgnoreCase(c.getSourceType()))
                                             .collect(Collectors.toList());
                                 }
                                 if (chunks.size() > 60) {
@@ -214,7 +214,7 @@ public class HybridRetrievalService {
                             })
                             .subscribeOn(Schedulers.boundedElastic());
                 })
-                .switchIfEmpty(Mono.defer(() -> rankedRetrieve(retrievalQuery, sessionId, t0, candidatePoolSize, targetDocuments, imageOnly)));
+                .switchIfEmpty(Mono.defer(() -> rankedRetrieve(retrievalQuery, sessionId, t0, candidatePoolSize, targetDocuments, imageOnly, entities, imageType)));
     }
 
 
@@ -363,16 +363,26 @@ public class HybridRetrievalService {
     }
 
 
-    private Mono<List<RetrievalCandidate>> rankedRetrieve(String query, Long sessionId, long t0, int candidatePoolSize, List<String> targetDocuments, boolean imageOnly) {
-        Mono<List<Document>> denseMono = vectorStoreService.retrieve(query, candidatePoolSize, targetDocuments, imageOnly)
+    private Mono<List<RetrievalCandidate>> rankedRetrieve(String query, Long sessionId, long t0, int candidatePoolSize, List<String> targetDocuments, boolean imageOnly, List<EntityResolution> entities, String imageType) {
+        Mono<List<Document>> denseMono = vectorStoreService.retrieve(query, imageOnly ? 30 : candidatePoolSize, targetDocuments, imageOnly, entities, imageType)
                 .doOnNext(docs -> log.info("[TIMING] dense (Pinecone) search: {}ms, {} hits",
                         System.currentTimeMillis() - t0, docs.size()));
-        Mono<List<Document>> keywordMono = keywordSearch(query, candidatePoolSize, imageOnly)
+        Mono<List<Document>> keywordMono = keywordSearch(query, imageOnly ? 30 : candidatePoolSize, imageOnly, entities, imageType)
                 .doOnNext(docs -> log.info("[TIMING] keyword (Postgres BM25) search: {}ms, {} hits",
                         System.currentTimeMillis() - t0, docs.size()));
 
         return Mono.zip(denseMono, keywordMono)
                 .map(tuple -> fuse(tuple.getT1(), tuple.getT2()))
+                .flatMap(fused -> {
+                    if (fused.isEmpty() && imageOnly && entities != null && !entities.isEmpty()) {
+                        log.warn("Strict metadata filter yielded 0 results. Falling back to pure semantic visual search...");
+                        Mono<List<Document>> fallbackDense = vectorStoreService.retrieve(query, 30, targetDocuments, imageOnly, null, imageType);
+                        Mono<List<Document>> fallbackKeyword = keywordSearch(query, 30, imageOnly, null, imageType);
+                        return Mono.zip(fallbackDense, fallbackKeyword)
+                                .map(tuple2 -> fuse(tuple2.getT1(), tuple2.getT2()));
+                    }
+                    return Mono.just(fused);
+                })
                 .doOnNext(fused -> {
                     Set<Object> sources = new LinkedHashSet<>();
                     for (RetrievalCandidate cand : fused) {
@@ -384,16 +394,25 @@ public class HybridRetrievalService {
                 });
     }
 
-    private Mono<List<Document>> keywordSearch(String query, int topK, boolean imageOnly) {
+    private Mono<List<Document>> keywordSearch(String query, int topK, boolean imageOnly, List<EntityResolution> entities, String imageType) {
         String[] tokens = query.toLowerCase().split("\\s+");
         if (tokens.length < 3) {
             log.info("[ROUTING] BM25 skipped — query too short");
             return Mono.just(Collections.emptyList());
         }
 
-        return Mono.fromCallable(() -> imageOnly 
-                        ? documentChunkRepository.keywordSearchImages(query, topK) 
-                        : documentChunkRepository.keywordSearch(query, topK))
+        return Mono.fromCallable(() -> {
+                    if (imageOnly) {
+                        if (entities != null && !entities.isEmpty()) {
+                            List<String> tags = entities.stream().map(EntityResolution::canonicalEntity).toList();
+                            return documentChunkRepository.keywordSearchImagesWithTags(query, tags, topK, null);
+                        } else {
+                            return documentChunkRepository.keywordSearchImages(query, topK, null);
+                        }
+                    } else {
+                        return documentChunkRepository.keywordSearch(query, topK);
+                    }
+                })
                 .subscribeOn(Schedulers.boundedElastic())
                 .map(chunks -> chunks.stream().map(this::toDocument).collect(Collectors.toList()))
                 .onErrorResume(e -> {

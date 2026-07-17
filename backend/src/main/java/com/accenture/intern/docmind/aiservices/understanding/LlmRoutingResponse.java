@@ -46,7 +46,12 @@ public record LlmRoutingResponse(
     /**
      * Whether the query asks for or would benefit from visual information.
      */
-    @JsonProperty("visual_search") Boolean visualSearch
+    @JsonProperty("visual_search") Boolean visualSearch,
+
+    /**
+     * Optional image type (e.g. DIAGRAM, PHOTO, SCREENSHOT) extracted from the query.
+     */
+    @JsonProperty("image_type") String imageType
 ) {
     public record Plan(
         String purpose,

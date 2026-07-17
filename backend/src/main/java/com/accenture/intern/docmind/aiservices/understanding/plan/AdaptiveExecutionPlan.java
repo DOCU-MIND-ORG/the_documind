@@ -13,7 +13,8 @@ public record AdaptiveExecutionPlan(
     int maxIterations,
     RetrievalPlan initialRetrievalPlan,
     List<EntityResolution> entities,
-    boolean visualSearch
+    boolean visualSearch,
+    String imageType
 ) implements ExecutionPlan {
     
     @Override
@@ -39,5 +40,10 @@ public record AdaptiveExecutionPlan(
     @Override
     public boolean isVisualSearch() {
         return visualSearch;
+    }
+
+    @Override
+    public String getImageType() {
+        return imageType;
     }
 }

@@ -10,4 +10,5 @@ import lombok.NoArgsConstructor;
 public class ChatRequest {
     private String message;
     private String model;
+    private java.util.List<String> inflightJobIds;
 }

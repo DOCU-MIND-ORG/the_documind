@@ -10,6 +10,7 @@ import java.time.LocalDateTime;
 @Builder
 public class AttachmentResponse {
     private Long attachmentId;
+    private Long jobId;
 
     /**
      * The session this attachment was originally uploaded in (provenance).

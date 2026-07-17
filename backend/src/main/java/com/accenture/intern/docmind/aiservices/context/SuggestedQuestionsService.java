@@ -148,9 +148,9 @@ public class SuggestedQuestionsService {
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(conversationBlock -> {
                     if (conversationBlock.isBlank()) {
-                        // Nothing to ground a follow-up in yet (shouldn't normally
-                        // happen since this runs after a response has been saved).
-                        return Mono.just(List.<String>of());
+                        // If no conversation yet (e.g. user just clicked the suggest button after upload), 
+                        // fall back to generating starter questions from the document alone!
+                        return generateForSession(sessionId);
                     }
 
                     SessionUploadState state = sessionCacheService.getState(sessionId);
@@ -220,7 +220,13 @@ public class SuggestedQuestionsService {
                 .map(this::parseQuestions)
                 .doOnNext(qs -> log.info("Generated {} {} questions", qs.size(), kind))
                 .onErrorResume(e -> {
-                    log.error("Failed to generate {} questions, returning empty list", kind, e);
+                    String msg = e.getMessage() != null ? e.getMessage() : "";
+                    String causeMsg = e.getCause() != null && e.getCause().getMessage() != null ? e.getCause().getMessage() : "";
+                    if (msg.contains("429") || causeMsg.contains("429")) {
+                        log.warn("Rate limit exceeded while generating {} questions. Returning empty list.", kind);
+                    } else {
+                        log.error("Failed to generate {} questions, returning empty list", kind, e);
+                    }
                     return Mono.just(List.of());
                 });
     }

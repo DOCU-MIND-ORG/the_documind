@@ -10,7 +10,8 @@ public record StaticExecutionPlan(
     List<RetrievalPlan> plans,
     MergeOperation mergeOperation,
     List<EntityResolution> entities,
-    boolean visualSearch
+    boolean visualSearch,
+    String imageType
 ) implements ExecutionPlan {
     
     @Override
@@ -36,5 +37,10 @@ public record StaticExecutionPlan(
     @Override
     public boolean isVisualSearch() {
         return visualSearch;
+    }
+
+    @Override
+    public String getImageType() {
+        return imageType;
     }
 }

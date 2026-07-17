@@ -55,7 +55,7 @@ public class PlannerService {
                             "FAST_PASS",
                             new RetrievalPlan(fastIntent.name(), cleanQuery, Collections.emptyList(),
                                     RetrievalExecutionMode.WHOLE_DOCUMENT, Scope.NONE, false),
-                            Collections.emptyList(), false));
+                            Collections.emptyList(), false, null));
         }
 
         return runUnifiedLlmRouter(cleanQuery, query, history, sessionContext, progressSink)
@@ -74,7 +74,7 @@ public class PlannerService {
                                     sessionContext, response.entities());
                         }
                         return Mono.just(new AdaptiveExecutionPlan(response.strategy(), "Adaptive retrieval for: " + query, expectedEntities,
-                                1, 2, initialPlan, response.entities(), Boolean.TRUE.equals(response.visualSearch())));
+                                1, 2, initialPlan, response.entities(), Boolean.TRUE.equals(response.visualSearch()), response.imageType()));
                     }
 
                     List<RetrievalPlan> retrievalPlans = new java.util.ArrayList<>();
@@ -100,12 +100,12 @@ public class PlannerService {
                             }
                         }
                         return Mono.just(new StaticExecutionPlan(response.strategy(), retrievalPlans, mergeOp, response.entities(),
-                                Boolean.TRUE.equals(response.visualSearch())));
+                                Boolean.TRUE.equals(response.visualSearch()), response.imageType()));
                     }
 
                     log.info("ROUTER: DIRECT execution triggered for query: {}", query);
                     return Mono.just(new DirectExecutionPlan(response.strategy(), retrievalPlans.get(0), response.entities(),
-                            Boolean.TRUE.equals(response.visualSearch())));
+                            Boolean.TRUE.equals(response.visualSearch()), response.imageType()));
                 });
     }
 
@@ -380,7 +380,10 @@ public class PlannerService {
                 - Geographical or spatial relationships
                 - Data trends, comparisons, or financial metrics
                 - UI layouts or physical descriptions
+                - Biographies, historical figures, or "tell me about [someone/something]" where a portrait, logo, or reference image adds value
                 In these cases, a diagram, chart, or photo would significantly enhance the answer, even if the user didn't type the word "image".
+
+                If visual_search is true and the user specifically implies a format (e.g. "diagram", "photo", "screenshot"), set "image_type" to that format (e.g. "DIAGRAM", "PHOTO", "SCREENSHOT", etc.). Leave null otherwise.
 
 
                 ═══════════════════════════════════════════════════════════════════
@@ -393,6 +396,7 @@ public class PlannerService {
                   "retrieval_mode": "RANKED | CONTIGUOUS | WHOLE_DOCUMENT",
                   "merge_operation": "NONE | UNION | COMPARE",
                   "visual_search": false,
+                  "image_type": null,
                   "entities": [ { "name": "resolved canonical entity name", "confidence": 0.0 } ],
                   "plans": [
                      {
@@ -465,7 +469,7 @@ public class PlannerService {
                             "NONE",
                             java.util.List.of(new LlmRoutingResponse.Plan("Fallback Plan", query,
                                     java.util.Collections.emptyList(), false)),
-                            false));
+                            false, null));
                 });
     }
 }

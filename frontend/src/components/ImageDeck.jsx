@@ -74,48 +74,53 @@ function StackedDeck({ images, maxStack, onExpand, onKeyDown }) {
   const visibleCards = images.slice(0, maxStack);
 
   return (
-    <div className="inline-flex flex-col gap-1.5 group">
+    <div className="inline-flex flex-col gap-2 group mt-2">
       <div
-        className="relative w-[140px] h-[108px] cursor-pointer outline-none active:scale-97 transition-transform duration-100"
+        className="relative w-[130px] h-[100px] cursor-pointer outline-none active:scale-95 transition-transform duration-150"
         role="button"
         tabIndex={0}
         aria-label={`Expand ${images.length} extracted image${images.length !== 1 ? "s" : ""}`}
         onClick={onExpand}
         onKeyDown={onKeyDown}
       >
-        {visibleCards.map((img, index) => (
-          <StackCard key={img.semanticId} img={img} index={index} isTop={index === 0} />
-        ))}
+        {/* Folder Back */}
+        <div className="absolute bottom-0 left-0 w-full h-[75px] bg-amber-500 rounded-lg rounded-tl-none shadow-sm" />
+        {/* Folder Tab */}
+        <div className="absolute bottom-[75px] left-0 w-[45px] h-[12px] bg-amber-500 rounded-t-md" />
 
+        {/* Images (inside the folder) */}
+        <div className="absolute bottom-[10px] left-0 w-full flex justify-center items-end pointer-events-none z-10">
+          {visibleCards.map((img, index) => {
+            const rotations = [-6, 6, 0];
+            const rotation = rotations[index % 3];
+            return (
+              <div
+                key={img.semanticId}
+                className="absolute bottom-0 w-[90px] h-[65px] rounded border-[1.5px] border-white bg-gray-200 shadow-sm transition-all duration-300 ease-out origin-bottom group-hover:-translate-y-4"
+                style={{
+                  transform: `translateY(-${index * 3}px) rotate(${rotation}deg)`,
+                  zIndex: 10 + (maxStack - index),
+                }}
+              >
+                <img src={img.imageUrl} alt="" className="w-full h-full object-cover rounded-sm" />
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Folder Front */}
+        <div className="absolute bottom-0 left-0 w-full h-[55px] bg-amber-400 rounded-lg shadow-md z-20 border-t border-amber-300 transition-transform duration-300 origin-bottom" />
+        
         {images.length > 1 && (
-          <span className="absolute -top-2 -right-2 bg-blue-500 text-white text-[11px] font-medium w-[22px] h-[22px] rounded-full flex items-center justify-center z-20 border-2 border-gray-900 pointer-events-none">
+          <span className="absolute -top-3 -right-3 bg-blue-500 text-white text-[11px] font-bold w-[24px] h-[24px] rounded-full flex items-center justify-center z-30 border-[3px] border-[var(--color-bg-base)] shadow-sm pointer-events-none transition-transform duration-300 group-hover:scale-110">
             {images.length}
           </span>
         )}
       </div>
 
-      <p className="text-[11px] text-white/30 flex items-center gap-1 select-none m-0">
-        Click to expand
+      <p className="text-[11px] text-tertiary flex items-center justify-center gap-1 select-none m-0 group-hover:text-secondary transition-colors">
+        Click to view
       </p>
-    </div>
-  );
-}
-
-function StackCard({ img, index, isTop }) {
-  const OFFSET_PX = 7;
-  return (
-    <div
-      className="absolute inset-0 rounded-[10px] overflow-hidden border border-white/10 bg-gray-800 transition-colors duration-200 group-hover:border-blue-400/40 group-focus-visible:ring-2 group-focus-visible:ring-blue-500"
-      style={{
-        transform: `translate(${index * OFFSET_PX}px, ${index * OFFSET_PX}px)`,
-        zIndex: 10 - index,
-      }}
-    >
-      {isTop ? (
-        <img src={img.imageUrl} alt={img.caption ?? "Extracted image"} className="w-full h-full object-cover block" />
-      ) : (
-        <div className="w-full h-full bg-gray-900/75" aria-hidden="true" />
-      )}
     </div>
   );
 }

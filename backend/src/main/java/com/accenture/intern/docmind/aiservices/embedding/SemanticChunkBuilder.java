@@ -268,6 +268,33 @@ public class SemanticChunkBuilder {
         DocumentBlock first = blocks.get(0);
         meta.put("charStart", first.docCharStart());
         meta.put("charEnd", blocks.get(blocks.size() - 1).docCharEnd());
+        
+        if (first.bbox() != null) {
+            meta.put("bbox_x", first.bbox().x());
+            meta.put("bbox_y", first.bbox().y());
+            meta.put("bbox_w", first.bbox().width());
+            meta.put("bbox_h", first.bbox().height());
+        }
+
+        StringBuilder bboxesJson = new StringBuilder("[");
+        boolean firstBox = true;
+        for (DocumentBlock block : blocks) {
+            if (block.bbox() != null) {
+                if (!firstBox) bboxesJson.append(",");
+                bboxesJson.append("{\"page\":").append(block.pageNumber())
+                          .append(",\"x\":").append(block.bbox().x())
+                          .append(",\"y\":").append(block.bbox().y())
+                          .append(",\"width\":").append(block.bbox().width())
+                          .append(",\"height\":").append(block.bbox().height())
+                          .append("}");
+                firstBox = false;
+            }
+        }
+        bboxesJson.append("]");
+        
+        if (!firstBox) {
+            meta.put("boundingBoxes", bboxesJson.toString());
+        }
 
         return new Document(UUID.randomUUID().toString(), text, meta);
     }

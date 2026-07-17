@@ -6,7 +6,9 @@ export const initialChatState = {
   nextCursor: null,
   streamingMessage: null, // Separated streaming state to prevent array recreation on every token
   isStreaming: false,
+  status: 'IDLE', // 'IDLE', 'STREAMING', 'CANCELLED', 'DONE', 'ERROR'
   messagesLoading: false,
+  messagesFetched: false,
   suggestedQuestions: [],
 };
 
@@ -20,6 +22,7 @@ export function chatReducer(state, action) {
       return {
         ...initialChatState,
         sessionId: action.payload.sessionId,
+        messagesFetched: !!action.payload.messagesFetched,
       };
 
     case 'SYNC_ROUTE_SESSION': {
@@ -42,7 +45,8 @@ export function chatReducer(state, action) {
         messages: action.payload.messages, 
         hasMoreMessages: action.payload.hasMore,
         nextCursor: action.payload.nextCursor,
-        messagesLoading: false 
+        messagesLoading: false,
+        messagesFetched: true
       };
 
     case 'PREPEND_MESSAGES':
@@ -55,7 +59,7 @@ export function chatReducer(state, action) {
       };
 
     case 'MESSAGES_LOAD_FAILED':
-      return { ...state, messagesLoading: false };
+      return { ...state, messagesLoading: false, messagesFetched: true };
 
     case 'SEND_MESSAGE_OPTIMISTIC': {
       const { userMessage, assistantPlaceholder } = action.payload;
@@ -66,6 +70,7 @@ export function chatReducer(state, action) {
         ...state,
         messages: newMessages,
         isStreaming: !!assistantPlaceholder,
+        status: assistantPlaceholder ? 'STREAMING' : 'IDLE',
         streamingMessage: assistantPlaceholder ? { ...assistantPlaceholder, progressEvents: [] } : null,
         suggestedQuestions: [],
       };
@@ -78,7 +83,13 @@ export function chatReducer(state, action) {
         ...state,
         messages: filteredMessages,
         isStreaming: true,
-        streamingMessage: { ...assistantPlaceholder, progressEvents: [] },
+        status: 'STREAMING',
+        streamingMessage: { 
+            ...assistantPlaceholder, 
+            progressEvents: [],
+            text: '', // Start empty, Redis will replay the stream from 0-0
+            backendMessageId: assistantPlaceholder.id // During reconnect, the placeholder ID is the real backend ID
+        },
       };
     }
 
@@ -89,6 +100,18 @@ export function chatReducer(state, action) {
           streamingMessage: {
             ...state.streamingMessage,
             text: state.streamingMessage.text + action.payload.chunk
+          }
+        };
+      }
+      return state;
+
+    case 'SET_BACKEND_MESSAGE_ID':
+      if (state.streamingMessage && state.streamingMessage.id === action.payload.messageId) {
+        return {
+          ...state,
+          streamingMessage: {
+            ...state.streamingMessage,
+            backendMessageId: action.payload.backendMessageId
           }
         };
       }
@@ -107,16 +130,35 @@ export function chatReducer(state, action) {
       return state;
 
     case 'UPDATE_PROGRESS':
-      if (state.streamingMessage && state.streamingMessage.id === action.payload.messageId) {
-        return {
-          ...state,
-          streamingMessage: {
-            ...state.streamingMessage,
-            progressEvents: [...(state.streamingMessage.progressEvents || []), action.payload.progress]
+      return {
+        ...state,
+        messages: state.messages.map(m => {
+          if (m.id === action.payload.messageId) {
+            return {
+              ...m,
+              progressEvents: [...(m.progressEvents || []), action.payload.progress]
+            };
           }
-        };
-      }
-      return state;
+          return m;
+        }),
+        streamingMessage: state.streamingMessage?.id === action.payload.messageId 
+          ? { ...state.streamingMessage, progressEvents: [...(state.streamingMessage.progressEvents || []), action.payload.progress] } 
+          : state.streamingMessage
+      };
+
+    case 'UPDATE_INGESTION_STATUS':
+      return {
+        ...state,
+        messages: state.messages.map(m => {
+          if (m.id === action.payload.messageId) {
+            return { ...m, ingestionStatus: action.payload.status };
+          }
+          return m;
+        }),
+        streamingMessage: state.streamingMessage?.id === action.payload.messageId 
+          ? { ...state.streamingMessage, ingestionStatus: action.payload.status } 
+          : state.streamingMessage
+      };
 
     case 'SET_CITATIONS':
       if (state.streamingMessage && state.streamingMessage.id === action.payload.messageId) {
@@ -147,13 +189,18 @@ export function chatReducer(state, action) {
         return {
           ...state,
           isStreaming: false,
-          messages: [...state.messages, { ...state.streamingMessage, status: 'complete' }],
+          status: action.payload.finalStatus === 'CANCELLED' ? 'CANCELLED' : 'DONE',
+          messages: [...state.messages, { 
+            ...state.streamingMessage, 
+            status: action.payload.finalStatus === 'CANCELLED' ? 'CANCELLED' : 'complete' 
+          }],
           streamingMessage: null,
         };
       }
       return {
         ...state,
         isStreaming: false,
+        status: 'DONE',
       };
 
     case 'STREAM_ERROR':
@@ -161,6 +208,7 @@ export function chatReducer(state, action) {
         return {
           ...state,
           isStreaming: false,
+          status: 'ERROR',
           messages: [...state.messages, { ...state.streamingMessage, status: 'error' }],
           streamingMessage: null,
         };
@@ -168,6 +216,27 @@ export function chatReducer(state, action) {
       return {
         ...state,
         isStreaming: false,
+        status: 'ERROR',
+      };
+
+    case 'CANCEL_GENERATION':
+      if (state.streamingMessage && state.streamingMessage.id === action.payload.messageId) {
+        return {
+          ...state,
+          isStreaming: false,
+          status: 'CANCELLED',
+          messages: [...state.messages, { 
+            ...state.streamingMessage, 
+            text: state.streamingMessage.text ? state.streamingMessage.text : 'Generation stopped.',
+            status: 'cancelled' 
+          }],
+          streamingMessage: null,
+        };
+      }
+      return {
+        ...state,
+        isStreaming: false,
+        status: 'CANCELLED',
       };
 
     case 'SET_SUGGESTED_QUESTIONS':

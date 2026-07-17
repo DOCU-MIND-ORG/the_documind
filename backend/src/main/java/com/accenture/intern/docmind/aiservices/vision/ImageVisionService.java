@@ -20,7 +20,9 @@ public class ImageVisionService {
             {
               "summary": "A detailed, descriptive summary of what this image shows.",
               "imageType": "CHART | FLOWCHART | INFOGRAPHIC | SCREENSHOT | LOGO | DIAGRAM | ARCHITECTURE | PHOTO",
-              "objects": ["Key components, entities, or concepts identified in the image"],
+              "entities": ["Named entities, people, or specific companies found in the image"],
+              "topics": ["High-level concepts or topics the image relates to"],
+              "objects": ["Key components or general objects identified in the image"],
               "technologies": ["Any technical systems, tools, or software mentioned/shown"],
               "relationships": ["Descriptions of how elements in the image connect (e.g. 'A sends data to B')"],
               "ocr": "All raw readable text found in the image",
@@ -62,6 +64,8 @@ public class ImageVisionService {
                         return new SemanticImage(
                                 parsedImage.summary(),
                                 parsedImage.keywords(),
+                                parsedImage.entities(),
+                                parsedImage.topics(),
                                 parsedImage.technologies(),
                                 parsedImage.objects(),
                                 parsedImage.relationships(),

@@ -7,6 +7,8 @@ import java.util.stream.Collectors;
 public record SemanticImage(
         String summary,
         List<String> keywords,
+        List<String> entities,
+        List<String> topics,
         List<String> technologies,
         List<String> objects,
         List<String> relationships,
@@ -29,6 +31,12 @@ public record SemanticImage(
         }
         if (objects != null && !objects.isEmpty()) {
             sb.append("[Objects: ").append(String.join(", ", objects)).append("]\n");
+        }
+        if (entities != null && !entities.isEmpty()) {
+            sb.append("[Entities: ").append(String.join(", ", entities)).append("]\n");
+        }
+        if (topics != null && !topics.isEmpty()) {
+            sb.append("[Topics: ").append(String.join(", ", topics)).append("]\n");
         }
         if (technologies != null && !technologies.isEmpty()) {
             sb.append("[Technologies: ").append(String.join(", ", technologies)).append("]\n");

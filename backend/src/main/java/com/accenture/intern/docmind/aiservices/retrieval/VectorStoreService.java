@@ -10,6 +10,8 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 import java.util.List;
+import java.time.Duration;
+import java.util.stream.Collectors;
 
 /**
  * DocMind is a shared company knowledge base — any uploaded document is searchable
@@ -22,7 +24,7 @@ import java.util.List;
 @Service
 public class VectorStoreService {
 
-    private static final int BATCH_SIZE = 10;
+    private static final int BATCH_SIZE = 96;
     private final VectorStore vectorStore;
 
     public VectorStoreService(VectorStore vectorStore) {
@@ -36,7 +38,8 @@ public class VectorStoreService {
 
         return Flux.fromIterable(documents)
                 .buffer(BATCH_SIZE)
-                .flatMap(batch -> Mono.fromCallable(() -> {
+                .delayElements(Duration.ofSeconds(4))
+                .concatMap(batch -> Mono.fromCallable(() -> {
                     vectorStore.add(batch);
                     return batch.size();
                 }).subscribeOn(Schedulers.boundedElastic()))
@@ -49,30 +52,45 @@ public class VectorStoreService {
      * DocMind, company-wide. similarityThreshold is left at 0.0 so the cross-encoder
      * reranker — not a raw cosine cutoff — decides what's actually relevant.
      */
-    public Mono<List<Document>> retrieve(String query, int topK, List<String> targetDocuments, boolean imageOnly) {
+    public Mono<List<Document>> retrieve(String query, int topK, List<String> targetDocuments, boolean imageOnly, List<com.accenture.intern.docmind.aiservices.understanding.EntityResolution> entities, String imageType) {
         return Mono.fromCallable(() -> {
                     SearchRequest.Builder builder = SearchRequest.builder()
                             .query(query)
                             .topK(topK)
                             .similarityThreshold(0.0);
 
-                    org.springframework.ai.vectorstore.filter.Filter.Expression filter = null;
+                    String filterStr = "";
                     
                     if (targetDocuments != null && !targetDocuments.isEmpty()) {
-                        filter = new org.springframework.ai.vectorstore.filter.FilterExpressionBuilder().in("sourceName", targetDocuments.toArray()).build();
+                        String docs = targetDocuments.stream()
+                                .map(com.accenture.intern.docmind.util.FilenameNormalizer::normalize)
+                                .map(d -> "'" + d.replace("'", "\\'") + "'")
+                                .collect(Collectors.joining(", "));
+                        filterStr += "sourceName in [" + docs + "]";
                     }
 
                     if (imageOnly) {
-                        org.springframework.ai.vectorstore.filter.Filter.Expression imgFilter = new org.springframework.ai.vectorstore.filter.FilterExpressionBuilder().eq("isImage", true).build();
-                        if (filter != null) {
-                            filter = new org.springframework.ai.vectorstore.filter.Filter.Expression(org.springframework.ai.vectorstore.filter.Filter.ExpressionType.AND, filter, imgFilter);
+                        String imgStr = "isImage == true";
+
+                        if (entities != null && !entities.isEmpty()) {
+                            List<String> entityOrs = new java.util.ArrayList<>();
+                            for (com.accenture.intern.docmind.aiservices.understanding.EntityResolution entity : entities) {
+                                String name = entity.canonicalEntity().replace("'", "\\'");
+                                entityOrs.add(String.format("(entities in ['%s'] || topics in ['%s'] || objects in ['%s'] || technologies in ['%s'] || relationships in ['%s'])", 
+                                    name, name, name, name, name));
+                            }
+                            imgStr += " && (" + String.join(" || ", entityOrs) + ")";
+                        }
+                        
+                        if (filterStr.isEmpty()) {
+                            filterStr = imgStr;
                         } else {
-                            filter = imgFilter;
+                            filterStr = "(" + filterStr + ") && (" + imgStr + ")";
                         }
                     }
 
-                    if (filter != null) {
-                        builder.filterExpression(filter);
+                    if (!filterStr.isEmpty()) {
+                        builder.filterExpression(filterStr);
                     }
 
                     return vectorStore.similaritySearch(builder.build());

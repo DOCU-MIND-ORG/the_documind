@@ -27,6 +27,7 @@ import reactor.core.scheduler.Schedulers;
 public class SessionController {
 
     private final SessionService sessionService;
+    private final com.accenture.intern.docmind.aiservices.context.SuggestedQuestionsService suggestedQuestionsService;
 
     // POST /api/sessions
     @PostMapping
@@ -92,6 +93,16 @@ public class SessionController {
     ) {
         SuggestedQuestionsResponse response = sessionService.getSuggestedQuestions(principal.getName(), id);
         return ResponseEntity.ok(response);
+    }
+
+    // POST /api/sessions/{id}/suggested-questions
+    @PostMapping("/{id}/suggested-questions")
+    public ResponseEntity<Void> triggerSuggestedQuestions(
+            @PathVariable Long id,
+            Principal principal
+    ) {
+        sessionService.triggerSuggestedQuestions(principal.getName(), id, suggestedQuestionsService);
+        return ResponseEntity.accepted().build();
     }
 
     // GET /api/sessions/{id}/export
@@ -183,5 +194,14 @@ public class SessionController {
         return ResponseEntity.ok()
                 .headers(headers)
                 .body(pdfBytes);
+    }
+
+    // GET /api/sessions/{id}/ingestion-status
+    @GetMapping("/{id}/ingestion-status")
+    public ResponseEntity<java.util.Collection<com.accenture.intern.docmind.dto.chat.SessionUploadState.DocumentPreparationStatus>> getIngestionStatus(
+            @PathVariable Long id,
+            Principal principal
+    ) {
+        return ResponseEntity.ok(sessionService.getIngestionStatus(principal.getName(), id));
     }
 }

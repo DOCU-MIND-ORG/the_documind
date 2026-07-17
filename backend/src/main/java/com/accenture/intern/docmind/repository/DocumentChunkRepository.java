@@ -43,11 +43,32 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, Lo
     @Query(value = """
             SELECT * FROM document_chunks dc
             WHERE dc.image_url IS NOT NULL 
+              AND (CAST(:imageType AS text) IS NULL OR dc.image_type = CAST(:imageType AS text))
               AND to_tsvector('english', dc.content) @@ plainto_tsquery('english', :query)
             ORDER BY ts_rank_cd(to_tsvector('english', dc.content), plainto_tsquery('english', :query)) DESC
             LIMIT :topK
             """, nativeQuery = true)
-    List<DocumentChunk> keywordSearchImages(@Param("query") String query, @Param("topK") int topK);
+    List<DocumentChunk> keywordSearchImages(@Param("query") String query, @Param("topK") int topK, @Param("imageType") String imageType);
+
+    /**
+     * Lexical / keyword search filtered to images AND required to match at least one metadata tag.
+     */
+    @Query(value = """
+            SELECT * FROM document_chunks dc
+            WHERE dc.image_url IS NOT NULL 
+              AND (CAST(:imageType AS text) IS NULL OR dc.image_type = CAST(:imageType AS text))
+              AND (
+                  dc.entities && CAST(ARRAY[ :tags ] AS text[]) OR 
+                  dc.topics && CAST(ARRAY[ :tags ] AS text[]) OR 
+                  dc.objects && CAST(ARRAY[ :tags ] AS text[]) OR 
+                  dc.technologies && CAST(ARRAY[ :tags ] AS text[]) OR 
+                  dc.relationships && CAST(ARRAY[ :tags ] AS text[])
+              )
+              AND to_tsvector('english', dc.content) @@ plainto_tsquery('english', :query)
+            ORDER BY ts_rank_cd(to_tsvector('english', dc.content), plainto_tsquery('english', :query)) DESC
+            LIMIT :topK
+            """, nativeQuery = true)
+    List<DocumentChunk> keywordSearchImagesWithTags(@Param("query") String query, @Param("tags") List<String> tags, @Param("topK") int topK, @Param("imageType") String imageType);
 
     /**
      * Distinct source filenames across the whole company corpus. Used to detect

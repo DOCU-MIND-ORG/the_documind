@@ -6,6 +6,7 @@ import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import MermaidChart from './MermaidChart';
 import AccentureLoader from './AccentureLoader.jsx';
+import DocPreparationCard from './DocPreparationCard.jsx';
 
 /**
  * Pre-renders all LaTeX math to HTML using KaTeX BEFORE the text
@@ -46,7 +47,11 @@ function preRenderMath(text) {
   return text;
 }
 
-export default function Streaming({ text, isStreaming, citations, onCitationClick }) {
+
+export default function Streaming({ text, isStreaming, citations = [], visuals = [], onCitationClick, isProcessingUpload, ingestionStatus, pendingFiles }) {
+
+
+
   const { completedText, streamingLine } = useMemo(() => {
     if (!text) return { completedText: '', streamingLine: '' };
     const parts = text.split(/(```[\s\S]*?```)/g);
@@ -107,6 +112,19 @@ export default function Streaming({ text, isStreaming, citations, onCitationClic
       }
       return <a {...props} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline" />;
     },
+    img: ({ src, alt, ...props }) => {
+      let realSrc = src;
+      // Allow http, root-relative, data, and file-proxy URLs
+      if (!src?.startsWith('http') && !src?.startsWith('/') && !src?.startsWith('data:') && !src?.startsWith('file-proxy')) {
+        const visual = visuals?.find(v => v.caption?.includes(alt) || v.semanticId?.includes(alt) || v.semanticId === src);
+        if (visual?.imageUrl) {
+          realSrc = visual.imageUrl;
+        } else {
+          return null;
+        }
+      }
+      return <img src={realSrc} alt={alt} {...props} className="max-w-full rounded-md shadow-sm my-2" />;
+    },
     code: ({ node, inline, className, children, ...props }) => {
       const match = /language-(\w+)/.exec(className || '');
       if (!inline && match && match[1] === 'mermaid') {
@@ -118,7 +136,7 @@ export default function Streaming({ text, isStreaming, citations, onCitationClic
         </code>
       );
     }
-  }), [citations, onCitationClick, isStreaming]);
+  }), [citations, visuals, onCitationClick, isStreaming]);
 
   return (
     <div className="streaming-markdown prose prose-sm dark:prose-invert max-w-none text-[14.5px] leading-relaxed break-words">
@@ -134,9 +152,26 @@ export default function Streaming({ text, isStreaming, citations, onCitationClic
       {streamingLine && (
         <span className="streaming-line" dangerouslySetInnerHTML={{ __html: streamingLine }} />
       )}
-      {isStreaming && (
+      {isStreaming && !completedText && !streamingLine && (isProcessingUpload || (pendingFiles && pendingFiles.length > 0) || ingestionStatus) ? (() => {
+        let docs = [];
+        if (pendingFiles && pendingFiles.length > 0) {
+           docs = pendingFiles.map((f, i) => ({
+             jobId: f.jobId || `pending-${i}`,
+             filename: f.filename || f.name || f.file?.name,
+             state: f.status === 'done' ? 'READY' : f.status === 'error' ? 'FAILED' : 'QUEUED'
+           }));
+        } else {
+           try { docs = JSON.parse(ingestionStatus || '[]'); } catch(e) {}
+        }
+
+        if (!Array.isArray(docs) || docs.length === 0) {
+          return <AccentureLoader className="w-7 h-7 align-middle ml-2" style={{ transform: 'translateY(-3px)' }} />;
+        }
+
+        return <DocPreparationCard docs={docs} />;
+      })() : isStreaming ? (
         <AccentureLoader className="w-7 h-7 align-middle ml-2" style={{ transform: 'translateY(-3px)' }} />
-      )}
+      ) : null}
     </div>
   );
 }

@@ -33,17 +33,20 @@ public class ChatService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final ReactiveRedisTemplate<String, Object> reactiveRedisTemplate;
     private final org.springframework.data.redis.core.ReactiveStringRedisTemplate reactiveStringRedisTemplate;
+    private final ChatGenerationManager chatGenerationManager;
 
     public ChatService(MessageRepository messageRepository,
                        SessionRepository sessionRepository,
                        RedisTemplate<String, Object> redisTemplate,
                        ReactiveRedisTemplate<String, Object> reactiveRedisTemplate,
-                       org.springframework.data.redis.core.ReactiveStringRedisTemplate reactiveStringRedisTemplate) {
+                       org.springframework.data.redis.core.ReactiveStringRedisTemplate reactiveStringRedisTemplate,
+                       ChatGenerationManager chatGenerationManager) {
         this.messageRepository = messageRepository;
         this.sessionRepository = sessionRepository;
         this.redisTemplate = redisTemplate;
         this.reactiveRedisTemplate = reactiveRedisTemplate;
         this.reactiveStringRedisTemplate = reactiveStringRedisTemplate;
+        this.chatGenerationManager = chatGenerationManager;
     }
 
     public ChatJobResponse submitMessage(Long sessionId, ChatRequest request) {
@@ -80,6 +83,7 @@ public class ChatService {
                 .query(request.getMessage())
                 .model(request.getModel())
                 .timestamp(System.currentTimeMillis())
+                .inflightJobIds(request.getInflightJobIds())
                 .build();
 
         // Push to Redis Stream
@@ -89,6 +93,14 @@ public class ChatService {
         recordMap.put("query", job.getQuery());
         recordMap.put("model", job.getModel());
         recordMap.put("timestamp", job.getTimestamp().toString());
+        if (job.getInflightJobIds() != null && !job.getInflightJobIds().isEmpty()) {
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                recordMap.put("inflightJobIds", mapper.writeValueAsString(job.getInflightJobIds()));
+            } catch (Exception e) {
+                log.error("Failed to serialize inflightJobIds", e);
+            }
+        }
 
         redisTemplate.opsForStream().add("chat_jobs", recordMap);
         log.info("Pushed job for message {} to chat_jobs", assistantMessage.getMessageId());
@@ -112,6 +124,7 @@ public class ChatService {
     public void cancelGeneration(Long messageId) {
         String stateKey = "generation-state:" + messageId;
         redisTemplate.opsForHash().put(stateKey, "status", "CANCELLED");
+        chatGenerationManager.cancel(messageId);
     }
 
     public Flux<ServerSentEvent<String>> streamChat(Long messageId, String lastEventId) {

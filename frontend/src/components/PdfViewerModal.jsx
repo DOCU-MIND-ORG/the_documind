@@ -3,6 +3,7 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import AccentureLoader from './AccentureLoader';
+import { useTheme } from '../context/ThemeContext.jsx';
 
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
@@ -14,6 +15,7 @@ export default function PdfViewerModal({ url, boundingBoxes, targetPage, onClose
   const [pageNumber, setPageNumber] = useState(targetPage || 1);
   const [scale, setScale] = useState(0.7);
   const [pageReady, setPageReady] = useState(false);
+  const { theme } = useTheme();
 
   useEffect(() => {
     if (targetPage) setPageNumber(targetPage);
@@ -48,10 +50,10 @@ export default function PdfViewerModal({ url, boundingBoxes, targetPage, onClose
     
     const boxesForPage = boundingBoxes.filter(box => box.page === pageNumber);    
     
-    return boxesForPage.map((box, idx) => (
+      return boxesForPage.map((box, idx) => (
         <div
           key={idx}
-          className="absolute bg-yellow-300/40 rounded-sm"
+          className={`absolute rounded-[3px] shadow-sm ${theme === 'dark' ? 'bg-cyan-400/30 border-[1.5px] border-cyan-400/80' : 'bg-yellow-300/40 border-[1.5px] border-yellow-400/80'}`}
           style={{
             left: `${box.x * scale}px`,
             top: `${box.y * scale}px`,
@@ -71,13 +73,18 @@ export default function PdfViewerModal({ url, boundingBoxes, targetPage, onClose
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-center justify-between px-2 sm:px-4 py-2 sm:py-3 bg-gray-800 border-b border-gray-700 shrink-0 gap-2 sm:gap-0 relative">
           
-          {/* Mobile Close Button */}
-          <button onClick={onClose} className="sm:hidden absolute top-1.5 right-1.5 p-1.5 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white transition-colors z-10">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          {/* Mobile Back Button */}
+          <button onClick={onClose} className="sm:hidden absolute top-1.5 left-1.5 p-1.5 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white transition-colors z-10">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
           </button>
 
-          <div className="flex items-center w-full sm:w-auto justify-center sm:justify-start">
-            <h3 className="text-white font-bold text-sm hidden sm:block">Source Document Viewer</h3>
+          <div className="flex items-center w-full sm:w-auto justify-center sm:justify-start gap-3">
+            {/* Desktop Back Button */}
+            <button onClick={onClose} title="Back to Sources" className="hidden sm:flex items-center gap-1.5 px-2 py-1 hover:bg-gray-700 rounded-md text-gray-400 hover:text-white transition-colors text-sm font-medium">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+              Back
+            </button>
+            <h3 className="text-white font-bold text-sm hidden sm:block border-l border-gray-600 pl-3">Source Document Viewer</h3>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto justify-center">
@@ -114,10 +121,6 @@ export default function PdfViewerModal({ url, boundingBoxes, targetPage, onClose
               </button>
             </div>
 
-            {/* Desktop Close Button */}
-            <button onClick={onClose} className="hidden sm:block p-1.5 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white transition-colors">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
           </div>
         </div>
 
@@ -126,7 +129,7 @@ export default function PdfViewerModal({ url, boundingBoxes, targetPage, onClose
           
           {/* Loader overlay — shown until the page has fully rendered */}
           {!pageReady && (
-            <div className="absolute inset-0 z-20 flex items-center justify-center bg-gray-950">
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-gray-950 text-white">
               <AccentureLoader />
             </div>
           )}

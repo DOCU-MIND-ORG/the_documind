@@ -197,6 +197,7 @@ public class MemoryWorkerService {
                 "Episode: " + result.getTopic() + "\n\n" + result.getSummary(),
                 Map.of(
                         "type", "EPISODE_SUMMARY",
+                        "sourceName", "Past Conversation: " + result.getTopic(),
                         "sessionId", payload.getSessionId(),
                         "topic", result.getTopic()
                 )

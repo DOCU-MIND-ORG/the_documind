@@ -59,6 +59,7 @@ public class IngestionWorkerService {
 
     private final com.accenture.intern.docmind.service.AnalyticsService analyticsService;
     private final TransactionTemplate transactionTemplate;
+    private final com.accenture.intern.docmind.service.SessionCacheService sessionCacheService;
 
     public IngestionWorkerService(JobRepository jobRepository,
                                   DocumentParserService parserService,
@@ -71,7 +72,8 @@ public class IngestionWorkerService {
                                   CloudinaryService cloudinaryService,
                                   java.util.concurrent.ExecutorService workerExecutor,
                                   com.accenture.intern.docmind.service.AnalyticsService analyticsService,
-                                  TransactionTemplate transactionTemplate) {
+                                  TransactionTemplate transactionTemplate,
+                                  com.accenture.intern.docmind.service.SessionCacheService sessionCacheService) {
         this.jobRepository = jobRepository;
         this.parserService = parserService;
         this.embeddingService = embeddingService;
@@ -84,6 +86,7 @@ public class IngestionWorkerService {
         this.workerExecutor = workerExecutor;
         this.analyticsService = analyticsService;
         this.transactionTemplate = transactionTemplate;
+        this.sessionCacheService = sessionCacheService;
     }
 
     @PostConstruct
@@ -188,6 +191,8 @@ public class IngestionWorkerService {
         jobRepository.save(job);
 
         try {
+            sessionCacheService.getOrCreateState(payload.getSessionId())
+                    .updateDocumentStateOnly(payload.getJobId(), com.accenture.intern.docmind.dto.chat.UploadState.INGESTING);
             transactionTemplate.executeWithoutResult(status -> {
                 try {
                     executeIngestion(payload, job);
@@ -203,10 +208,15 @@ public class IngestionWorkerService {
                 }
             });
             
+            sessionCacheService.getOrCreateState(payload.getSessionId())
+                    .updateDocumentStateOnly(payload.getJobId(), com.accenture.intern.docmind.dto.chat.UploadState.READY);
+            
             streamOps.acknowledge(STREAM_KEY, CONSUMER_GROUP, record.getId());
             log.info("Successfully completed ingestion job {}", job.getId());
         } catch (Exception e) {
             log.error("Failed to process ingestion job {}", payload.getJobId(), e);
+            sessionCacheService.getOrCreateState(payload.getSessionId())
+                    .updateDocumentStateOnly(payload.getJobId(), com.accenture.intern.docmind.dto.chat.UploadState.FAILED);
             job.setStatus(JobStatus.FAILED);
             job.setError(e.getMessage());
             jobRepository.save(job);
@@ -255,10 +265,9 @@ public class IngestionWorkerService {
                 for (DocumentParserService.ExtractedImage img : parsed.images()) {
                     imgIndex++;
                     com.accenture.intern.docmind.aiservices.vision.SemanticImage vr = img.visionResponse();
-                    String tags = vr.keywords() != null ? String.join(",", vr.keywords()) : null;
                     String imageSourceName = originalName + " (page " + img.pageNumber() + " image)";
                     ingestionMonos.add(embeddingService.processAndIngest(
-                            vr.toDenseEmbeddingText(), null, "PDF_IMAGE", imageSourceName, originalName, vr.imageType(), tags, payload.getSessionId(), null, payload.getSourceUrl()));
+                            vr.toDenseEmbeddingText(), null, "PDF_IMAGE", imageSourceName, originalName, vr.imageType(), vr, payload.getSessionId(), null, payload.getSourceUrl()));
                 }
                 break;
 
@@ -292,9 +301,8 @@ public class IngestionWorkerService {
                         fileBytes, contentType, com.accenture.intern.docmind.aiservices.vision.ImageContextBuilder.buildStandaloneContext(originalName, null)).block();
                 
                 if (imageVision != null && imageVision.summary() != null && !imageVision.summary().isBlank()) {
-                    String imgTags = imageVision.keywords() != null ? String.join(",", imageVision.keywords()) : null;
                     ingestionMonos.add(embeddingService.processAndIngest(
-                            imageVision.toDenseEmbeddingText(), null, "IMAGE", originalName, originalName, imageVision.imageType(), imgTags, payload.getSessionId(), payload.getSourceUrl(), payload.getSourceUrl()));
+                            imageVision.toDenseEmbeddingText(), null, "IMAGE", originalName, originalName, imageVision.imageType(), imageVision, payload.getSessionId(), payload.getSourceUrl(), payload.getSourceUrl()));
                 }
                 break;
 
@@ -304,6 +312,10 @@ public class IngestionWorkerService {
 
         if (!ingestionMonos.isEmpty()) {
             Mono.when(ingestionMonos).block();
+            embeddingService.triggerSuggestedQuestionGeneration(
+                    payload.getSessionId(), 
+                    sessionCacheService.getOrCreateState(payload.getSessionId())
+            );
         }
     }
 }

@@ -62,6 +62,7 @@ public class AttachmentService {
     private final JobRepository jobRepository;
     private final RedisTemplate<String, Object> redisTemplate;
     private final ObjectMapper objectMapper;
+    private final SessionCacheService sessionCacheService;
 
     /**
      * Self-reference to THIS bean's Spring proxy (not the raw `this`).
@@ -72,6 +73,7 @@ public class AttachmentService {
      * well-known "self-invocation" pitfall). Calling through `self` instead
      * routes back through the proxy, so the transaction interceptor runs and
      * an EntityManager gets bound to whichever thread actually executes it.
+     * 
      * @Lazy breaks the circular self-dependency this would otherwise create.
      */
     @org.springframework.beans.factory.annotation.Autowired
@@ -85,20 +87,21 @@ public class AttachmentService {
     private Path absoluteStorageRoot;
 
     public AttachmentService(AttachmentRepository attachmentRepository,
-                             com.accenture.intern.docmind.repository.ViewAttachmentRepository viewAttachmentRepository,
-                             MessageRepository messageRepository,
-                             SessionRepository sessionRepository,
-                             UserRepository userRepository,
-                             DocumentChunkRepository documentChunkRepository,
-                             VectorStoreService vectorStoreService,
-                             DocumentParserService parserService,
-                             EmbeddingService embeddingService,
-                             ImageVisionService imageVisionService,
-                             CloudinaryService cloudinaryService,
-                             WikipediaIngestionService wikipediaIngestionService,
-                             JobRepository jobRepository,
-                             RedisTemplate<String, Object> redisTemplate,
-                             ObjectMapper objectMapper) {
+            com.accenture.intern.docmind.repository.ViewAttachmentRepository viewAttachmentRepository,
+            MessageRepository messageRepository,
+            SessionRepository sessionRepository,
+            UserRepository userRepository,
+            DocumentChunkRepository documentChunkRepository,
+            VectorStoreService vectorStoreService,
+            DocumentParserService parserService,
+            EmbeddingService embeddingService,
+            ImageVisionService imageVisionService,
+            CloudinaryService cloudinaryService,
+            WikipediaIngestionService wikipediaIngestionService,
+            JobRepository jobRepository,
+            RedisTemplate<String, Object> redisTemplate,
+            ObjectMapper objectMapper,
+            SessionCacheService sessionCacheService) {
         this.attachmentRepository = attachmentRepository;
         this.viewAttachmentRepository = viewAttachmentRepository;
         this.messageRepository = messageRepository;
@@ -114,6 +117,7 @@ public class AttachmentService {
         this.jobRepository = jobRepository;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
+        this.sessionCacheService = sessionCacheService;
     }
 
     @jakarta.annotation.PostConstruct
@@ -128,7 +132,8 @@ public class AttachmentService {
 
     /**
      * Saves the file to the correct sub-folder under storageRoot,
-     * then persists an Attachment row linked to a system Message in the given session.
+     * then persists an Attachment row linked to a system Message in the given
+     * session.
      */
     public Mono<AttachmentUploadResult> uploadFile(Long sessionId, String userEmail, FilePart filePart) {
         return Mono.fromCallable(() -> {
@@ -156,7 +161,8 @@ public class AttachmentService {
             String storedName = UUID.randomUUID() + "_" + originalName;
             Path dest = dir.resolve(storedName);
 
-            // 4. Write file to disk temporarily for parsing (blocking, hence fromCallable + boundedElastic)
+            // 4. Write file to disk temporarily for parsing (blocking, hence fromCallable +
+            // boundedElastic)
             filePart.transferTo(dest).block();
 
             byte[] fileBytes = Files.readAllBytes(dest);
@@ -191,7 +197,8 @@ public class AttachmentService {
                                 .block().orElse(null);
                     }
                 } else if (type == AttachmentType.IMAGE) {
-                    String context = com.accenture.intern.docmind.aiservices.vision.ImageContextBuilder.buildStandaloneContext(originalName, null);
+                    String context = com.accenture.intern.docmind.aiservices.vision.ImageContextBuilder
+                            .buildStandaloneContext(originalName, null);
                     imageVision = imageVisionService.describeImage(fileBytes, contentType, context).block();
                     if (imageVision != null && imageVision.summary() != null && !imageVision.summary().isBlank()) {
                         existingSourceUrl = embeddingService.findExistingSourceUrl(imageVision.toDenseEmbeddingText())
@@ -199,33 +206,36 @@ public class AttachmentService {
                     }
                 }
             } catch (Exception e) {
-                log.warn("Pre-upload parse/vision failed for '{}', will upload to Cloudinary and retry parsing below: {}", originalName, e.getMessage());
+                log.warn(
+                        "Pre-upload parse/vision failed for '{}', will upload to Cloudinary and retry parsing below: {}",
+                        originalName, e.getMessage());
                 pdfParsed = null;
                 imageVision = null;
                 existingSourceUrl = null;
             }
 
             if (existingSourceUrl != null) {
-                log.info("'{}' matches content already in Cloudinary ({}) — skipping re-upload", originalName, existingSourceUrl);
+                log.info("'{}' matches content already in Cloudinary ({}) — skipping re-upload", originalName,
+                        existingSourceUrl);
                 publicUrl = existingSourceUrl;
                 // cloudinaryPublicId/cloudinaryResourceType stay null: this Attachment
                 // row doesn't own a distinct Cloudinary asset, so there's nothing
                 // for THIS row to delete later — the original upload's row does.
             } else if (type == AttachmentType.PDF) {
-                CloudinaryService.UploadResult uploaded =
-                        cloudinaryService.uploadRaw(fileBytes, "storage/pdfs", originalName);
+                CloudinaryService.UploadResult uploaded = cloudinaryService.uploadRaw(fileBytes, "storage/pdfs",
+                        originalName);
                 publicUrl = uploaded.url();
                 cloudinaryPublicId = uploaded.publicId();
                 cloudinaryResourceType = "raw";
             } else if (type == AttachmentType.IMAGE) {
-                CloudinaryService.UploadResult uploaded =
-                        cloudinaryService.uploadImage(fileBytes, "storage/images", originalName);
+                CloudinaryService.UploadResult uploaded = cloudinaryService.uploadImage(fileBytes, "storage/images",
+                        originalName);
                 publicUrl = uploaded.url();
                 cloudinaryPublicId = uploaded.publicId();
                 cloudinaryResourceType = "image";
             } else {
-                CloudinaryService.UploadResult uploaded =
-                        cloudinaryService.uploadRaw(fileBytes, "storage/others", originalName);
+                CloudinaryService.UploadResult uploaded = cloudinaryService.uploadRaw(fileBytes, "storage/others",
+                        originalName);
                 publicUrl = uploaded.url();
                 cloudinaryPublicId = uploaded.publicId();
                 cloudinaryResourceType = "raw";
@@ -243,7 +253,8 @@ public class AttachmentService {
 
                     if (parsed.text() != null && !parsed.text().isBlank()) {
                         ingestionMonos.add(
-                                embeddingService.processAndIngest(parsed.text(), parsed.elements(), type.name(), originalName, publicUrl, sessionId));
+                                embeddingService.processAndIngest(parsed.text(), parsed.elements(), type.name(),
+                                        originalName, publicUrl, sessionId));
                     }
 
                     int imgIndex = 0;
@@ -255,19 +266,20 @@ public class AttachmentService {
                         }
                         String imageSourceName = originalName + " (page " + img.pageNumber() + " image)";
                         SemanticImage vr = img.visionResponse();
-                        String tags = vr.keywords() != null ? String.join(",", vr.keywords()) : null;
-                        
                         ingestionMonos.add(embeddingService.processAndIngest(
-                                vr.toDenseEmbeddingText(), null, "PDF_IMAGE", imageSourceName, originalName, vr.imageType(), tags, sessionId, extractedImageUrl, publicUrl));
+                                vr.toDenseEmbeddingText(), null, "PDF_IMAGE", imageSourceName, originalName,
+                                vr.imageType(), vr, sessionId, extractedImageUrl, publicUrl));
                     }
 
                     log.info("Successfully processed '{}' ({} text chunk-source, {} embedded images)",
-                            originalName, parsed.text() == null || parsed.text().isBlank() ? 0 : 1, parsed.images().size());
+                            originalName, parsed.text() == null || parsed.text().isBlank() ? 0 : 1,
+                            parsed.images().size());
 
                 } else if (type == AttachmentType.TEXT) {
                     String parsedText = parserService.parseTextFile(dest);
                     if (parsedText != null && !parsedText.isBlank()) {
-                        ingestionMonos.add(embeddingService.processAndIngest(parsedText, null, type.name(), originalName, publicUrl, sessionId));
+                        ingestionMonos.add(embeddingService.processAndIngest(parsedText, null, type.name(),
+                                originalName, publicUrl, sessionId));
                         log.info("Successfully processed '{}'", originalName);
                     }
                 } else if (type == AttachmentType.IMAGE) {
@@ -276,11 +288,15 @@ public class AttachmentService {
                     // vision now exactly as the original code always did.
                     SemanticImage parsedVision = imageVision != null
                             ? imageVision
-                            : imageVisionService.describeImage(fileBytes, contentType, com.accenture.intern.docmind.aiservices.vision.ImageContextBuilder.buildStandaloneContext(originalName, null)).block();
+                            : imageVisionService.describeImage(fileBytes, contentType,
+                                    com.accenture.intern.docmind.aiservices.vision.ImageContextBuilder
+                                            .buildStandaloneContext(originalName, null))
+                                    .block();
                     if (parsedVision != null && parsedVision.summary() != null && !parsedVision.summary().isBlank()) {
-                        String tags = parsedVision.keywords() != null ? String.join(",", parsedVision.keywords()) : null;
                         ingestionMonos.add(
-                                embeddingService.processAndIngest(parsedVision.toDenseEmbeddingText(), null, type.name(), originalName, originalName, parsedVision.imageType(), tags, sessionId, publicUrl, publicUrl));
+                                embeddingService.processAndIngest(parsedVision.toDenseEmbeddingText(), null,
+                                        type.name(), originalName, originalName, parsedVision.imageType(), parsedVision,
+                                        sessionId, publicUrl, publicUrl));
                         log.info("Successfully processed '{}'", originalName);
                     }
                 }
@@ -310,6 +326,10 @@ public class AttachmentService {
                     .userId(session.getUser().getId())
                     .sourceUrl(publicUrl)
                     .build();
+
+            // Synchronously mark that an ingestion is pending before queuing it
+            sessionCacheService.getOrCreateState(sessionId)
+                    .updateDocumentStatus(job.getId(), originalName, com.accenture.intern.docmind.dto.chat.UploadState.QUEUED);
 
             // Push to Redis Stream
             try {
@@ -358,11 +378,14 @@ public class AttachmentService {
             // Cloudinary asset + document_chunks + Pinecone vectors, or whether
             // it should just detach this one user's row.
             Attachment attachment = existingSourceUrl != null
-                    ? attachmentRepository.findFirstByUrlAndUserIdOrderByUploadedAtAsc(existingSourceUrl, session.getUser().getId()).orElse(null)
+                    ? attachmentRepository
+                            .findFirstByUrlAndUserIdOrderByUploadedAtAsc(existingSourceUrl, session.getUser().getId())
+                            .orElse(null)
                     : null;
 
             if (attachment != null) {
-                log.info("'{}' duplicates existing attachment #{} owned by this same user — reusing it instead of inserting a new row",
+                log.info(
+                        "'{}' duplicates existing attachment #{} owned by this same user — reusing it instead of inserting a new row",
                         originalName, attachment.getAttachmentId());
             } else {
                 attachment = Attachment.builder()
@@ -390,7 +413,9 @@ public class AttachmentService {
                     .addedAt(LocalDateTime.now())
                     .build());
 
-            return new AttachmentUploadResult(toResponse(attachment), ingestionMono);
+            AttachmentResponse response = toResponse(attachment);
+            response.setJobId(job.getId());
+            return new AttachmentUploadResult(response, ingestionMono);
         }).subscribeOn(Schedulers.boundedElastic());
     }
 
@@ -401,14 +426,16 @@ public class AttachmentService {
      * null (rather than throwing) on failure, so one bad image never fails the
      * whole PDF's ingestion.
      */
-    private String saveExtractedPdfImage(DocumentParserService.ExtractedImage img, String originalPdfName, int imgIndex) {
+    private String saveExtractedPdfImage(DocumentParserService.ExtractedImage img, String originalPdfName,
+            int imgIndex) {
         try {
             Path dir = absoluteStorageRoot.resolve("images").resolve("extracted");
             Files.createDirectories(dir);
 
             String ext = img.mimeType() != null && img.mimeType().contains("png") ? "png" : "jpg";
             String baseName = originalPdfName.replaceAll("[^a-zA-Z0-9.-]", "_");
-            String storedName = UUID.randomUUID() + "_" + baseName + "_p" + img.pageNumber() + "_" + imgIndex + "." + ext;
+            String storedName = UUID.randomUUID() + "_" + baseName + "_p" + img.pageNumber() + "_" + imgIndex + "."
+                    + ext;
             Path dest = dir.resolve(storedName);
 
             Files.write(dest, img.imageBytes());
@@ -434,7 +461,8 @@ public class AttachmentService {
             String originalName;
             String wikipediaUrl = url;
             if (url.startsWith("http")) {
-                // Extract title from URL (e.g. https://en.wikipedia.org/wiki/Spider-Man -> Spider-Man)
+                // Extract title from URL (e.g. https://en.wikipedia.org/wiki/Spider-Man ->
+                // Spider-Man)
                 String pageTitle = url.substring(url.lastIndexOf("/") + 1);
                 originalName = java.net.URLDecoder.decode(pageTitle, java.nio.charset.StandardCharsets.UTF_8);
             } else {
@@ -458,6 +486,10 @@ public class AttachmentService {
                     .sessionId(sessionId)
                     .userId(session.getUser().getId())
                     .build();
+
+            // Synchronously mark that an ingestion is pending before queuing it
+            sessionCacheService.getOrCreateState(sessionId)
+                    .updateDocumentStatus(job.getId(), originalName, com.accenture.intern.docmind.dto.chat.UploadState.QUEUED);
 
             // Push to Redis Stream
             try {
@@ -503,7 +535,9 @@ public class AttachmentService {
                     .addedAt(LocalDateTime.now())
                     .build());
 
-            return new AttachmentUploadResult(toResponse(attachment), ingestionMono);
+            AttachmentResponse response = toResponse(attachment);
+            response.setJobId(job.getId());
+            return new AttachmentUploadResult(response, ingestionMono);
         }).subscribeOn(Schedulers.boundedElastic());
     }
 
@@ -535,27 +569,109 @@ public class AttachmentService {
     }
 
     /**
-     * Deletes a single attachment from the caller's Explore view, with
-     * duplicate-ownership-aware cleanup:
-     * <p>
-     * 1. Looks up every Attachment row (across all users) sharing the same
-     *    url. If exactly one row exists (this user is the sole owner), the
-     *    file is hard-deleted everywhere: the Cloudinary asset, every
-     *    document_chunks row whose sourceUrl matches, and the corresponding
-     *    Pinecone vectors (looked up by DocumentChunk.vectorId).
-     * 2. If more than one row shares that url (other users also have this
-     *    content), only THIS user's own Attachment row (and its
-     *    ViewAttachment membership rows) is removed — the shared Cloudinary
-     *    asset, chunks, and vectors are left alone since other users still
-     *    depend on them.
+     * Carries external-cleanup data (Cloudinary + Pinecone) out of the
+     * transactional DB phase so the slow network calls can run after the
+     * HTTP response has already been returned to the client.
      */
-    public Mono<AttachmentDeleteResponse> deleteExploreAttachment(Long attachmentId, String userEmail) {
-        return Mono.fromCallable(() -> self.deleteExploreAttachmentBlocking(attachmentId, userEmail))
-                .subscribeOn(Schedulers.boundedElastic());
+    private record CleanupTask(
+            String cloudinaryPublicId,
+            String cloudinaryResourceType,
+            List<String> vectorIds,
+            AttachmentDeleteResponse response) {
+        boolean hasExternalCleanup() {
+            return (cloudinaryPublicId != null) || (vectorIds != null && !vectorIds.isEmpty());
+        }
     }
 
+    // Max attempts for each external-cleanup operation before giving up.
+    private static final int CLEANUP_MAX_RETRIES = 3;
+
+    /**
+     * Deletes a single attachment from the caller's Explore view.
+     * <p>
+     * Phase 1 (transactional, fast ~5 ms): removes DB rows and collects
+     * the Cloudinary / Pinecone IDs that need cleaning up externally.
+     * The HTTP 200 is returned to the client as soon as this phase ends.
+     * <p>
+     * Phase 2 (background, detached): Pinecone and Cloudinary deletions
+     * run in parallel on boundedElastic threads with exponential-backoff
+     * retry, completely decoupled from the HTTP response lifecycle.
+     * <p>
+     * Ownership semantics (unchanged):
+     * - Sole owner  → hard-delete everywhere (DB + Cloudinary + Pinecone).
+     * - Shared owner → only this user's Attachment / ViewAttachment rows
+     *   are removed; shared assets remain for the other users.
+     */
+    public Mono<AttachmentDeleteResponse> deleteExploreAttachment(Long attachmentId, String userEmail) {
+        return Mono.fromCallable(() -> self.deleteDbRecordsAndCollectCleanup(attachmentId, userEmail))
+                .subscribeOn(Schedulers.boundedElastic())
+                .doOnNext(cleanup -> {
+                    if (cleanup.hasExternalCleanup()) {
+                        buildParallelCleanupPipeline(cleanup, attachmentId)
+                                .subscribe(
+                                        null,
+                                        err -> log.error("Background cleanup failed for attachment #{}", attachmentId, err));
+                    }
+                })
+                .map(CleanupTask::response);
+    }
+
+    /**
+     * Builds the Phase 2 pipeline: Pinecone and Cloudinary deletions run
+     * in parallel, each with exponential-backoff retry.
+     * Errors from each branch are caught and logged independently so a
+     * Cloudinary failure never prevents Pinecone cleanup (and vice versa).
+     */
+    private Mono<Void> buildParallelCleanupPipeline(CleanupTask cleanup, Long attachmentId) {
+        reactor.util.retry.Retry retrySpec = reactor.util.retry.Retry
+                .backoff(CLEANUP_MAX_RETRIES, java.time.Duration.ofSeconds(1))
+                .maxBackoff(java.time.Duration.ofSeconds(10))
+                .doBeforeRetry(signal -> log.warn(
+                        "Background cleanup retry #{} for attachment #{}: {}",
+                        signal.totalRetries() + 1, attachmentId, signal.failure().getMessage()));
+
+        Mono<Void> pineconeCleanup = Mono.empty();
+        if (cleanup.vectorIds() != null && !cleanup.vectorIds().isEmpty()) {
+            pineconeCleanup = vectorStoreService.deleteByIds(cleanup.vectorIds())
+                    .retryWhen(retrySpec)
+                    .doOnSuccess(v -> log.info("Background: deleted {} Pinecone vectors for attachment #{}",
+                            cleanup.vectorIds().size(), attachmentId))
+                    .onErrorResume(e -> {
+                        log.error("Background: gave up deleting {} Pinecone vectors for attachment #{} after {} retries",
+                                cleanup.vectorIds().size(), attachmentId, CLEANUP_MAX_RETRIES, e);
+                        return Mono.empty();
+                    });
+        }
+
+        Mono<Void> cloudinaryCleanup = Mono.empty();
+        if (cleanup.cloudinaryPublicId() != null) {
+            cloudinaryCleanup = Mono
+                    .fromRunnable(() -> cloudinaryService.deleteFile(
+                            cleanup.cloudinaryPublicId(), cleanup.cloudinaryResourceType()))
+                    .subscribeOn(Schedulers.boundedElastic())
+                    .retryWhen(retrySpec)
+                    .doOnSuccess(v -> log.info("Background: deleted Cloudinary asset '{}' for attachment #{}",
+                            cleanup.cloudinaryPublicId(), attachmentId))
+                    .onErrorResume(e -> {
+                        log.error("Background: gave up deleting Cloudinary asset '{}' for attachment #{} after {} retries",
+                                cleanup.cloudinaryPublicId(), attachmentId, CLEANUP_MAX_RETRIES, e);
+                        return Mono.empty();
+                    })
+                    .then();
+        }
+
+        // Run both in parallel; wait for both before completing.
+        return Mono.when(pineconeCleanup, cloudinaryCleanup);
+    }
+
+    /**
+     * Phase 1 — transactional, DB-only.
+     * Removes all database rows and returns a {@link CleanupTask} that
+     * describes what still needs to be deleted externally (Cloudinary /
+     * Pinecone). No network calls are made here.
+     */
     @Transactional
-    public AttachmentDeleteResponse deleteExploreAttachmentBlocking(Long attachmentId, String userEmail) {
+    public CleanupTask deleteDbRecordsAndCollectCleanup(Long attachmentId, String userEmail) {
         User user = userRepository.findByEmail(userEmail);
         if (user == null) {
             throw new RuntimeException("User not found");
@@ -573,14 +689,12 @@ public class AttachmentService {
         int ownerCount = owners.isEmpty() ? 1 : owners.size();
 
         if (ownerCount <= 1) {
-            // Sole owner — purge everywhere.
+            // Sole owner — collect cleanup info, wipe DB rows immediately.
             String cloudinaryPublicId = attachment.getCloudinaryPublicId();
             String cloudinaryResourceType = attachment.getCloudinaryResourceType();
             if (cloudinaryPublicId == null) {
-                // This row's own asset fields can be null (e.g. it was created via the
-                // dedup-reuse path) even though it's the sole remaining owner — fall back
-                // to scanning the other owner rows (should just be itself here, but this
-                // stays correct even if that assumption ever changes).
+                // Dedup-reuse path: this row's own asset fields can be null even
+                // though it is the sole remaining owner — fall back to sibling rows.
                 for (Attachment a : owners) {
                     if (a.getCloudinaryPublicId() != null) {
                         cloudinaryPublicId = a.getCloudinaryPublicId();
@@ -589,21 +703,17 @@ public class AttachmentService {
                     }
                 }
             }
-            if (cloudinaryPublicId != null) {
-                cloudinaryService.deleteFile(cloudinaryPublicId, cloudinaryResourceType);
-            }
 
+            List<String> vectorIds = java.util.Collections.emptyList();
             if (url != null) {
                 List<DocumentChunk> chunks = documentChunkRepository.findBySourceUrl(url);
                 if (!chunks.isEmpty()) {
-                    List<String> vectorIds = chunks.stream()
+                    vectorIds = chunks.stream()
                             .map(DocumentChunk::getVectorId)
                             .filter(java.util.Objects::nonNull)
                             .collect(Collectors.toList());
-                    // Safe to block here: this method only ever runs on a
-                    // boundedElastic thread (see deleteExploreAttachment above),
-                    // never directly on the Netty/event-loop thread.
-                    vectorStoreService.deleteByIds(vectorIds).block();
+                    // Delete chunk rows now (inside transaction) — vectors are
+                    // cleaned up in the background after the response is sent.
                     documentChunkRepository.deleteAll(chunks);
                 }
             }
@@ -611,28 +721,36 @@ public class AttachmentService {
             viewAttachmentRepository.deleteByAttachment_AttachmentId(attachmentId);
             attachmentRepository.delete(attachment);
 
-            log.info("Attachment #{} ('{}') fully deleted — was sole owner", attachmentId, attachment.getFileName());
-            return AttachmentDeleteResponse.builder()
-                    .attachmentId(attachmentId)
-                    .fullyDeleted(true)
-                    .ownerCount(ownerCount)
-                    .message("File removed for everyone — no other user had it.")
-                    .build();
+            log.info("Attachment #{} ('{}') DB records deleted — external cleanup queued in background",
+                    attachmentId, attachment.getFileName());
+
+            return new CleanupTask(cloudinaryPublicId, cloudinaryResourceType, vectorIds,
+                    AttachmentDeleteResponse.builder()
+                            .attachmentId(attachmentId)
+                            .fullyDeleted(true)
+                            .ownerCount(ownerCount)
+                            .message("File removed for everyone — no other user had it.")
+                            .build());
         } else {
-            // Other users still reference this content — only detach this user's copy.
+            // Shared — only detach this user's copy; no external cleanup needed.
             viewAttachmentRepository.deleteByAttachment_AttachmentId(attachmentId);
             attachmentRepository.delete(attachment);
 
             log.info("Attachment #{} ('{}') detached — {} other user(s) still reference this file",
                     attachmentId, attachment.getFileName(), ownerCount - 1);
-            return AttachmentDeleteResponse.builder()
-                    .attachmentId(attachmentId)
-                    .fullyDeleted(false)
-                    .ownerCount(ownerCount)
-                    .message("Removed from your Explore list. Kept — " + (ownerCount - 1) + " other user(s) still have this file.")
-                    .build();
+
+            return new CleanupTask(null, null, java.util.Collections.emptyList(),
+                    AttachmentDeleteResponse.builder()
+                            .attachmentId(attachmentId)
+                            .fullyDeleted(false)
+                            .ownerCount(ownerCount)
+                            .message("Removed from your Explore list. Kept — " + (ownerCount - 1)
+                                    + " other user(s) still have this file.")
+                            .build());
         }
     }
+
+
 
     public Mono<List<String>> searchWikipedia(String query) {
         return parserService.searchWikipedia(query);
@@ -642,18 +760,21 @@ public class AttachmentService {
 
     private AttachmentType resolveType(String contentType) {
         String ct = contentType.toLowerCase();
-        if (ct.contains("pdf"))                                      return AttachmentType.PDF;
-        if (ct.startsWith("image/"))                                 return AttachmentType.IMAGE;
-        if (ct.contains("text/") || ct.contains("markdown"))        return AttachmentType.TEXT;
+        if (ct.contains("pdf"))
+            return AttachmentType.PDF;
+        if (ct.startsWith("image/"))
+            return AttachmentType.IMAGE;
+        if (ct.contains("text/") || ct.contains("markdown"))
+            return AttachmentType.TEXT;
         return AttachmentType.OTHER;
     }
 
     private String resolveFolder(AttachmentType type) {
         return switch (type) {
-            case PDF   -> "pdfs";
+            case PDF -> "pdfs";
             case IMAGE -> "images";
-            case TEXT  -> "texts";
-            default    -> "other";
+            case TEXT -> "texts";
+            default -> "other";
         };
     }
 
@@ -672,4 +793,3 @@ public class AttachmentService {
                 .build();
     }
 }
-

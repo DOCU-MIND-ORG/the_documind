@@ -92,9 +92,9 @@ public class MultiSignalRanker {
             // Filter out highly irrelevant candidates to avoid polluting the LLM context
             rankedCandidates = rankedCandidates.stream()
                     .filter(c -> {
-                        String type = (String) c.chunk().getMetadata().get("type");
-                        boolean isImage = "IMAGE".equals(type) || "PDF_IMAGE".equals(type);
-                        return c.finalScore() >= threshold || (isImage && c.finalScore() >= 0.001);
+                        Object isImageObj = c.chunk().getMetadata().get("isImage");
+                        boolean isImage = Boolean.TRUE.equals(isImageObj) || "true".equals(String.valueOf(isImageObj).toLowerCase());
+                        return c.finalScore() >= threshold || isImage;
                     })
                     .collect(Collectors.toList());
         }
@@ -115,7 +115,7 @@ public class MultiSignalRanker {
         }
 
         boolean matchedAny = false;
-        String lowerSource = chunkSourceName.toLowerCase();
+        String strictSource = chunkSourceName.toLowerCase().replaceAll("[^a-z0-9]", "");
         
         for (EntityResolution er : requestedEntities) {
             if (er.canonicalEntity() == null || er.canonicalEntity().isBlank()) continue;
@@ -127,7 +127,9 @@ public class MultiSignalRanker {
             // normalizing a non-filename entity (e.g. "flipkart project") is a
             // harmless no-op since it's already lowercase with no separators.
             String normalizedEntity = com.accenture.intern.docmind.util.FilenameNormalizer.normalize(er.canonicalEntity());
-            if (!normalizedEntity.isBlank() && lowerSource.contains(normalizedEntity)) {
+            String strictEntity = normalizedEntity.replaceAll("[^a-z0-9]", "");
+            
+            if (!strictEntity.isBlank() && strictSource.contains(strictEntity)) {
                 matchedAny = true;
                 break;
             }
@@ -141,14 +143,16 @@ public class MultiSignalRanker {
             return 1.0;
         }
 
-        String lowerSource = chunkSourceName.toLowerCase();
+        String strictSource = chunkSourceName.toLowerCase().replaceAll("[^a-z0-9]", "");
         for (String target : targetDocuments) {
             if (target == null || target.isBlank()) continue;
             // Same normalization concern as calculateEntityCompatibility above:
             // targetDocuments are "resolved exact filenames" per the router
             // prompt, while chunkSourceName is always the normalized form.
             String normalizedTarget = com.accenture.intern.docmind.util.FilenameNormalizer.normalize(target);
-            if (!normalizedTarget.isBlank() && lowerSource.contains(normalizedTarget)) {
+            String strictTarget = normalizedTarget.toLowerCase().replaceAll("[^a-z0-9]", "");
+            
+            if (!strictTarget.isBlank() && strictSource.contains(strictTarget)) {
                 return TARGET_DOC_BOOST;
             }
         }

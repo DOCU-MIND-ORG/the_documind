@@ -1,3 +1,5 @@
 # Ignore root level scratch files
 threaddump.txt
 patch.ps1
+
+.env

@@ -1,4 +1,4 @@
-import { useReducer, useRef, useEffect, useCallback, useState } from 'react';
+import React, { useReducer, useRef, useEffect, useCallback, useState } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { toast as sonnerToast } from 'sonner';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -46,6 +46,12 @@ const XIcon = () => (
   </svg>
 );
 
+const StopIcon = () => (
+  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+    <rect x="6" y="6" width="12" height="12" rx="2" />
+  </svg>
+);
+
 const BotAvatar = () => {
   const { theme } = useTheme();
   // Using light.png for dark mode (light pixels on dark bg) and dark.png for light mode
@@ -85,6 +91,43 @@ const formatBytes = (bytes) => {
 const UPLOAD_ANCHOR_PATTERN = /^\[(file upload|wikipedia link): .+\]$/;
 const isUploadAnchorMessage = (msg) => UPLOAD_ANCHOR_PATTERN.test((msg.text || '').trim());
 
+const VirtuosoFooter = React.memo(({ context }) => {
+  const { isWaitingForBackend, streamingMessage, setActiveCitation, isProcessingUpload, pendingFiles, bottomRef } = context;
+  return (
+    <div className="max-w-4xl mx-auto py-6 pb-8 space-y-12">
+      {streamingMessage && (
+        <ChatMessage
+          msg={streamingMessage}
+          isStreaming={true}
+          setActiveCitation={setActiveCitation}
+          isProcessingUpload={isProcessingUpload}
+          ingestionStatus={streamingMessage.ingestionStatus}
+          pendingFiles={pendingFiles}
+        />
+      )}
+      {isWaitingForBackend && (
+        <div className="flex items-start gap-2.5">
+          <div className="flex flex-col gap-1 max-w-[85%]">
+            <div className="px-4 py-3 rounded-2xl text-[13px] text-primary flex items-center gap-3" style={{ backgroundColor: 'var(--color-bg-surface)', border: '1px solid var(--color-border)' }}>
+              <AccentureLoader />
+              <span className="text-secondary font-medium animate-pulse">Processing...</span>
+            </div>
+          </div>
+        </div>
+      )}
+      <div ref={bottomRef} />
+    </div>
+  );
+});
+
+const VirtuosoHeader = React.memo(({ context }) => {
+  return context.messagesLoading ? (
+    <div className="py-4 flex justify-center">
+      <AccentureLoader />
+    </div>
+  ) : null;
+});
+
 export default function Chat() {
   const { sessionId: routeSessionId } = useParams();
   const navigate = useNavigate();
@@ -100,7 +143,22 @@ export default function Chat() {
 
   const [input, setInput] = useState('');
   const [isDragging, setIsDragging] = useState(false);
-  const [pendingFiles, setPendingFiles] = useState([]);
+  
+  const [pendingFilesBySession, setPendingFilesBySession] = useState({});
+  const currentSessionKey = state.sessionId || 'new';
+  const pendingFiles = pendingFilesBySession[currentSessionKey] || [];
+  
+  const updatePendingFilesForSession = useCallback((sessionId, updater) => {
+    setPendingFilesBySession(prev => {
+      const currentFiles = prev[sessionId] || [];
+      const newFiles = typeof updater === 'function' ? updater(currentFiles) : updater;
+      return { ...prev, [sessionId]: newFiles };
+    });
+  }, []);
+
+  const setPendingFiles = useCallback((updater) => {
+    updatePendingFilesForSession(currentSessionKey, updater);
+  }, [currentSessionKey, updatePendingFilesForSession]);
   const [activeCitation, setActiveCitation] = useState(null);
   const [showWikiInput, setShowWikiInput] = useState(false);
   const [wikiUrl, setWikiUrl] = useState('');
@@ -121,12 +179,19 @@ export default function Chat() {
   );
   const [models, setModels] = useState([]);
   const suggestionsPollRef = useRef(null);
+  const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
 
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [showQuestionsMenu, setShowQuestionsMenu] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [shareEmailAddress, setShareEmailAddress] = useState('');
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isProcessingUpload, setIsProcessingUpload] = useState(false);
+  const [isHeaderOpen, setIsHeaderOpen] = useState(true);
+
+  useEffect(() => {
+    setIsHeaderOpen(true);
+  }, [routeSessionId]);
 
   const handleShareUrl = async () => {
     setShowShareMenu(false);
@@ -242,22 +307,45 @@ export default function Chat() {
 
   useEffect(() => {
     if (!state.sessionId) return;
-    if (state.messages.length > 0) return;
+    if (state.messagesFetched) return;
     let cancelled = false;
     dispatch({ type: 'MESSAGES_LOADING', sessionId: state.sessionId });
     sessionService.getMessages(state.sessionId)
       .then(res => { 
         if (!cancelled) {
           const isArray = Array.isArray(res);
+          const messages = isArray ? res : res.messages;
           dispatch({ 
             type: 'MESSAGES_LOADED', 
             sessionId: state.sessionId, 
             payload: { 
-              messages: isArray ? res : res.messages, 
+              messages, 
               hasMore: isArray ? false : res.hasMore, 
               nextCursor: isArray ? null : res.nextCursor 
             } 
           }); 
+
+          if (messages.length > 0) {
+            const lastMsg = messages[messages.length - 1];
+            if (lastMsg.role === 'ASSISTANT' && lastMsg.status === 'PROCESSING') {
+               dispatch({
+                 type: 'RECONNECT_STREAM',
+                 sessionId: state.sessionId,
+                 payload: { assistantPlaceholder: lastMsg }
+               });
+               
+               chatService.startStream(
+                 state.sessionId,
+                 lastMsg.id,
+                 (action) => {
+                   dispatch({ ...action, sessionId: state.sessionId, payload: { ...action.payload, messageId: lastMsg.id } });
+                   if (action.type === 'STREAM_ERROR') {
+                     showToast(action.payload.error?.message || 'Stream disconnected', 'error');
+                   }
+                 }
+               );
+            }
+          }
         }
       })
       .catch(err => { 
@@ -329,18 +417,14 @@ export default function Chat() {
             });
             
             // Reconnect! (passing no lastEventId so the backend streams from 0-0)
-            await chatService.consumeStream(
+            await chatService.startStream(
               state.sessionId, assistantId,
-              (chunk) => dispatch({ type: 'APPEND_STREAM_CHUNK', sessionId: state.sessionId, payload: { messageId: assistantId, chunk } }),
-              (citations) => dispatch({ type: 'SET_CITATIONS', sessionId: state.sessionId, payload: { messageId: assistantId, citations } }),
-              (visuals) => dispatch({ type: 'SET_VISUALS', sessionId: state.sessionId, payload: { messageId: assistantId, visuals } }),
-              (progress) => dispatch({ type: 'UPDATE_PROGRESS', sessionId: state.sessionId, payload: { messageId: assistantId, progress } }),
-              (err) => { dispatch({ type: 'STREAM_ERROR', sessionId: state.sessionId, payload: { messageId: assistantId } }); showToast(err.message || 'Stream error', 'error'); },
-              () => {
-                dispatch({ type: 'STREAM_DONE', sessionId: state.sessionId, payload: { messageId: assistantId } });
-                pollSuggestedQuestions(state.sessionId);
-              },
-              () => dispatch({ type: 'RESET_STREAM_TEXT', sessionId: state.sessionId, payload: { messageId: assistantId } })
+              (action) => {
+                dispatch({ ...action, sessionId: state.sessionId, payload: { ...action.payload, messageId: assistantId } });
+                if (action.type === 'STREAM_ERROR') {
+                  showToast(action.payload.error?.message || 'Stream error', 'error');
+                }
+              }
             );
           } else {
             // Not running (404). Generation might have completed just as we reloaded. 
@@ -348,11 +432,24 @@ export default function Chat() {
             const res = await sessionService.getMessages(state.sessionId);
             if (cancelled) return;
             const isArray = Array.isArray(res);
+            const newMessages = isArray ? res : res.messages;
+            
+            // Check if it's STILL processing in the DB despite not being active
+            // This means it was orphaned (e.g. server crash). Mark it as error locally.
+            const stillProcessing = newMessages.length > 0 && 
+                                  newMessages[newMessages.length - 1].role === 'ASSISTANT' && 
+                                  newMessages[newMessages.length - 1].status === 'PROCESSING';
+            
+            if (stillProcessing) {
+              newMessages[newMessages.length - 1].status = 'ERROR';
+              newMessages[newMessages.length - 1].text = (newMessages[newMessages.length - 1].text || '') + '\n\n*(Generation interrupted or failed)*';
+            }
+            
             dispatch({ 
               type: 'MESSAGES_LOADED', 
               sessionId: state.sessionId, 
               payload: { 
-                messages: isArray ? res : res.messages, 
+                messages: newMessages, 
                 hasMore: isArray ? false : res.hasMore, 
                 nextCursor: isArray ? null : res.nextCursor 
               } 
@@ -378,17 +475,27 @@ export default function Chat() {
       clearInterval(suggestionsPollRef.current);
       suggestionsPollRef.current = null;
     }
+    
+    setIsGeneratingQuestions(true);
 
     const poll = async () => {
       try {
         const res = await attachmentService.getSuggestedQuestions(sessionId);
         if (res.status === 'READY') {
-          dispatch({ type: 'SET_SUGGESTED_QUESTIONS', sessionId, payload: { questions: res.questions || [] } });
+          if (res.questions && res.questions.length > 0) {
+            dispatch({ type: 'SET_SUGGESTED_QUESTIONS', sessionId, payload: { questions: res.questions } });
+          } else {
+            showToast('Rate limit exceeded or generation failed. Please wait a moment and try again.', 'error');
+            dispatch({ type: 'SET_SUGGESTED_QUESTIONS', sessionId, payload: { questions: [] } });
+          }
           clearInterval(suggestionsPollRef.current);
           suggestionsPollRef.current = null;
+          setIsGeneratingQuestions(false);
         } else if (res.status === 'FAILED') {
+          showToast('Failed to generate follow-up questions.', 'error');
           clearInterval(suggestionsPollRef.current);
           suggestionsPollRef.current = null;
+          setIsGeneratingQuestions(false);
         }
         // NOT_STARTED / GENERATING: keep polling
       } catch {
@@ -399,7 +506,7 @@ export default function Chat() {
 
     poll();
     suggestionsPollRef.current = setInterval(poll, 2000);
-  }, []);
+  }, [showToast]);
 
   useEffect(() => {
     return () => {
@@ -427,8 +534,8 @@ export default function Chat() {
         showToast('Excel files are not supported.', 'error');
         continue;
       }
-      if (f.size > 10 * 1024 * 1024) {
-        showToast(`File ${f.name} exceeds the 10MB limit.`, 'error');
+      if (f.size > 100 * 1024 * 1024) {
+        showToast(`File ${f.name} exceeds the 100MB limit.`, 'error');
         continue;
       }
       validFiles.push({ file: f, name: f.name, status: 'pending' });
@@ -440,29 +547,119 @@ export default function Chat() {
 
   const removePendingFile = useCallback((index) => {
     setPendingFiles(prev => prev.filter((_, i) => i !== index));
-  }, []);
+  }, [setPendingFiles]);
 
-  const uploadPendingFiles = useCallback(async (sessionId) => {
-    const toUpload = pendingFiles.filter(f => f.status === 'pending');
-    if (toUpload.length === 0) return;
-    for (let i = 0; i < pendingFiles.length; i++) {
-      if (pendingFiles[i].status !== 'pending') continue;
-      setPendingFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: 'uploading' } : f));
+  const uploadPendingFiles = useCallback(async (targetSessionId, filesToUpload) => {
+    const toUpload = (filesToUpload || pendingFiles).filter(f => f.status === 'pending');
+    const newJobIds = [];
+    if (toUpload.length === 0) return newJobIds;
+    
+    for (let i = 0; i < toUpload.length; i++) {
+      const fileToUpload = toUpload[i];
+      updatePendingFilesForSession(targetSessionId, prev => prev.map(f => f.name === fileToUpload.name ? { ...f, status: 'uploading' } : f));
       try {
-        if (pendingFiles[i].type === 'wikipedia') {
-          await attachmentService.uploadWikipedia(sessionId, pendingFiles[i].wikiUrl);
+        let res;
+        if (fileToUpload.type === 'wikipedia') {
+          res = await attachmentService.uploadWikipedia(targetSessionId, fileToUpload.wikiUrl);
         } else {
-          await attachmentService.upload(sessionId, pendingFiles[i].file);
+          res = await attachmentService.upload(targetSessionId, fileToUpload.file);
         }
-        setPendingFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: 'done' } : f));
+        const jobId = res.jobId || (res.response && res.response.jobId) || (res.attachment && res.attachment.jobId);
+        if (jobId) newJobIds.push(jobId);
+        updatePendingFilesForSession(targetSessionId, prev => prev.map(f => f.name === fileToUpload.name ? { ...f, jobId } : f));
       } catch {
-        setPendingFiles(prev => prev.map((f, idx) => idx === i ? { ...f, status: 'error' } : f));
-        showToast(`Failed to upload ${pendingFiles[i].name}`, 'error');
+        updatePendingFilesForSession(targetSessionId, prev => prev.map(f => f.name === fileToUpload.name ? { ...f, status: 'error' } : f));
+        showToast(`Failed to upload ${fileToUpload.name}`, 'error');
       }
     }
-    setTimeout(() => setPendingFiles(prev => prev.filter(f => f.status !== 'done')), 2000);
-    pollSuggestedQuestions(sessionId);
-  }, [pendingFiles, showToast, pollSuggestedQuestions]);
+    return newJobIds;
+  }, [pendingFiles, updatePendingFilesForSession, showToast]);
+
+  useEffect(() => {
+    const doneFiles = pendingFiles.filter(f => f.status === 'done');
+    if (doneFiles.length > 0) {
+      const timer = setTimeout(() => {
+        setPendingFiles(prev => prev.filter(f => f.status !== 'done'));
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [pendingFiles]);
+
+  useEffect(() => {
+    if (!state.sessionId) return;
+    let cancelled = false;
+    fetch(`${import.meta.env.VITE_API_URL || ''}/api/sessions/${state.sessionId}/ingestion-status`, { credentials: 'include' })
+      .then(res => {
+        if (!res.ok) throw new Error("Load failed");
+        return res.json();
+      })
+      .then(data => {
+        if (cancelled || !Array.isArray(data)) return;
+        const activeJobs = data.filter(d => d.state !== 'READY' && d.state !== 'FAILED');
+        if (activeJobs.length > 0) {
+          setPendingFiles(prev => {
+             const newFiles = [...prev];
+             let changed = false;
+             activeJobs.forEach(job => {
+               if (!newFiles.some(f => String(f.jobId) === String(job.jobId))) {
+                 newFiles.push({
+                   jobId: job.jobId,
+                   name: job.filename || `Document ${job.jobId}`,
+                   status: 'uploading',
+                   backendState: job.state
+                 });
+                 changed = true;
+               }
+             });
+             return changed ? newFiles : prev;
+          });
+        }
+      })
+      .catch(err => console.error("Initial ingestion load error", err));
+    return () => { cancelled = true; };
+  }, [state.sessionId]);
+
+  useEffect(() => {
+    if (!state.sessionId) return;
+    const hasActiveIngestions = pendingFiles.some(f => f.jobId && f.status !== 'error' && f.status !== 'done');
+    if (!hasActiveIngestions) return;
+    
+    const interval = setInterval(() => {
+      fetch(`${import.meta.env.VITE_API_URL || ''}/api/sessions/${state.sessionId}/ingestion-status`, { 
+        credentials: 'include'
+      })
+        .then(res => {
+          if (!res.ok) throw new Error("Poll failed");
+          return res.json();
+        })
+        .then(data => {
+           if (!Array.isArray(data)) return;
+           setPendingFiles(prev => {
+             let changed = false;
+             const next = prev.map(f => {
+               if (!f.jobId) return f;
+               const match = data.find(d => String(d.jobId) === String(f.jobId));
+               if (match) {
+                   if (match.state === 'READY' && f.status !== 'done') {
+                       changed = true;
+                       return { ...f, status: 'done', backendState: match.state };
+                   } else if (match.state === 'FAILED' && f.status !== 'error') {
+                       changed = true;
+                       return { ...f, status: 'error', backendState: match.state };
+                   } else if (match.state !== 'READY' && match.state !== 'FAILED' && f.backendState !== match.state) {
+                       changed = true;
+                       return { ...f, status: 'uploading', backendState: match.state }; 
+                   }
+               }
+               return f;
+             });
+             return changed ? next : prev;
+           });
+        })
+        .catch(err => console.error("Poll error", err));
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [state.sessionId, pendingFiles]);
 
   const handleSend = useCallback(async (e, overrideQuery) => {
     if (e) e.preventDefault();
@@ -470,6 +667,7 @@ export default function Chat() {
     const hasPendingFiles = pendingFiles.some(f => f.status === 'pending');
     if (!query && !hasPendingFiles) return;
     if (state.isStreaming) return;
+    setIsProcessingUpload(hasPendingFiles);
     setInput('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
     let activeSessionId = state.sessionId;
@@ -487,32 +685,53 @@ export default function Chat() {
         const created = await sessionService.create(title);
         activeSessionId = created.sessionId;
         addSession(created);
-        dispatch({ type: 'SET_SESSION', payload: { sessionId: activeSessionId } });
+        
+        setPendingFilesBySession(prev => {
+          const files = prev['new'] || [];
+          if (files.length === 0) return prev;
+          const next = { ...prev };
+          delete next['new'];
+          next[activeSessionId] = files;
+          return next;
+        });
+
+        dispatch({ type: 'SET_SESSION', payload: { sessionId: activeSessionId, messagesFetched: true } });
         navigate(`/chat/${activeSessionId}`, { replace: true });
       } catch (err) { showToast(err.message || 'Failed to create session', 'error'); setInput(query); return; }
     }
-    if (query) {
+    if (query || hasPendingFiles) {
       const userMessage = { id: crypto.randomUUID(), role: 'USER', text: query, createdAt: new Date().toISOString(), status: 'complete' };
       const assistantPlaceholder = { id: crypto.randomUUID(), role: 'ASSISTANT', text: '', createdAt: new Date().toISOString(), status: 'streaming' };
       dispatch({ type: 'SEND_MESSAGE_OPTIMISTIC', sessionId: activeSessionId, payload: { userMessage, assistantPlaceholder } });
 
       try {
-        if (hasPendingFiles) await uploadPendingFiles(activeSessionId);
+        let newJobIds = [];
+        if (hasPendingFiles) {
+          newJobIds = await uploadPendingFiles(activeSessionId);
+        }
 
-        const jobResponse = await chatService.submitMessage(activeSessionId, query, selectedModel);
+        // Collect ALL in-flight jobIds — including files uploaded before this send
+        // that may still be ingesting (e.g. user uploaded "From" 2 seconds ago).
+        // We read pendingFiles via a ref-style snapshot so we don't miss any.
+        const allInflightJobIds = [
+          ...newJobIds,
+          // Already-queued files (uploading state) that have a jobId but aren't done
+          ...pendingFiles
+            .filter(f => f.jobId && f.status !== 'done' && f.status !== 'error')
+            .map(f => String(f.jobId))
+        ].filter((id, i, arr) => id && arr.indexOf(id) === i); // deduplicate
 
-        await chatService.consumeStream(
+        const jobResponse = await chatService.submitMessage(activeSessionId, query, selectedModel, allInflightJobIds);
+        dispatch({ type: 'SET_BACKEND_MESSAGE_ID', payload: { messageId: assistantPlaceholder.id, backendMessageId: jobResponse.messageId } });
+
+        await chatService.startStream(
           activeSessionId, jobResponse.messageId,
-          (chunk) => dispatch({ type: 'APPEND_STREAM_CHUNK', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id, chunk } }),
-          (citations) => dispatch({ type: 'SET_CITATIONS', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id, citations } }),
-          (visuals) => dispatch({ type: 'SET_VISUALS', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id, visuals } }),
-          (progress) => dispatch({ type: 'UPDATE_PROGRESS', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id, progress } }),
-          (err) => { dispatch({ type: 'STREAM_ERROR', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } }); showToast(err.message || 'Stream error', 'error'); },
-          () => {
-            dispatch({ type: 'STREAM_DONE', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } });
-            pollSuggestedQuestions(activeSessionId);
-          },
-          () => dispatch({ type: 'RESET_STREAM_TEXT', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } })
+          (action) => {
+            dispatch({ ...action, sessionId: activeSessionId, payload: { ...action.payload, messageId: assistantPlaceholder.id } });
+            if (action.type === 'STREAM_ERROR') {
+              showToast(action.payload.error?.message || 'Stream error', 'error');
+            }
+          }
         );
       } catch (err) {
         dispatch({ type: 'STREAM_ERROR', sessionId: activeSessionId, payload: { messageId: assistantPlaceholder.id } });
@@ -521,7 +740,7 @@ export default function Chat() {
     } else {
       if (hasPendingFiles) await uploadPendingFiles(activeSessionId);
     }
-  }, [input, pendingFiles, state.sessionId, state.isStreaming, navigate, addSession, showToast, uploadPendingFiles, selectedModel, pollSuggestedQuestions]);
+  }, [input, pendingFiles, state.sessionId, state.isStreaming, navigate, addSession, showToast, uploadPendingFiles, selectedModel]);
 
   const handleWikiSubmit = async (e, directUrl = null, confirmedDirectIngest = false) => {
     if (e) e.preventDefault();
@@ -637,9 +856,10 @@ export default function Chat() {
         onChange={(e) => { if (e.target.files.length) addFiles(Array.from(e.target.files)); e.target.value = ''; }}
       />
 
-      <header className="flex items-center gap-3 h-14 px-4 shrink-0 z-30 relative divider-vert"
-        style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-surface)' }}>
-        <button
+      {isHeaderOpen && (
+        <header className="flex items-center gap-3 h-14 px-4 shrink-0 z-30 relative divider-vert"
+          style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-surface)' }}>
+          <button
           className="md:hidden p-2 -ml-1 text-secondary rounded-xl interactive"
           onClick={openMobileSidebar}
         >
@@ -819,9 +1039,36 @@ export default function Chat() {
           )}
         </div>
       </header>
+      )}
+
+      {isHeaderOpen ? (
+        <button
+          type="button"
+          onClick={() => setIsHeaderOpen(false)}
+          className="absolute top-[56px] right-4 p-1.5 rounded-b-lg border-x border-b text-tertiary hover:text-secondary cursor-pointer transition-colors shadow-sm z-30"
+          style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-surface)' }}
+          title="Close header drawer"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+             <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+          </svg>
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setIsHeaderOpen(true)}
+          className="absolute top-0 right-4 p-1.5 rounded-b-lg border-x border-b text-tertiary hover:text-secondary cursor-pointer transition-colors shadow-sm z-50 animate-fade-in-down"
+          style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-surface)' }}
+          title="Open header drawer"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+             <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      )}
 
       <div className="flex-1 overflow-y-auto px-4 sm:pl-6 sm:pr-8 py-6" style={{ backgroundColor: 'var(--color-bg-base)' }}>
-        {isNewChat ? (
+        {isNewChat || (!state.messagesLoading && state.messages.length === 0) ? (
           <div className="h-full flex flex-col items-center justify-center text-center px-4">
             {user?.profileImageUrl ? (
               <img
@@ -848,40 +1095,6 @@ export default function Chat() {
               <span className="text-xs">Loading messages…</span>
             </div>
           </div>
-        ) : (!state.messagesLoading && state.messages.length === 0 && !isNewChat) ? (
-          <div className="h-full flex items-center justify-center">
-            <div className="flex flex-col items-center gap-4 text-secondary max-w-sm text-center">
-              <svg className="w-12 h-12 text-red-500/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-              <span className="text-sm">Failed to load chat history. The server might be unreachable or restarting.</span>
-              <button 
-                onClick={() => {
-                  dispatch({ type: 'MESSAGES_LOADING', sessionId: state.sessionId });
-                  sessionService.getMessages(state.sessionId)
-                    .then(res => {
-                      const isArray = Array.isArray(res);
-                      dispatch({ 
-                        type: 'MESSAGES_LOADED', 
-                        sessionId: state.sessionId, 
-                        payload: { 
-                          messages: isArray ? res : res.messages, 
-                          hasMore: isArray ? false : res.hasMore, 
-                          nextCursor: isArray ? null : res.nextCursor 
-                        } 
-                      });
-                    })
-                    .catch(err => {
-                      dispatch({ type: 'MESSAGES_LOAD_FAILED', sessionId: state.sessionId });
-                      showToast(err.message || 'Failed to load messages', 'error');
-                    });
-                }}
-                className="px-6 py-2 mt-2 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 rounded-md transition-colors font-medium"
-              >
-                Retry Connection
-              </button>
-            </div>
-          </div>
         ) : (
           <Virtuoso
             ref={virtuosoRef}
@@ -891,70 +1104,46 @@ export default function Chat() {
             initialTopMostItemIndex={Math.max(0, state.messages.length - 1)}
             startReached={loadOlderMessages}
             followOutput="smooth"
-            itemContent={(index, msg) => (
-              <div className="max-w-2xl mx-auto py-6">
-                <ChatMessage
-                  msg={msg}
-                  isStreaming={false}
-                  setActiveCitation={setActiveCitation}
-                />
-              </div>
-            )}
-            components={{
-              Header: () => (
-                state.messagesLoading ? (
-                  <div className="py-4 flex justify-center">
-                    <AccentureLoader />
-                  </div>
-                ) : null
-              ),
-              Footer: () => {
-                const visibleMsgs = state.messages.filter(msg => !isUploadAnchorMessage(msg));
-                const isWaitingForBackend = !state.isStreaming && visibleMsgs.length > 0 && visibleMsgs[visibleMsgs.length - 1].role === 'USER';
-                
-                return (
-                <div className="max-w-2xl mx-auto py-6 pb-8 space-y-12">
-                  {state.streamingMessage && (
-                    <ChatMessage
-                      msg={state.streamingMessage}
-                      isStreaming={true}
-                      setActiveCitation={setActiveCitation}
-                    />
-                  )}
-                  {isWaitingForBackend && (
-                    <div className="flex items-start gap-2.5">
-                      <div className="flex flex-col gap-1 max-w-[85%]">
-                        <div className="px-4 py-3 rounded-2xl text-[13px] text-primary">
-                          <AccentureLoader />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {state.suggestedQuestions.length > 0 && !state.isStreaming && !isWaitingForBackend && (
-                    <div className="flex items-start gap-2.5">
-                      <div className="w-7 shrink-0" />
-                      <div className="flex flex-col gap-2 max-w-[85%] animate-fade-in-up">
-                        <span className="text-[11px] font-medium text-tertiary px-1">You might want to ask</span>
-                        <div className="flex flex-wrap gap-2">
-                          {state.suggestedQuestions.map((q, i) => (
-                            <button
-                              key={i}
-                              type="button"
-                              onClick={() => handleSend(null, q)}
-                              className="px-3 py-2 rounded-xl border text-[12.5px] font-medium text-left interactive cursor-pointer transition-all hover:border-blue-500/50 hover:text-blue-500"
-                              style={{ backgroundColor: 'var(--color-bg-subtle)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
-                            >
-                              {q}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  <div ref={bottomRef} />
+            context={{
+              isWaitingForBackend: !state.isStreaming && state.messages.filter(msg => !isUploadAnchorMessage(msg)).length > 0 && state.messages.filter(msg => !isUploadAnchorMessage(msg))[state.messages.filter(msg => !isUploadAnchorMessage(msg)).length - 1].role === 'USER',
+              streamingMessage: state.streamingMessage,
+              setActiveCitation,
+              isProcessingUpload,
+              pendingFiles,
+              bottomRef,
+              messagesLoading: state.messagesLoading
+            }}
+            itemContent={(index, msg) => {
+              const visibleMsgs = state.messages.filter(m => !isUploadAnchorMessage(m));
+              const isLastMessage = msg === visibleMsgs[visibleMsgs.length - 1];
+              const isWaitingForBackend = !state.isStreaming && visibleMsgs.length > 0 && visibleMsgs[visibleMsgs.length - 1].role === 'USER';
+              const showSuggestBulb = isLastMessage && msg.role === 'ASSISTANT' && !state.isStreaming && !isWaitingForBackend;
+
+              return (
+                <div className="max-w-4xl mx-auto py-6">
+                  <ChatMessage
+                    msg={msg}
+                    isStreaming={false}
+                    setActiveCitation={setActiveCitation}
+                    showSuggestBulb={showSuggestBulb && !isWaitingForBackend}
+                    onSuggestQuestions={async () => {
+                      try {
+                        dispatch({ type: 'SET_SUGGESTED_QUESTIONS', sessionId: state.sessionId, payload: { questions: [] } });
+                        setIsGeneratingQuestions(true);
+                        await attachmentService.triggerSuggestedQuestions(state.sessionId);
+                        pollSuggestedQuestions(state.sessionId);
+                      } catch (e) {
+                        setIsGeneratingQuestions(false);
+                      }
+                    }}
+                    isGeneratingQuestions={isGeneratingQuestions}
+                  />
                 </div>
-                );
-              }
+              );
+            }}
+            components={{
+              Header: VirtuosoHeader,
+              Footer: VirtuosoFooter
             }}
           />
         )}
@@ -962,7 +1151,7 @@ export default function Chat() {
       <div className="shrink-0 px-4 sm:px-6 pb-5 pt-3 relative"
         style={{ borderTop: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-surface)' }}>
 
-        <div className="max-w-2xl mx-auto relative">
+        <div className="max-w-4xl mx-auto relative">
           {isInputOpen && (
             <button
               type="button"
@@ -988,7 +1177,24 @@ export default function Chat() {
           )}
 
           {isInputOpen && (
-            <form onSubmit={handleSend} className="w-full">
+            <div className="w-full flex flex-col gap-3">
+              {state.suggestedQuestions.length > 0 && !state.isStreaming && (
+                <div className="w-full overflow-x-auto custom-scrollbar pb-2 flex gap-2 snap-x animate-fade-in-up">
+                  {state.suggestedQuestions.map((q, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => handleSend(null, q)}
+                      className="shrink-0 snap-start px-4 py-2.5 rounded-full border text-[13px] font-medium flex items-center gap-2 interactive cursor-pointer transition-all hover:border-blue-500/50 hover:text-blue-500 shadow-sm"
+                      style={{ backgroundColor: 'var(--color-bg-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+                    >
+                      <span className="text-blue-500">✨</span>
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <form onSubmit={handleSend} className="w-full">
               {pendingFiles.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-2 px-1">
                   {pendingFiles.map((f, i) => (
@@ -1106,28 +1312,49 @@ export default function Chat() {
                   onKeyDown={onKeyDown}
                   placeholder="Ask anything…"
                   rows={1}
-                  disabled={state.isStreaming || state.messagesLoading}
+                  disabled={state.status === 'STREAMING' || state.messagesLoading}
                   autoFocus
                   className="flex-1 bg-transparent border-0 text-[13px] text-primary outline-none resize-none max-h-40 min-h-[22px] py-0.5 leading-relaxed disabled:opacity-50"
                   style={{ height: '22px', color: 'var(--color-text-primary)', caretColor: 'var(--color-accent)' }}
                 />
 
-                <button
-                  type="submit"
-                  disabled={(!input.trim() && !pendingFiles.some(f => f.status === 'pending')) || state.isStreaming || state.messagesLoading}
-                  className="p-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-25 disabled:cursor-not-allowed text-white rounded-xl transition-all active:scale-95 hover:scale-105 disabled:scale-100 shrink-0 cursor-pointer"
-                >
-                  {state.isStreaming
-                    ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    : <SendIcon />
-                  }
-                </button>
+                {state.status === 'STREAMING' ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      chatService.cancelActiveStream();
+                      const msgId = state.streamingMessage?.id;
+                      if (msgId) {
+                        dispatch({ type: 'CANCEL_GENERATION', payload: { messageId: msgId } });
+                      }
+                      const backendMsgId = state.streamingMessage?.backendMessageId;
+                      if (backendMsgId) {
+                        chatService.cancelGeneration(backendMsgId);
+                      }
+                    }}
+                    className="p-2 bg-surface border hover:bg-subtle text-primary rounded-xl transition-all active:scale-95 hover:scale-105 shrink-0 cursor-pointer shadow-sm"
+                    style={{ borderColor: 'var(--color-border)' }}
+                    title="Stop generating"
+                  >
+                    <StopIcon />
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={(!input.trim() && !pendingFiles.some(f => f.status === 'pending')) || state.messagesLoading}
+                    className="p-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-25 disabled:cursor-not-allowed text-white rounded-xl transition-all active:scale-95 hover:scale-105 disabled:scale-100 shrink-0 cursor-pointer"
+                    title="Send message"
+                  >
+                    <SendIcon />
+                  </button>
+                )}
               </div>
 
               <p className="text-center text-[11px] text-tertiary mt-2 select-none">
                 Enter to send &nbsp;·&nbsp; Shift+Enter for new line &nbsp;·&nbsp; Drop files anywhere
               </p>
-            </form>
+              </form>
+            </div>
           )}
         </div>
       </div>

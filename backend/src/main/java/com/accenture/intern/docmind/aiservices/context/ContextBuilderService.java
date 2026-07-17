@@ -219,7 +219,8 @@ public class ContextBuilderService {
                 3,
                 null,
                 Collections.emptyList(),
-                false
+                false,
+                null
         );
         Mono<String> historyBlockMono = fetchHistoryBlock(sessionId, question, true);
         return orchestrateAdaptive(question, sessionId, adaptivePlan, historyBlockMono, sessionContext, null);
@@ -230,7 +231,7 @@ public class ContextBuilderService {
             return buildFinalAdaptiveResult(adaptivePlan, originalQuestion, accumulatedCandidates, historyBlockMono, sessionContext, trace);
         }
         
-        StaticExecutionPlan singleStatic = new StaticExecutionPlan("ADAPTIVE_ITERATION", List.of(currentPlan), MergeOperation.UNION, Collections.emptyList(), false);
+        StaticExecutionPlan singleStatic = new StaticExecutionPlan("ADAPTIVE_ITERATION", List.of(currentPlan), MergeOperation.UNION, Collections.emptyList(), false, null);
         return retrievalOrchestrator.orchestrate(originalQuestion, sessionId, singleStatic, progressSink)
             .flatMap(newResult -> {
                 if (progressSink != null) {

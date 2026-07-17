@@ -53,4 +53,7 @@ export const attachmentService = {
 
   getSuggestedQuestions: (sessionId) =>
     request(`/api/sessions/${sessionId}/suggested-questions`, { hideProgress: true }),
+
+  triggerSuggestedQuestions: (sessionId) =>
+    request(`/api/sessions/${sessionId}/suggested-questions`, { method: 'POST', hideProgress: true }),
 };

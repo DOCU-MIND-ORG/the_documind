@@ -3,6 +3,7 @@ package com.accenture.intern.docmind.dto.chat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class SessionUploadState {
 
@@ -16,8 +17,11 @@ public class SessionUploadState {
         FAILED
     }
 
+    public record DocumentPreparationStatus(Long jobId, String filename, UploadState state) {}
+
     private List<EmbeddedDocument> embeddedDocuments;
     private UploadState state;
+    private final java.util.concurrent.ConcurrentHashMap<Long, DocumentPreparationStatus> documentStatuses = new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
      * Raw text of every document ingested in this session so far (one entry per
@@ -60,6 +64,27 @@ public class SessionUploadState {
 
     public void setState(UploadState state) {
         this.state = state;
+    }
+
+    public void updateDocumentStatus(Long jobId, String filename, UploadState status) {
+        documentStatuses.put(jobId, new DocumentPreparationStatus(jobId, filename, status));
+    }
+
+    public void updateDocumentStateOnly(Long jobId, UploadState status) {
+        DocumentPreparationStatus current = documentStatuses.get(jobId);
+        if (current != null) {
+            documentStatuses.put(jobId, new DocumentPreparationStatus(jobId, current.filename(), status));
+        }
+    }
+
+    public java.util.Collection<DocumentPreparationStatus> getDocumentStatuses() {
+        return documentStatuses.values();
+    }
+
+    public int getPendingIngestionsCount() {
+        return (int) documentStatuses.values().stream()
+                .filter(s -> s.state() == UploadState.QUEUED || s.state() == UploadState.INGESTING)
+                .count();
     }
 
     public synchronized void addIngestedDocumentText(String text) {

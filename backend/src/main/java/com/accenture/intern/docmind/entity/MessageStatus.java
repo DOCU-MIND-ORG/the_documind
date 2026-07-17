@@ -7,5 +7,7 @@ public enum MessageStatus {
     PROCESSING,
     COMPLETED,
     FAILED,
-    CANCELLED
+    CANCELLED,
+    WAITING_FOR_DOCUMENTS,
+    FAILED_TIMEOUT
 }

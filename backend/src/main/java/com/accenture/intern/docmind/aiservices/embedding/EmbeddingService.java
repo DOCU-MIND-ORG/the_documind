@@ -30,10 +30,12 @@ import java.util.stream.Collectors;
 public class EmbeddingService {
 
     private static final int CHUNK_SIZE = 1000;
-    private static final int OVERLAP    = 200;
+    private static final int OVERLAP = 200;
 
-    /** Minimum acceptable chunk length when snapping to a paragraph/sentence
-     *  boundary in findBoundary() — see that method's javadoc. */
+    /**
+     * Minimum acceptable chunk length when snapping to a paragraph/sentence
+     * boundary in findBoundary() — see that method's javadoc.
+     */
     private static final int MIN_CHUNK_CHARS = (int) (CHUNK_SIZE * 0.4);
 
     private final VectorStoreService vectorStoreService;
@@ -43,10 +45,10 @@ public class EmbeddingService {
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     public EmbeddingService(VectorStoreService vectorStoreService,
-                             SessionCacheService sessionCacheService,
-                             DocumentChunkRepository documentChunkRepository,
-                             SuggestedQuestionsService suggestedQuestionsService,
-                             com.fasterxml.jackson.databind.ObjectMapper objectMapper) {
+            SessionCacheService sessionCacheService,
+            DocumentChunkRepository documentChunkRepository,
+            SuggestedQuestionsService suggestedQuestionsService,
+            com.fasterxml.jackson.databind.ObjectMapper objectMapper) {
         this.vectorStoreService = vectorStoreService;
         this.sessionCacheService = sessionCacheService;
         this.documentChunkRepository = documentChunkRepository;
@@ -54,8 +56,10 @@ public class EmbeddingService {
         this.objectMapper = objectMapper;
     }
 
-    public Mono<Void> processAndIngest(String text, List<LayoutTextStripper.PdfTextElement> elements, String sourceType, String originalFileName, String sourceUrl, Long sessionId) {
-        return processAndIngest(text, elements, sourceType, originalFileName, originalFileName, null, null, sessionId, null, sourceUrl);
+    public Mono<Void> processAndIngest(String text, List<LayoutTextStripper.PdfTextElement> elements, String sourceType,
+            String originalFileName, String sourceUrl, Long sessionId) {
+        return processAndIngest(text, elements, sourceType, originalFileName, originalFileName, null, null, sessionId,
+                null, sourceUrl);
     }
 
     /**
@@ -82,7 +86,9 @@ public class EmbeddingService {
                         : java.util.Optional.ofNullable(existingChunks.get(0).getSourceUrl()));
     }
 
-    public Mono<Void> processAndIngest(String text, List<LayoutTextStripper.PdfTextElement> elements, String sourceType, String originalFileName, String enrichedFileName, String assetClassification, String assetTags, Long sessionId, String imageUrl, String sourceUrl) {
+    public Mono<Void> processAndIngest(String text, List<LayoutTextStripper.PdfTextElement> elements, String sourceType,
+            String originalFileName, String enrichedFileName, String assetClassification, com.accenture.intern.docmind.aiservices.vision.SemanticImage semanticImage,
+            Long sessionId, String imageUrl, String sourceUrl) {
 
         log.info("=== INGESTION STARTED ===");
         log.info("SessionId={}", sessionId);
@@ -103,7 +109,8 @@ public class EmbeddingService {
         state.addActiveDocumentName(originalFileName);
 
         int docCount = state.getActiveDocumentNames().size();
-        String[] ordinals = {"first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"};
+        String[] ordinals = { "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth",
+                "tenth" };
         if (docCount > 0 && docCount <= ordinals.length) {
             state.addAlias(ordinals[docCount - 1], originalFileName);
         }
@@ -131,11 +138,14 @@ public class EmbeddingService {
                     if (!existingChunks.isEmpty()) {
                         return reboostExistingChunks(existingChunks, originalFileName, sessionId, state);
                     }
-                    return doIngest(text, elements, sourceType, originalFileName, enrichedFileName, assetClassification, assetTags, sessionId, imageUrl, sourceUrl, contentHash, state);
+                    return doIngest(text, elements, sourceType, originalFileName, enrichedFileName, assetClassification,
+                            semanticImage, sessionId, imageUrl, sourceUrl, contentHash, state);
                 });
     }
 
-    public Mono<Void> processAndIngestSemanticChunks(List<com.accenture.intern.docmind.dto.context.SemanticChunk> chunks, String originalFileName, String sourceUrl, Long sessionId) {
+    public Mono<Void> processAndIngestSemanticChunks(
+            List<com.accenture.intern.docmind.dto.context.SemanticChunk> chunks, String originalFileName,
+            String sourceUrl, Long sessionId) {
         log.info("=== SEMANTIC INGESTION STARTED ===");
         log.info("SessionId={}", sessionId);
         log.info("OriginalFileName={}", originalFileName);
@@ -150,7 +160,8 @@ public class EmbeddingService {
         state.addActiveDocumentName(originalFileName);
 
         int docCount = state.getActiveDocumentNames().size();
-        String[] ordinals = {"first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"};
+        String[] ordinals = { "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth",
+                "tenth" };
         if (docCount > 0 && docCount <= ordinals.length) {
             state.addAlias(ordinals[docCount - 1], originalFileName);
         }
@@ -177,14 +188,17 @@ public class EmbeddingService {
                     if (!existingChunks.isEmpty()) {
                         return reboostExistingChunks(existingChunks, originalFileName, sessionId, state);
                     }
-                    return doIngestSemantic(chunks, originalFileName, normalizedName, sourceUrl, sessionId, contentHash, state);
+                    return doIngestSemantic(chunks, originalFileName, normalizedName, sourceUrl, sessionId, contentHash,
+                            state);
                 });
     }
 
-    private Mono<Void> doIngestSemantic(List<com.accenture.intern.docmind.dto.context.SemanticChunk> chunks, String originalFileName, String normalizedName, String sourceUrl, Long sessionId, String contentHash, SessionUploadState state) {
+    private Mono<Void> doIngestSemantic(List<com.accenture.intern.docmind.dto.context.SemanticChunk> chunks,
+            String originalFileName, String normalizedName, String sourceUrl, Long sessionId, String contentHash,
+            SessionUploadState state) {
         List<Document> documents = chunks.stream().map(chunk -> {
             String content = "Section: " + chunk.sectionPath() + "\n\n" + chunk.text();
-            
+
             Map<String, Object> metadata = new HashMap<>();
             metadata.put("sourceName", normalizedName);
             metadata.put("originalFileName", originalFileName);
@@ -194,12 +208,14 @@ public class EmbeddingService {
             metadata.put("sectionPath", chunk.sectionPath());
             metadata.put("chunkIndex", chunk.order());
             metadata.put("sessionId", sessionId);
-            if (sourceUrl != null) metadata.put("sourceUrl", sourceUrl);
-            
+            if (sourceUrl != null)
+                metadata.put("sourceUrl", sourceUrl);
+
             if (chunk.metadata() != null) {
                 metadata.putAll(chunk.metadata());
             }
-            if (metadata.containsKey("imageUrl")) {
+            if (metadata.containsKey("imageUrl") || "IMAGE".equals(chunk.type().name())
+                    || "PDF_IMAGE".equals(chunk.type().name())) {
                 metadata.put("isImage", true);
             }
 
@@ -214,13 +230,13 @@ public class EmbeddingService {
         state.setState(UploadState.INGESTING);
 
         Mono<Void> pineconeIngest = vectorStoreService.ingestDocuments(documents);
-        Mono<Void> postgresIngest = saveChunksForKeywordSearch(documents, sessionId, chunks.get(0).sourceType().name(), originalFileName, originalFileName, null, null, contentHash);
+        Mono<Void> postgresIngest = saveChunksForKeywordSearch(documents, sessionId, chunks.get(0).sourceType().name(),
+                originalFileName, originalFileName, null, null, contentHash);
 
         return Mono.when(pineconeIngest, postgresIngest)
                 .doOnSuccess(v -> {
                     log.info("SEMANTIC INGESTION SUCCESS");
                     state.setState(UploadState.READY);
-                    triggerSuggestedQuestionGeneration(sessionId, state);
                 })
                 .doOnError(e -> {
                     log.error("=== SEMANTIC INGESTION FAILED ===", e);
@@ -249,88 +265,104 @@ public class EmbeddingService {
      * membership list - simpler data model, and matches the actual request:
      * treat the most recent uploader's session as "the" session for the boost.
      */
-    private Mono<Void> reboostExistingChunks(List<DocumentChunk> existingChunks, String sourceName, Long sessionId, SessionUploadState state) {
+    private Mono<Void> reboostExistingChunks(List<DocumentChunk> existingChunks, String sourceName, Long sessionId,
+            SessionUploadState state) {
         return Mono.fromRunnable(() -> {
-                    String existingSourceName = existingChunks.get(0).getSourceName();
-                    log.info("'{}' matches existing content ('{}', {} chunks) — re-pointing to session {} for relevance boost instead of re-ingesting",
-                            sourceName, existingSourceName, existingChunks.size(), sessionId);
+            String existingSourceName = existingChunks.get(0).getSourceName();
+            log.info(
+                    "'{}' matches existing content ('{}', {} chunks) — re-pointing to session {} for relevance boost instead of re-ingesting",
+                    sourceName, existingSourceName, existingChunks.size(), sessionId);
 
-                    // 1. Update the Postgres rows directly (sessionId is the column the
-                    //    keyword-search path's chunks carry into fuse()'s boost check).
-                    for (DocumentChunk chunk : existingChunks) {
-                        chunk.setSessionId(sessionId);
-                    }
-                    documentChunkRepository.saveAll(existingChunks);
+            // 1. Update the Postgres rows directly (sessionId is the column the
+            // keyword-search path's chunks carry into fuse()'s boost check).
+            for (DocumentChunk chunk : existingChunks) {
+                chunk.setSessionId(sessionId);
+            }
+            documentChunkRepository.saveAll(existingChunks);
 
-                    // 2. Mirror the same change into Pinecone. Re-add() with the same
-                    //    vectorId (Document.id) overwrites the existing record in place
-                    //    (same text, updated metadata) rather than creating a duplicate -
-                    //    see IntegratedPineconeVectorStore.add(), which upserts by _id.
-                    List<Document> updatedVectors = existingChunks.stream()
-                            .sorted(java.util.Comparator.comparing(c -> c.getChunkIndex() == null ? 0 : c.getChunkIndex()))
-                            .map(chunk -> {
-                                Map<String, Object> metadata = new HashMap<>();
-                                metadata.put("sourceName", FilenameNormalizer.normalize(chunk.getOriginalFileName()));
-                                metadata.put("originalFileName", chunk.getOriginalFileName());
-                                if (chunk.getEnrichedFileName() != null) metadata.put("enrichedFileName", chunk.getEnrichedFileName());
-                                if (chunk.getAssetClassification() != null) metadata.put("assetClassification", chunk.getAssetClassification());
-                                if (chunk.getAssetTags() != null) metadata.put("assetTags", chunk.getAssetTags());
-                                metadata.put("sourceType", chunk.getSourceType());
-                                metadata.put("chunkIndex", chunk.getChunkIndex() == null ? 0 : chunk.getChunkIndex());
-                                metadata.put("sessionId", sessionId);
-                                if (chunk.getImageUrl() != null && !chunk.getImageUrl().isBlank()) {
-                                    metadata.put("imageUrl", chunk.getImageUrl());
-                                    metadata.put("isImage", true);
-                                }
-                                if (chunk.getSourceUrl() != null && !chunk.getSourceUrl().isBlank()) {
-                                    metadata.put("sourceUrl", chunk.getSourceUrl());
-                                }
-                                return new Document(chunk.getVectorId(), chunk.getContent(), metadata);
-                            })
-                            .collect(java.util.stream.Collectors.toList());
+            // 2. Mirror the same change into Pinecone. Re-add() with the same
+            // vectorId (Document.id) overwrites the existing record in place
+            // (same text, updated metadata) rather than creating a duplicate -
+            // see IntegratedPineconeVectorStore.add(), which upserts by _id.
+            List<Document> updatedVectors = existingChunks.stream()
+                    .sorted(java.util.Comparator.comparing(c -> c.getChunkIndex() == null ? 0 : c.getChunkIndex()))
+                    .map(chunk -> {
+                        Map<String, Object> metadata = new HashMap<>();
+                        metadata.put("sourceName", FilenameNormalizer.normalize(chunk.getOriginalFileName()));
+                        metadata.put("originalFileName", chunk.getOriginalFileName());
+                        if (chunk.getEnrichedFileName() != null)
+                            metadata.put("enrichedFileName", chunk.getEnrichedFileName());
+                        if (chunk.getAssetClassification() != null)
+                            metadata.put("assetClassification", chunk.getAssetClassification());
+                        if (chunk.getEntities() != null && chunk.getEntities().length > 0)
+                            metadata.put("entities", java.util.Arrays.asList(chunk.getEntities()));
+                        if (chunk.getTopics() != null && chunk.getTopics().length > 0)
+                            metadata.put("topics", java.util.Arrays.asList(chunk.getTopics()));
+                        if (chunk.getObjects() != null && chunk.getObjects().length > 0)
+                            metadata.put("objects", java.util.Arrays.asList(chunk.getObjects()));
+                        if (chunk.getTechnologies() != null && chunk.getTechnologies().length > 0)
+                            metadata.put("technologies", java.util.Arrays.asList(chunk.getTechnologies()));
+                        if (chunk.getRelationships() != null && chunk.getRelationships().length > 0)
+                            metadata.put("relationships", java.util.Arrays.asList(chunk.getRelationships()));
+                        if (chunk.getImageType() != null)
+                            metadata.put("imageType", chunk.getImageType());
+                        metadata.put("sourceType", chunk.getSourceType());
+                        metadata.put("chunkIndex", chunk.getChunkIndex() == null ? 0 : chunk.getChunkIndex());
+                        metadata.put("sessionId", sessionId);
+                        if (chunk.getImageUrl() != null && !chunk.getImageUrl().isBlank()) {
+                            metadata.put("imageUrl", chunk.getImageUrl());
+                            metadata.put("isImage", true);
+                        }
+                        if (chunk.getSourceUrl() != null && !chunk.getSourceUrl().isBlank()) {
+                            metadata.put("sourceUrl", chunk.getSourceUrl());
+                        }
+                        return new Document(chunk.getVectorId(), chunk.getContent(), metadata);
+                    })
+                    .collect(java.util.stream.Collectors.toList());
 
-                    vectorStoreService.ingestDocuments(updatedVectors).subscribe(
-                            v -> {},
-                            e -> log.error("Failed to re-point Pinecone metadata for duplicate of '{}'", sourceName, e));
+            vectorStoreService.ingestDocuments(updatedVectors).subscribe(
+                    v -> {
+                    },
+                    e -> log.error("Failed to re-point Pinecone metadata for duplicate of '{}'", sourceName, e));
 
-                    // 3. Populate the session's local chunk cache exactly like a fresh
-                    //    upload would (see doIngest below). Without this, re-uploading
-                    //    content that already exists ANYWHERE in the shared corpus
-                    //    (extremely common while testing with the same sample files)
-                    //    never populates embeddedDocuments for this session, so
-                    //    ContextBuilderService's "answer from what was just uploaded"
-                    //    fast path silently has nothing to use and falls through to
-                    //    corpus-wide search regardless of how the question is phrased.
-                    List<EmbeddedDocument> embeddedDocs = updatedVectors.stream()
-                            .map(doc -> new EmbeddedDocument(doc, new float[0]))
-                            .toList();
-                    state.setEmbeddedDocuments(embeddedDocs);
-                })
+            // 3. Populate the session's local chunk cache exactly like a fresh
+            // upload would (see doIngest below). Without this, re-uploading
+            // content that already exists ANYWHERE in the shared corpus
+            // (extremely common while testing with the same sample files)
+            // never populates embeddedDocuments for this session, so
+            // ContextBuilderService's "answer from what was just uploaded"
+            // fast path silently has nothing to use and falls through to
+            // corpus-wide search regardless of how the question is phrased.
+            List<EmbeddedDocument> embeddedDocs = updatedVectors.stream()
+                    .map(doc -> new EmbeddedDocument(doc, new float[0]))
+                    .toList();
+            state.setEmbeddedDocuments(embeddedDocs);
+        })
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnTerminate(() -> {
                     state.setState(UploadState.READY);
-                    triggerSuggestedQuestionGeneration(sessionId, state);
                 })
                 .then();
     }
 
-    private Mono<Void> doIngest(String text, List<LayoutTextStripper.PdfTextElement> elements, String sourceType, String originalFileName, String enrichedFileName,
-                                 String assetClassification, String assetTags, Long sessionId, String imageUrl, String sourceUrl, String contentHash, SessionUploadState state) {
+    private Mono<Void> doIngest(String text, List<LayoutTextStripper.PdfTextElement> elements, String sourceType,
+            String originalFileName, String enrichedFileName,
+            String assetClassification, com.accenture.intern.docmind.aiservices.vision.SemanticImage semanticImage, Long sessionId, String imageUrl, String sourceUrl,
+            String contentHash, SessionUploadState state) {
         log.info("Chunking document...");
-        List<Document> documents = chunkText(text, elements, sourceType, originalFileName, enrichedFileName, assetClassification, assetTags, sessionId, imageUrl, sourceUrl);
+        List<Document> documents = chunkText(text, elements, sourceType, originalFileName, enrichedFileName,
+                assetClassification, semanticImage, sessionId, imageUrl, sourceUrl);
         log.info("Generated {} chunks", documents.size());
 
         if (!documents.isEmpty()) {
             log.info("First chunk preview: {}",
                     documents.get(0).getText().substring(
                             0,
-                            Math.min(200, documents.get(0).getText().length())
-                    ));
+                            Math.min(200, documents.get(0).getText().length())));
         }
 
         if (documents.isEmpty()) {
             log.warn("No chunks generated");
-            state.setState(UploadState.READY);
             return Mono.empty();
         }
 
@@ -345,11 +377,11 @@ public class EmbeddingService {
         log.info("Chunks to ingest = {}", documents.size());
 
         Mono<Void> pineconeIngest = vectorStoreService.ingestDocuments(documents);
-        Mono<Void> postgresIngest = saveChunksForKeywordSearch(documents, sessionId, sourceType, originalFileName, enrichedFileName, assetClassification, assetTags, contentHash);
+        Mono<Void> postgresIngest = saveChunksForKeywordSearch(documents, sessionId, sourceType, originalFileName,
+                enrichedFileName, assetClassification, semanticImage, contentHash);
 
         return Mono.when(pineconeIngest, postgresIngest)
-                .doOnSubscribe(sub ->
-                        log.info("Pinecone + Postgres ingestion subscribed"))
+                .doOnSubscribe(sub -> log.info("Pinecone + Postgres ingestion subscribed"))
                 .doOnSuccess(v -> {
                     log.info("INGESTION SUCCESS");
                     log.info("Ingested '{}' ({}) — {} chunks",
@@ -358,7 +390,6 @@ public class EmbeddingService {
                             documents.size());
 
                     state.setState(UploadState.READY);
-                    triggerSuggestedQuestionGeneration(sessionId, state);
                 })
                 .doOnError(e -> {
                     log.error("=== INGESTION FAILED ===", e);
@@ -369,13 +400,15 @@ public class EmbeddingService {
 
     /**
      * SHA-256 hex digest of the document's raw text, normalized (trimmed, internal
-     * whitespace collapsed) so two uploads that differ only in incidental whitespace
+     * whitespace collapsed) so two uploads that differ only in incidental
+     * whitespace
      * — e.g. a PDF re-exported with different line wrapping but identical actual
      * content — still hash identically. Not intended to catch real content edits;
      * any visible text difference should and will produce a different hash.
      */
     /**
-     * Public so callers (AttachmentService) can hash extracted text/vision-description
+     * Public so callers (AttachmentService) can hash extracted
+     * text/vision-description
      * BEFORE uploading the original file bytes to Cloudinary, and skip that upload
      * entirely when the content already exists in the corpus under a different
      * file/session. See AttachmentService#findExistingSourceUrl.
@@ -404,7 +437,7 @@ public class EmbeddingService {
      * response — the suggested-questions endpoint is polled separately by the
      * frontend and just reports GENERATING until this finishes.
      */
-    private void triggerSuggestedQuestionGeneration(Long sessionId, SessionUploadState state) {
+    public void triggerSuggestedQuestionGeneration(Long sessionId, SessionUploadState state) {
         state.setQuestionsStatus(SessionUploadState.SuggestedQuestionsStatus.GENERATING);
         suggestedQuestionsService.generateForSession(sessionId)
                 .subscribe(
@@ -415,10 +448,10 @@ public class EmbeddingService {
                                     : SessionUploadState.SuggestedQuestionsStatus.READY);
                         },
                         e -> {
-                            log.warn("Suggested-question generation errored for session {}: {}", sessionId, e.getMessage());
+                            log.warn("Suggested-question generation errored for session {}: {}", sessionId,
+                                    e.getMessage());
                             state.setQuestionsStatus(SessionUploadState.SuggestedQuestionsStatus.FAILED);
-                        }
-                );
+                        });
     }
 
     /**
@@ -427,51 +460,56 @@ public class EmbeddingService {
      * half of hybrid retrieval — see DocumentChunkRepository.keywordSearch.
      */
     private Mono<Void> saveChunksForKeywordSearch(List<Document> documents, Long sessionId,
-                                                   String sourceType, String originalFileName, String enrichedFileName,
-                                                   String assetClassification, String assetTags, String contentHash) {
+            String sourceType, String originalFileName, String enrichedFileName,
+            String assetClassification, com.accenture.intern.docmind.aiservices.vision.SemanticImage semanticImage, String contentHash) {
         return Mono.fromRunnable(() -> {
-                    List<DocumentChunk> rows = documents.stream()
-                            .map(doc -> {
-                                String boundingBoxesJson = null;
-                                if (doc.getMetadata().containsKey("boundingBoxes")) {
-                                    Object bboxes = doc.getMetadata().get("boundingBoxes");
-                                    if (bboxes instanceof String) {
-                                        boundingBoxesJson = (String) bboxes;
-                                    } else {
-                                        try {
-                                            boundingBoxesJson = objectMapper.writeValueAsString(bboxes);
-                                        } catch (Exception e) {
-                                            log.warn("Failed to serialize bounding boxes", e);
-                                        }
-                                    }
+            List<DocumentChunk> rows = documents.stream()
+                    .map(doc -> {
+                        String boundingBoxesJson = null;
+                        if (doc.getMetadata().containsKey("boundingBoxes")) {
+                            Object bboxes = doc.getMetadata().get("boundingBoxes");
+                            if (bboxes instanceof String) {
+                                boundingBoxesJson = (String) bboxes;
+                            } else {
+                                try {
+                                    boundingBoxesJson = objectMapper.writeValueAsString(bboxes);
+                                } catch (Exception e) {
+                                    log.warn("Failed to serialize bounding boxes", e);
                                 }
-                                return DocumentChunk.builder()
-                                    .vectorId(doc.getId())
-                                    .sessionId(sessionId)
-                                    .content(doc.getText())
-                                    .sourceName(FilenameNormalizer.normalize(originalFileName))
-                                    .originalFileName(originalFileName)
-                                    .enrichedFileName(enrichedFileName)
-                                    .assetClassification(assetClassification)
-                                    .assetTags(assetTags)
-                                    .sourceType(sourceType)
-                                    .contentHash(contentHash)
-                                    .chunkIndex(((Number) doc.getMetadata().getOrDefault("chunkIndex", 0)).intValue())
-                                    .totalChunks(((Number) doc.getMetadata().getOrDefault("totalChunks", 0)).intValue())
-                                    .imageUrl((String) doc.getMetadata().get("imageUrl"))
-                                    .sourceUrl((String) doc.getMetadata().get("sourceUrl"))
-                                    .boundingBoxes(boundingBoxesJson)
-                                    .page((Integer) doc.getMetadata().get("page"))
-                                    .sectionPath((String) doc.getMetadata().get("sectionPath"))
-                                    .heading((String) doc.getMetadata().get("heading"))
-                                    .charStart((Integer) doc.getMetadata().get("charStart"))
-                                    .charEnd((Integer) doc.getMetadata().get("charEnd"))
-                                    .createdAt(LocalDateTime.now())
-                                    .build();
-                            })
-                            .toList();
-                    documentChunkRepository.saveAll(rows);
-                })
+                            }
+                        }
+                        return DocumentChunk.builder()
+                                .vectorId(doc.getId())
+                                .sessionId(sessionId)
+                                .content(doc.getText())
+                                .sourceName(FilenameNormalizer.normalize(originalFileName))
+                                .originalFileName(originalFileName)
+                                .enrichedFileName(enrichedFileName)
+                                .assetClassification(assetClassification)
+                                .entities(semanticImage != null && semanticImage.entities() != null ? semanticImage.entities().toArray(new String[0]) : null)
+                                .topics(semanticImage != null && semanticImage.topics() != null ? semanticImage.topics().toArray(new String[0]) : null)
+                                .objects(semanticImage != null && semanticImage.objects() != null ? semanticImage.objects().toArray(new String[0]) : null)
+                                .technologies(semanticImage != null && semanticImage.technologies() != null ? semanticImage.technologies().toArray(new String[0]) : null)
+                                .relationships(semanticImage != null && semanticImage.relationships() != null ? semanticImage.relationships().toArray(new String[0]) : null)
+                                .imageType(semanticImage != null ? semanticImage.imageType() : null)
+                                .sourceType(sourceType)
+                                .contentHash(contentHash)
+                                .chunkIndex(((Number) doc.getMetadata().getOrDefault("chunkIndex", 0)).intValue())
+                                .totalChunks(((Number) doc.getMetadata().getOrDefault("totalChunks", 0)).intValue())
+                                .imageUrl((String) doc.getMetadata().get("imageUrl"))
+                                .sourceUrl((String) doc.getMetadata().get("sourceUrl"))
+                                .boundingBoxes(boundingBoxesJson)
+                                .page((Integer) doc.getMetadata().get("page"))
+                                .sectionPath((String) doc.getMetadata().get("sectionPath"))
+                                .heading((String) doc.getMetadata().get("heading"))
+                                .charStart((Integer) doc.getMetadata().get("charStart"))
+                                .charEnd((Integer) doc.getMetadata().get("charEnd"))
+                                .createdAt(LocalDateTime.now())
+                                .build();
+                    })
+                    .toList();
+            documentChunkRepository.saveAll(rows);
+        })
                 .subscribeOn(Schedulers.boundedElastic())
                 .then();
     }
@@ -486,37 +524,46 @@ public class EmbeddingService {
      * <p>
      * Strategy, in priority order, for where to end a chunk:
      * 1. The last paragraph break (blank line) before the CHUNK_SIZE budget — keeps
-     *    whole paragraphs together whenever the budget allows it.
+     * whole paragraphs together whenever the budget allows it.
      * 2. The last sentence boundary (. ! ? followed by whitespace) before the
-     *    budget — used when a single paragraph is longer than CHUNK_SIZE.
-                    //    punctuation at all (a single very long line, code, etc.).
+     * budget — used when a single paragraph is longer than CHUNK_SIZE.
+     * // punctuation at all (a single very long line, code, etc.).
      */
-    private record DetectedHeading(String text, int docCharStart, int docCharEnd, int level) {}
+    private record DetectedHeading(String text, int docCharStart, int docCharEnd, int level) {
+    }
 
     /**
-     * @deprecated Superseded by {@link BlockClassifier} + {@link SemanticChunkBuilder}.
-     * Kept as a fallback for plain-text ingestion paths where no PdfTextElements are available.
+     * @deprecated Superseded by {@link BlockClassifier} +
+     *             {@link SemanticChunkBuilder}.
+     *             Kept as a fallback for plain-text ingestion paths where no
+     *             PdfTextElements are available.
      */
     @Deprecated(since = "semantic-chunker")
     private List<DetectedHeading> detectHeadings(List<LayoutTextStripper.PdfTextElement> elements) {
-        if (elements == null || elements.isEmpty()) return List.of();
-        
+        if (elements == null || elements.isEmpty())
+            return List.of();
+
         List<Float> fontSizes = elements.stream().map(e -> e.fontSize()).sorted().toList();
-        if (fontSizes.isEmpty()) return List.of();
+        if (fontSizes.isEmpty())
+            return List.of();
         float medianFontSize = fontSizes.get(fontSizes.size() / 2);
         float maxFontSize = fontSizes.get(fontSizes.size() - 1);
-        
+
         List<DetectedHeading> headings = new ArrayList<>();
         for (LayoutTextStripper.PdfTextElement el : elements) {
-            if (el.text() == null || el.text().trim().isEmpty() || el.text().length() < 3 || el.text().length() > 200) continue;
-            
+            if (el.text() == null || el.text().trim().isEmpty() || el.text().length() < 3 || el.text().length() > 200)
+                continue;
+
             float fs = el.fontSize();
             if (fs > medianFontSize * 1.15f) {
                 int level;
-                if (fs >= maxFontSize * 0.9f) level = 1;
-                else if (fs >= maxFontSize * 0.75f) level = 2;
-                else level = 3;
-                
+                if (fs >= maxFontSize * 0.9f)
+                    level = 1;
+                else if (fs >= maxFontSize * 0.75f)
+                    level = 2;
+                else
+                    level = 3;
+
                 String cleanText = el.text().trim().replaceAll("\\s+", " ");
                 headings.add(new DetectedHeading(cleanText, el.docCharStart(), el.docCharEnd(), level));
             }
@@ -526,18 +573,20 @@ public class EmbeddingService {
 
     /**
      * @deprecated Legacy character-cursor chunker.
-     * Only called when BlockClassifier returns 0 blocks (e.g., PDFs with no
-     * extractable layout elements or plain-text ingestion paths).
+     *             Only called when BlockClassifier returns 0 blocks (e.g., PDFs
+     *             with no
+     *             extractable layout elements or plain-text ingestion paths).
      */
     @Deprecated(since = "semantic-chunker")
     private List<Document> chunkTextLegacy(String text,
-                                            List<LayoutTextStripper.PdfTextElement> elements,
-                                            String sourceType, String originalFileName,
-                                            String enrichedFileName, String assetClassification,
-                                            String assetTags, Long sessionId,
-                                            String imageUrl, String sourceUrl) {
+            List<LayoutTextStripper.PdfTextElement> elements,
+            String sourceType, String originalFileName,
+            String enrichedFileName, String assetClassification,
+            com.accenture.intern.docmind.aiservices.vision.SemanticImage semanticImage, Long sessionId,
+            String imageUrl, String sourceUrl) {
         List<Document> chunks = new ArrayList<>();
-        if (text == null || text.isBlank()) return chunks;
+        if (text == null || text.isBlank())
+            return chunks;
 
         int totalLen = text.length();
         int cursor = 0;
@@ -548,11 +597,13 @@ public class EmbeddingService {
             int end = Math.min(cursor + CHUNK_SIZE, totalLen);
             if (end < totalLen) {
                 int snap = findBoundary(text, cursor, end);
-                if (snap > cursor) end = snap;
+                if (snap > cursor)
+                    end = snap;
             }
             if (end <= cursor) {
                 end = Math.min(cursor + CHUNK_SIZE, totalLen);
-                if (end <= cursor) break;
+                if (end <= cursor)
+                    break;
             }
 
             String chunk = text.substring(cursor, end).strip();
@@ -561,25 +612,43 @@ public class EmbeddingService {
                 meta.put("sourceType", sourceType);
                 meta.put("sourceName", FilenameNormalizer.normalize(originalFileName));
                 meta.put("originalFileName", originalFileName);
-                if (enrichedFileName != null) meta.put("enrichedFileName", enrichedFileName);
-                if (assetClassification != null) meta.put("assetClassification", assetClassification);
-                if (assetTags != null) meta.put("assetTags", assetTags);
+                if (enrichedFileName != null)
+                    meta.put("enrichedFileName", enrichedFileName);
+                if (assetClassification != null)
+                    meta.put("assetClassification", assetClassification);
+                if (semanticImage != null) {
+                    if (semanticImage.entities() != null && !semanticImage.entities().isEmpty()) meta.put("entities", semanticImage.entities());
+                    if (semanticImage.topics() != null && !semanticImage.topics().isEmpty()) meta.put("topics", semanticImage.topics());
+                    if (semanticImage.objects() != null && !semanticImage.objects().isEmpty()) meta.put("objects", semanticImage.objects());
+                    if (semanticImage.technologies() != null && !semanticImage.technologies().isEmpty()) meta.put("technologies", semanticImage.technologies());
+                    if (semanticImage.relationships() != null && !semanticImage.relationships().isEmpty()) meta.put("relationships", semanticImage.relationships());
+                    if (semanticImage.imageType() != null && !semanticImage.imageType().isBlank()) meta.put("imageType", semanticImage.imageType());
+                }
                 meta.put("chunkIndex", chunkIndex);
                 meta.put("sessionId", sessionId);
-                if (imageUrl != null && !imageUrl.isBlank()) { meta.put("imageUrl", imageUrl); meta.put("isImage", true); }
-                if (sourceUrl != null && !sourceUrl.isBlank()) meta.put("sourceUrl", sourceUrl);
-                if (chunkIndex > 0) meta.put("previousChunk", chunkIndex - 1);
+                if (imageUrl != null && !imageUrl.isBlank()) {
+                    meta.put("imageUrl", imageUrl);
+                }
+                if ("IMAGE".equalsIgnoreCase(sourceType) || "PDF_IMAGE".equalsIgnoreCase(sourceType) || (imageUrl != null && !imageUrl.isBlank())) {
+                    meta.put("isImage", true);
+                }
+                if (sourceUrl != null && !sourceUrl.isBlank())
+                    meta.put("sourceUrl", sourceUrl);
+                if (chunkIndex > 0)
+                    meta.put("previousChunk", chunkIndex - 1);
                 chunks.add(new Document(UUID.randomUUID().toString(), chunk, meta));
                 previousChunk = chunk;
                 chunkIndex++;
             }
             int nextCursor = end - OVERLAP;
-            if (nextCursor <= cursor) nextCursor = end;
+            if (nextCursor <= cursor)
+                nextCursor = end;
             cursor = nextCursor;
         }
 
         int total = chunks.size();
-        for (Document doc : chunks) doc.getMetadata().put("totalChunks", total);
+        for (Document doc : chunks)
+            doc.getMetadata().put("totalChunks", total);
         return chunks;
     }
 
@@ -587,34 +656,39 @@ public class EmbeddingService {
      * Entry point for PDF chunking.
      * Replaces the old character-cursor loop with a semantic block pipeline:
      *
-     *   PdfTextElements
-     *     → BlockClassifier (merge + classify)
-     *     → SemanticChunkBuilder (group into semantic chunks)
-     *     → List<Document>
+     * PdfTextElements
+     * → BlockClassifier (merge + classify)
+     * → SemanticChunkBuilder (group into semantic chunks)
+     * → List<Document>
      *
      * Falls back to the deprecated character-cursor chunker if the element
      * list is null or empty (e.g. plain-text ingestion paths).
      */
     private List<Document> chunkText(String text,
-                                     List<LayoutTextStripper.PdfTextElement> elements,
-                                     String sourceType, String originalFileName,
-                                     String enrichedFileName, String assetClassification,
-                                     String assetTags, Long sessionId,
-                                     String imageUrl, String sourceUrl) {
+            List<LayoutTextStripper.PdfTextElement> elements,
+            String sourceType, String originalFileName,
+            String enrichedFileName, String assetClassification,
+            com.accenture.intern.docmind.aiservices.vision.SemanticImage semanticImage, Long sessionId,
+            String imageUrl, String sourceUrl) {
 
         // If no layout elements, fall back to legacy character chunker
         if (elements == null || elements.isEmpty()) {
-            log.warn("No layout elements available for '{}' — falling back to character-cursor chunker", originalFileName);
+            log.warn("No layout elements available for '{}' — falling back to character-cursor chunker",
+                    originalFileName);
             return chunkTextLegacy(text, null, sourceType, originalFileName, enrichedFileName,
-                    assetClassification, assetTags, sessionId, imageUrl, sourceUrl);
+                    assetClassification, semanticImage, sessionId, imageUrl, sourceUrl);
         }
 
-        // Compute page heights from the elements (LayoutTextStripper stores them internally;
-        // here we approximate from element bboxes if the stripper didn't expose them directly).
-        // The caller passes pageHeights via DocumentParserService — for now we derive them.
+        // Compute page heights from the elements (LayoutTextStripper stores them
+        // internally;
+        // here we approximate from element bboxes if the stripper didn't expose them
+        // directly).
+        // The caller passes pageHeights via DocumentParserService — for now we derive
+        // them.
         Map<Integer, Float> pageHeights = new java.util.HashMap<>();
         for (LayoutTextStripper.PdfTextElement el : elements) {
-            // Use the max Y seen per page as a proxy for page height (conservative lower bound)
+            // Use the max Y seen per page as a proxy for page height (conservative lower
+            // bound)
             pageHeights.merge(el.pageNumber(), el.bbox().y() + el.bbox().height(), Math::max);
         }
 
@@ -622,16 +696,30 @@ public class EmbeddingService {
         if (blocks.isEmpty()) {
             log.warn("BlockClassifier returned 0 blocks for '{}' — falling back to legacy chunker", originalFileName);
             return chunkTextLegacy(text, elements, sourceType, originalFileName, enrichedFileName,
-                    assetClassification, assetTags, sessionId, imageUrl, sourceUrl);
+                    assetClassification, semanticImage, sessionId, imageUrl, sourceUrl);
         }
 
         List<Document> docs = SemanticChunkBuilder.build(blocks, sourceType, originalFileName,
-                enrichedFileName, assetClassification, assetTags, sessionId, sourceUrl, objectMapper);
-
-        // Attach imageUrl if this is an image-backed chunk
-        if (imageUrl != null && !imageUrl.isBlank()) {
+                enrichedFileName, assetClassification, null, sessionId, sourceUrl, objectMapper);
+        
+        if (semanticImage != null) {
             for (Document doc : docs) {
+                if (semanticImage.entities() != null && !semanticImage.entities().isEmpty()) doc.getMetadata().put("entities", semanticImage.entities());
+                if (semanticImage.topics() != null && !semanticImage.topics().isEmpty()) doc.getMetadata().put("topics", semanticImage.topics());
+                if (semanticImage.objects() != null && !semanticImage.objects().isEmpty()) doc.getMetadata().put("objects", semanticImage.objects());
+                if (semanticImage.technologies() != null && !semanticImage.technologies().isEmpty()) doc.getMetadata().put("technologies", semanticImage.technologies());
+                if (semanticImage.relationships() != null && !semanticImage.relationships().isEmpty()) doc.getMetadata().put("relationships", semanticImage.relationships());
+                if (semanticImage.imageType() != null && !semanticImage.imageType().isBlank()) doc.getMetadata().put("imageType", semanticImage.imageType());
+            }
+        }
+
+        // Attach isImage and imageUrl if this is an image-backed chunk
+        boolean isImageType = "IMAGE".equalsIgnoreCase(sourceType) || "PDF_IMAGE".equalsIgnoreCase(sourceType);
+        for (Document doc : docs) {
+            if (imageUrl != null && !imageUrl.isBlank()) {
                 doc.getMetadata().put("imageUrl", imageUrl);
+            }
+            if (isImageType || (imageUrl != null && !imageUrl.isBlank())) {
                 doc.getMetadata().put("isImage", true);
             }
         }
@@ -695,6 +783,3 @@ public class EmbeddingService {
         return -1;
     }
 }
-
-
-

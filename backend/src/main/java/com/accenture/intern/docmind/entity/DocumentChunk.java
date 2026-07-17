@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDateTime;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * Stores a single chunk's raw text + metadata in Postgres so it can be searched
@@ -51,7 +53,7 @@ public class DocumentChunk {
     @Column(name = "source_name", columnDefinition = "text")
     private String sourceName;
 
-    @Column(name = "source_type")
+    @Column(name = "source_type", columnDefinition = "text")
     private String sourceType;
 
     /**
@@ -77,11 +79,31 @@ public class DocumentChunk {
     @Column(name = "enriched_file_name", columnDefinition = "text")
     private String enrichedFileName;
 
-    @Column(name = "asset_classification")
+    @Column(name = "asset_classification", columnDefinition = "text")
     private String assetClassification;
 
-    @Column(name = "asset_tags", columnDefinition = "text")
-    private String assetTags;
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "entities", columnDefinition = "text[]")
+    private String[] entities;
+
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "topics", columnDefinition = "text[]")
+    private String[] topics;
+
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "objects", columnDefinition = "text[]")
+    private String[] objects;
+
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "technologies", columnDefinition = "text[]")
+    private String[] technologies;
+
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "relationships", columnDefinition = "text[]")
+    private String[] relationships;
+
+    @Column(name = "image_type", columnDefinition = "text")
+    private String imageType;
 
     @Column(name = "chunk_index")
     private Integer chunkIndex;

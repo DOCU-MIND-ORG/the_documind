@@ -646,3 +646,245 @@ select:focus,
     animation: none;
   }
 }
+
+/* ════════════════════════════════════════════════════════════
+   DocPreparationCard — premium ingestion UX
+   ════════════════════════════════════════════════════════════ */
+
+/* ── Card shell ── */
+.doc-prep-card {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-sm);
+  width: 100%;
+  max-width: 340px;
+  margin-bottom: 4px;
+}
+
+/* "All done" state — very brief green tint before exit */
+.doc-prep-card--done {
+  border-color: rgba(16, 185, 129, 0.25);
+  background: rgba(16, 185, 129, 0.03);
+  transition: border-color 0.3s ease, background 0.3s ease;
+}
+
+/* ── File card ── */
+.doc-file-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-subtle);
+  transition: border-color 0.4s ease, background 0.4s ease, transform 0.3s ease;
+  animation: fadeInUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.doc-file-card--active {
+  border-color: rgba(59, 130, 246, 0.22);
+  background: rgba(59, 130, 246, 0.03);
+}
+
+.doc-file-card--done {
+  border-color: rgba(16, 185, 129, 0.22);
+  background: rgba(16, 185, 129, 0.03);
+}
+
+.doc-file-card--failed {
+  border-color: rgba(239, 68, 68, 0.22);
+  background: rgba(239, 68, 68, 0.03);
+}
+
+/* ── Sparkles that float upward into the doc icon ── */
+.doc-sparkle {
+  position: absolute;
+  bottom: -4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #60a5fa;
+  pointer-events: none;
+  animation: sparkleRise 0.9s cubic-bezier(0.2, 0.8, 0.4, 1) forwards;
+}
+
+@keyframes sparkleRise {
+  0%   { opacity: 0;   transform: translateY(0)   scale(0.6); }
+  25%  { opacity: 0.9; transform: translateY(-6px) scale(1.1); }
+  60%  { opacity: 0.7; transform: translateY(-16px) scale(0.9); }
+  100% { opacity: 0;   transform: translateY(-28px) scale(0.4); }
+}
+
+/* ── Breathing progress bar — organic, non-linear ── */
+.doc-bar-breathe {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #3b82f6 0%, #818cf8 50%, #3b82f6 100%);
+  background-size: 200% 100%;
+  animation: barBreathe 2.4s ease-in-out infinite;
+}
+
+@keyframes barBreathe {
+  0%   { width: 20%; background-position: 0% 50%;   opacity: 0.7; }
+  30%  { width: 55%; background-position: 60% 50%;  opacity: 1;   }
+  65%  { width: 78%; background-position: 100% 50%; opacity: 0.85;}
+  85%  { width: 62%; background-position: 60% 50%;  opacity: 1;   }
+  100% { width: 20%; background-position: 0% 50%;   opacity: 0.7; }
+}
+
+/* Long-wait variant — slower, more patient feel */
+.doc-bar-long {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #a78bfa 0%, #6366f1 50%, #a78bfa 100%);
+  background-size: 200% 100%;
+  animation: barBreathe 4s ease-in-out infinite;
+}
+
+/* ── SVG tick that draws itself on completion ── */
+.doc-tick-draw {
+  stroke-dasharray: 30;
+  stroke-dashoffset: 30;
+  animation: tickDraw 0.45s cubic-bezier(0.16, 1, 0.3, 1) 0.05s forwards;
+}
+
+@keyframes tickDraw {
+  to { stroke-dashoffset: 0; }
+}
+
+/* ── Pulse ring around the active status dot ── */
+.doc-pulse-ring {
+  animation: docPulse 1.6s ease-out infinite;
+}
+
+@keyframes docPulse {
+  0%   { transform: scale(1);   opacity: 0.8; }
+  70%  { transform: scale(2.4); opacity: 0;   }
+  100% { transform: scale(2.4); opacity: 0;   }
+}
+
+/* ── Rotating message — tiny cross-fade ── */
+.doc-msg-rotate {
+  animation: fadeInUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ── Reduced motion overrides ── */
+@media (prefers-reduced-motion: reduce) {
+  .doc-sparkle,
+  .doc-bar-breathe,
+  .doc-bar-long,
+  .doc-tick-draw,
+  .doc-pulse-ring,
+  .doc-msg-rotate {
+    animation: none;
+  }
+  .doc-bar-breathe,
+  .doc-bar-long {
+    width: 60%;
+    opacity: 0.7;
+  }
+  .doc-tick-draw {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}
+
+/* ── Premium Markdown Typography (ChatGPT-like) ── */
+.streaming-markdown {
+  color: var(--color-text-primary);
+}
+
+.streaming-markdown h1 {
+  font-size: 1.875rem;
+  font-weight: 700;
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+  letter-spacing: -0.025em;
+  color: var(--color-text-primary);
+}
+
+.streaming-markdown h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-top: 1.75rem;
+  margin-bottom: 0.875rem;
+  letter-spacing: -0.025em;
+  color: var(--color-text-primary);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.3rem;
+}
+
+.streaming-markdown h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  color: var(--color-text-primary);
+}
+
+.streaming-markdown h4 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.streaming-markdown p {
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+  line-height: 1.7;
+}
+
+.streaming-markdown ul, .streaming-markdown ol {
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding-left: 1.5rem;
+}
+
+.streaming-markdown li {
+  margin-top: 0.375rem;
+  margin-bottom: 0.375rem;
+  line-height: 1.6;
+}
+
+.streaming-markdown strong {
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.streaming-markdown blockquote {
+  border-left: 4px solid var(--color-border-strong);
+  padding-left: 1rem;
+  margin-left: 0;
+  font-style: italic;
+  color: var(--color-text-secondary);
+}
+
+.streaming-markdown pre {
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  overflow-x: auto;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+.streaming-markdown code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  background-color: var(--color-bg-subtle);
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+  color: var(--color-accent);
+}
+
+.streaming-markdown pre code {
+  background-color: transparent;
+  padding: 0;
+  color: inherit;
+}

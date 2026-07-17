@@ -53,6 +53,30 @@ public class FullTextSearchIndexInitializer {
 
         try (Connection conn = dataSource.getConnection();
              Statement stmt = conn.createStatement()) {
+            
+            // Fix varchar(255) limits on string columns that should be TEXT
+            // We ignore errors here in case the table doesn't exist yet (Hibernate hasn't run)
+            // or if the DB doesn't support this specific syntax, but it will fix the schema
+            // for existing PostgreSQL databases.
+            try {
+                stmt.execute("""
+                        ALTER TABLE document_chunks
+                        ALTER COLUMN original_file_name TYPE text,
+                        ALTER COLUMN enriched_file_name TYPE text,
+                        ALTER COLUMN asset_classification TYPE text,
+                        ALTER COLUMN asset_tags TYPE text,
+                        ALTER COLUMN source_name TYPE text,
+                        ALTER COLUMN source_url TYPE text,
+                        ALTER COLUMN image_url TYPE text,
+                        ALTER COLUMN bounding_boxes TYPE text,
+                        ALTER COLUMN section_path TYPE text,
+                        ALTER COLUMN heading TYPE text
+                        """);
+                log.info("Verified column types on document_chunks (migrated varchar to text if needed)");
+            } catch (Exception e) {
+                log.debug("Could not alter column types (table might not exist yet): {}", e.getMessage());
+            }
+
             stmt.execute(tsvIndexSql);
             stmt.execute(sessionIndexSql);
             stmt.execute(contentHashIndexSql);

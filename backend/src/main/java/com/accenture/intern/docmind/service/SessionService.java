@@ -202,10 +202,6 @@ public class SessionService {
                 .build();
     }
 
-    /**
-     * Polled by the frontend after a document/Wikipedia upload to find out when
-     * the 3 suggested starter questions are ready.
-     */
     public SuggestedQuestionsResponse getSuggestedQuestions(String userEmail, Long sessionId) {
         User user = userRepository.findByEmail(userEmail);
         if (user == null) throw new RuntimeException("User Not Found 🚫");
@@ -229,6 +225,24 @@ public class SessionService {
                 .status(state.getQuestionsStatus())
                 .questions(state.getSuggestedQuestions())
                 .build();
+    }
+
+    public void triggerSuggestedQuestions(String userEmail, Long sessionId, com.accenture.intern.docmind.aiservices.context.SuggestedQuestionsService suggestedQuestionsService) {
+        User user = userRepository.findByEmail(userEmail);
+        if (user == null) throw new RuntimeException("User Not Found 🚫");
+
+        Session session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new RuntimeException("No Session found 🚫"));
+
+        if (!session.getUser().getId().equals(user.getId())) {
+            throw new RuntimeException("Access Denied !! You seems to be 👽");
+        }
+
+        SessionUploadState state = sessionCacheService.getState(sessionId);
+        if (state != null) {
+            state.setQuestionsStatus(SessionUploadState.SuggestedQuestionsStatus.GENERATING);
+        }
+        suggestedQuestionsService.triggerFollowUpForSession(sessionId);
     }
 
     private List<MessageResponse> getMessagesForSession(Session session) {
@@ -425,5 +439,26 @@ public class SessionService {
         if (raw == null) return null;
 
         return java.util.Base64.getDecoder().decode(raw.toString());
+    }
+
+    /**
+     * Returns the live ingestion status of all active document preparations for a session.
+     */
+    public java.util.Collection<com.accenture.intern.docmind.dto.chat.SessionUploadState.DocumentPreparationStatus> getIngestionStatus(String userEmail, Long sessionId) {
+        User user = userRepository.findByEmail(userEmail);
+        if (user == null) throw new RuntimeException("User Not Found 🚫");
+
+        Session session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new RuntimeException("No Session found 🚫"));
+
+        if (!session.getUser().getId().equals(user.getId())) {
+            throw new RuntimeException("Access Denied !! You seems to be 👽");
+        }
+
+        com.accenture.intern.docmind.dto.chat.SessionUploadState state = sessionCacheService.getState(sessionId);
+        if (state == null) {
+            return Collections.emptyList();
+        }
+        return state.getDocumentStatuses();
     }
 }

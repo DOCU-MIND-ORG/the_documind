@@ -39,4 +39,9 @@ public sealed interface ExecutionPlan permits
      * @return Whether the query asks for or would benefit from visual information.
      */
     boolean isVisualSearch();
+
+    /**
+     * @return The specific type of image requested (e.g. DIAGRAM, PHOTO), or null.
+     */
+    String getImageType();
 }

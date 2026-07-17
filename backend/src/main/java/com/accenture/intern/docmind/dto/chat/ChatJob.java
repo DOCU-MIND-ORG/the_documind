@@ -16,4 +16,5 @@ public class ChatJob implements Serializable {
     private String query;
     private String model;
     private Long timestamp;
+    private java.util.List<String> inflightJobIds;
 }

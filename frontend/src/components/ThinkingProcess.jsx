@@ -5,56 +5,80 @@ const StepRow = ({ event, index, isLast, isComplete }) => {
 
   useEffect(() => {
     let timers = [];
-    timers.push(setTimeout(() => setPhase('vis'), 10));
-    timers.push(setTimeout(() => setPhase('appear'), 70));
-    timers.push(setTimeout(() => setPhase('active'), 300));
+    timers.push(setTimeout(() => setPhase('appear'), index * 100 + 10));
+    timers.push(setTimeout(() => setPhase('active'), index * 100 + 100));
     return () => timers.forEach(clearTimeout);
-  }, []);
+  }, [index]);
 
   useEffect(() => {
-    if (phase !== 'hidden' && phase !== 'vis' && phase !== 'appear') {
-      if (!isLast || isComplete) {
+    if (phase !== 'hidden' && phase !== 'appear') {
+      if (isComplete || (!isLast && event.status === 'DONE')) {
         setPhase('done');
       }
     }
-  }, [isLast, isComplete, phase]);
+  }, [isLast, isComplete, phase, event.status]);
 
-  const rowClass = `v-row ${
-    phase === 'vis' ? 'vis' : 
-    phase === 'appear' ? 'vis appear-r' : 
-    phase === 'active' ? 'vis active-r' : 
-    phase === 'done' ? 'vis done-r' : ''
-  }`;
-  
-  const nodeClass = `v-node ${
-    phase === 'appear' ? 'appear' : 
-    phase === 'active' ? 'active' : 
-    phase === 'done' ? 'done' : ''
-  }`;
+  const isActive = phase === 'active' && !isComplete && isLast;
+  const isDone = phase === 'done' || isComplete || (!isLast && phase !== 'hidden');
 
   return (
-    <div className={rowClass}>
-      <div className="v-spine">
-        <div className={nodeClass}></div>
-        {!isLast && (
-          <div className="v-connector">
-            <div className={`v-fill ${phase === 'done' ? 'flowing' : ''}`}></div>
-          </div>
-        )}
-      </div>
-      <div className="v-content">
-        <div className="v-title">{event.message}</div>
-        <div className="v-sub mt-1.5 flex flex-col gap-1">
-          {event.metadata?.optimized_query && (
-            <div className="text-[12.5px] leading-snug">
-              <span className="font-semibold text-secondary">Understood as: </span>
-              <span className="text-tertiary italic">{event.metadata.optimized_query}</span>
-            </div>
+    <div className={`relative flex gap-3 transition-all duration-500 ease-out ${phase === 'hidden' ? 'opacity-0 translate-y-1' : 'opacity-100 translate-y-0'}`}>
+      
+      {/* Connector Line */}
+      {!isLast && (
+        <div className="absolute left-[7px] top-[20px] bottom-[-4px] w-[1px] bg-gray-200 dark:bg-gray-800">
+          <div 
+            className="w-full bg-blue-500 transition-all duration-700 ease-in-out origin-top" 
+            style={{ height: isDone ? '100%' : '0%', opacity: isDone ? 1 : 0 }} 
+          />
+        </div>
+      )}
+
+      {/* Node / Orb */}
+      <div className="relative z-10 flex flex-col items-center mt-1">
+        <div className={`w-4 h-4 rounded-full flex items-center justify-center border-[1.5px] transition-all duration-500 ${
+            isDone ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/10' :
+            isActive ? 'border-blue-500 bg-blue-500' :
+            'border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900'
+        }`}>
+          {isDone ? (
+            <div className="w-2 h-2 bg-blue-500 rounded-full" />
+          ) : isActive ? (
+             <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+          ) : (
+             <div className="w-1.5 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full" />
           )}
-          {event.metadata?.scope && (
-            <div className="text-[12.5px] leading-snug">
-              <span className="font-semibold text-secondary">Search scope: </span>
-              <span className="text-tertiary">{event.metadata.scope}</span>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 pb-3 pt-0.5">
+        <div className={`text-[12px] font-medium transition-colors duration-300 ${
+          isActive ? 'text-blue-600 dark:text-blue-400' :
+          isDone ? 'text-gray-700 dark:text-gray-300' :
+          'text-gray-400 dark:text-gray-500'
+        }`}>
+          {event.message}
+        </div>
+        
+        {/* Minimal Metadata */}
+        <div className={`mt-1 overflow-hidden transition-all duration-500 ease-out ${
+          isDone || isActive ? 'max-h-20 opacity-100' : 'max-h-0 opacity-0'
+        }`}>
+          {(event.metadata?.optimized_query || event.metadata?.scope) && (
+            <div className="flex flex-col gap-0.5 mt-0.5">
+              {event.metadata?.optimized_query && (
+                <div className="text-[11px] leading-snug">
+                  <span className="text-gray-400 dark:text-gray-500">Parsed:</span>{' '}
+                  <span className="text-gray-600 dark:text-gray-400 italic">"{event.metadata.optimized_query}"</span>
+                </div>
+              )}
+              {event.metadata?.scope && (
+                <div className="text-[11px] leading-snug flex items-center gap-1.5">
+                  <span className="text-gray-400 dark:text-gray-500">Scope:</span>
+                  <span className="text-gray-500 dark:text-gray-400 font-medium px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded uppercase tracking-wider text-[9px]">{event.metadata.scope}</span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -70,57 +94,44 @@ export default function ThinkingProcess({ events, isComplete }) {
     setIsOpen(!isComplete);
   }, [isComplete]);
 
-  if (!events || events.length === 0) return null;
-
-  const CheckIcon = () => (
-    <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center shrink-0">
-      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="20 6 9 17 4 12" />
-      </svg>
-    </div>
-  );
+  const filteredEvents = events ? events.filter(e => !e.message || !e.message.startsWith('Preparing your documents...')) : [];
+  if (!filteredEvents || filteredEvents.length === 0) return null;
 
   return (
-    <div className="mb-6 overflow-hidden text-[13px] animate-fade-in-up">
-      <button 
+    <div className="mb-4 w-full max-w-sm">
+      <div 
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between py-2 transition-colors opacity-80 hover:opacity-100"
+        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1C1C1C] cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors shadow-sm"
       >
-        <div className="flex items-center gap-2">
-          {isComplete ? <CheckIcon /> : (
-            <svg className="w-4 h-4 text-blue-500 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          )}
-          <span className="font-semibold text-primary">
-            {isComplete ? 'Thought process' : 'Processing request...'}
-          </span>
-        </div>
+        <span className="text-[14px]">
+          {isComplete ? '💡' : '✨'}
+        </span>
+        <span className="text-[12px] font-semibold text-gray-700 dark:text-gray-300">
+          {isComplete ? 'Process completed' : 'Thinking Process'}
+        </span>
         <svg 
-          className={`w-4 h-4 text-tertiary transition-transform ${isOpen ? 'rotate-180' : ''}`} 
+          className={`w-3.5 h-3.5 text-gray-500 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} 
           fill="none" 
           viewBox="0 0 24 24" 
           stroke="currentColor"
         >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
         </svg>
-      </button>
-      
-      {isOpen && (
-        <div className="pt-4 pb-2 pl-2">
-          <div className="v-list">
-            {events.map((event, index) => (
-              <StepRow 
-                key={event.id || index} 
-                event={event} 
-                index={index} 
-                isLast={index === events.length - 1} 
-                isComplete={isComplete} 
-              />
-            ))}
-          </div>
+      </div>
+
+      <div className={`mt-3 pl-2 overflow-hidden transition-all duration-500 ease-in-out ${isOpen ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
+        <div className="flex flex-col relative pt-1">
+          {filteredEvents.map((event, idx) => (
+            <StepRow 
+              key={event.id || idx} 
+              event={event} 
+              index={idx} 
+              isLast={idx === filteredEvents.length - 1} 
+              isComplete={isComplete}
+            />
+          ))}
         </div>
-      )}
+      </div>
     </div>
   );
 }

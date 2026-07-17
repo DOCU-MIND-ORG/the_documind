@@ -63,6 +63,7 @@ public class LlmWorkerService {
     private final java.util.concurrent.ExecutorService workerExecutor;
     private final com.accenture.intern.docmind.service.AnalyticsService analyticsService;
     private final TransactionTemplate transactionTemplate;
+    private final ChatGenerationManager chatGenerationManager;
 
     private final com.accenture.intern.docmind.aiservices.context.SuggestedQuestionsService suggestedQuestionsService;
 
@@ -82,7 +83,8 @@ public class LlmWorkerService {
                             org.springframework.data.redis.core.StringRedisTemplate stringRedisTemplate,
                             java.util.concurrent.ExecutorService workerExecutor,
                             com.accenture.intern.docmind.service.AnalyticsService analyticsService,
-                            TransactionTemplate transactionTemplate) {
+                            TransactionTemplate transactionTemplate,
+                            ChatGenerationManager chatGenerationManager) {
         this.chatClient = chatClientBuilder.build();
         this.contextBuilderService = contextBuilderService;
         this.citationService = citationService;
@@ -100,6 +102,7 @@ public class LlmWorkerService {
         this.workerExecutor = workerExecutor;
         this.analyticsService = analyticsService;
         this.transactionTemplate = transactionTemplate;
+        this.chatGenerationManager = chatGenerationManager;
     }
 
     @PostConstruct
@@ -177,6 +180,15 @@ public class LlmWorkerService {
         Long sessionId = Long.parseLong((String) value.get("sessionId"));
         String query = (String) value.get("query");
         String model = (String) value.get("model");
+        String inflightJobIdsStr = (String) value.get("inflightJobIds");
+        List<String> inflightJobIds = new java.util.ArrayList<>();
+        if (inflightJobIdsStr != null && !inflightJobIdsStr.isEmpty()) {
+            try {
+                inflightJobIds = objectMapper.readValue(inflightJobIdsStr, new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){});
+            } catch (Exception e) {
+                log.error("Failed to deserialize inflightJobIds", e);
+            }
+        }
         
         String lockKey = "lock:" + messageId;
         Boolean acquired = redisTemplate.opsForValue().setIfAbsent(lockKey, "1", 5, TimeUnit.MINUTES);
@@ -199,6 +211,80 @@ public class LlmWorkerService {
         String sessionActiveKey = "active-generation:" + sessionId;
         redisTemplate.opsForValue().set(sessionActiveKey, messageId.toString(), 30, TimeUnit.MINUTES);
 
+        if (!inflightJobIds.isEmpty()) {
+            updateMessageStatus(messageId, MessageStatus.WAITING_FOR_DOCUMENTS);
+            long startTimeWait = System.currentTimeMillis();
+            long waitTimeMs = 200;
+            boolean allDone = false;
+            
+            while (System.currentTimeMillis() - startTimeWait < 120000) {
+                boolean anyStillProcessing = false;
+                int remaining = 0;
+                for (String jId : inflightJobIds) {
+                    try {
+                        Long jobId = Long.parseLong(jId);
+                        SessionUploadState state = sessionCacheService.getState(sessionId);
+                        if (state != null) {
+                            SessionUploadState.DocumentPreparationStatus docStatus = state.getDocumentStatuses().stream()
+                                    .filter(s -> s.jobId().equals(jobId))
+                                    .findFirst()
+                                    .orElse(null);
+                            UploadState uState = docStatus != null ? docStatus.state() : null;
+                            if (uState == null || uState == UploadState.QUEUED || uState == UploadState.INGESTING) {
+                                anyStillProcessing = true;
+                                remaining++;
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                }
+                
+                if (!anyStillProcessing) {
+                    allDone = true;
+                    break;
+                }
+                
+                
+                try {
+                    java.util.List<java.util.Map<String, String>> docsList = new java.util.ArrayList<>();
+                    SessionUploadState state = sessionCacheService.getState(sessionId);
+                    if (state != null) {
+                        for (SessionUploadState.DocumentPreparationStatus s : state.getDocumentStatuses()) {
+                            java.util.Map<String, String> map = new java.util.HashMap<>();
+                            map.put("jobId", s.jobId().toString());
+                            map.put("filename", s.filename());
+                            map.put("state", s.state().name());
+                            docsList.add(map);
+                        }
+                    }
+                    String docsJson = new ObjectMapper().writeValueAsString(docsList);
+                    publishToken(messageId, "WAITING_FOR_DOCUMENTS", "{\"remaining\":" + remaining + ", \"statuses\":" + docsJson + "}");
+                } catch (Exception e) {
+                    log.error("Failed to serialize document statuses", e);
+                    publishToken(messageId, "WAITING_FOR_DOCUMENTS", "{\"remaining\":" + remaining + "}");
+                }
+                
+                try {
+                    Thread.sleep(waitTimeMs);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                waitTimeMs = Math.min(2000, waitTimeMs * 2);
+            }
+            
+            if (!allDone) {
+                updateMessageStatus(messageId, MessageStatus.FAILED_TIMEOUT);
+                publishToken(messageId, "error", "Your documents are still being prepared. Please try again in a moment.");
+                publishToken(messageId, "done", ""); // End stream
+                redisTemplate.opsForHash().put(stateKey, "status", "FAILED");
+                redisTemplate.delete(sessionActiveKey);
+                streamOps.acknowledge(STREAM_KEY, CONSUMER_GROUP, record.getId());
+                return;
+            }
+        }
+        
+        updateMessageStatus(messageId, MessageStatus.PROCESSING);
+
         try {
             transactionTemplate.executeWithoutResult(status -> {
                 long startTime = System.currentTimeMillis();
@@ -214,13 +300,30 @@ public class LlmWorkerService {
             redisTemplate.opsForHash().put(stateKey, "status", "COMPLETED");
             redisTemplate.delete(sessionActiveKey);
         } catch (Exception e) {
-            log.error("Failed to process job {}", messageId, e);
-            updateMessageStatus(messageId, MessageStatus.FAILED);
-            publishToken(messageId, "error", "Generation failed: " + e.getMessage());
-            publishToken(messageId, "done", ""); // End stream
-            
-            redisTemplate.opsForHash().put(stateKey, "status", "FAILED");
-            redisTemplate.delete(sessionActiveKey);
+            GenerationCancelledException cancelledEx = extractCancelledException(e);
+            if (cancelledEx != null) {
+                log.info("Job {} was cancelled. Saving partial content.", messageId);
+                messageRepository.findById(messageId).ifPresent(msg -> {
+                    String partial = cancelledEx.getPartialContent();
+                    msg.setContent((partial == null || partial.trim().isEmpty()) ? "Generation stopped." : partial);
+                    msg.setStatus(MessageStatus.CANCELLED);
+                    messageRepository.save(msg);
+                });
+                
+                publishToken(messageId, "cancelled", "");
+                publishToken(messageId, "done", ""); // End stream
+                
+                redisTemplate.opsForHash().put(stateKey, "status", "CANCELLED");
+                redisTemplate.delete(sessionActiveKey);
+            } else {
+                log.error("Failed to process job {}", messageId, e);
+                updateMessageStatus(messageId, MessageStatus.FAILED);
+                publishToken(messageId, "error", "Generation failed: " + e.getMessage());
+                publishToken(messageId, "done", ""); // End stream
+                
+                redisTemplate.opsForHash().put(stateKey, "status", "FAILED");
+                redisTemplate.delete(sessionActiveKey);
+            }
         } finally {
             streamOps.acknowledge(STREAM_KEY, CONSUMER_GROUP, record.getId());
         }
@@ -230,25 +333,39 @@ public class LlmWorkerService {
         Session session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new RuntimeException("Session not found"));
         
+        ChatGenerationManager.ChatSession chatSession = new ChatGenerationManager.ChatSession(Thread.currentThread());
+        chatGenerationManager.register(messageId, chatSession);
+
+        try {
+        
         // Topic Shift Detection (Memory Architecture Layer 3/4)
         boolean topicShifted = topicShiftDetectorService.detectTopicShift(sessionId, query);
         
         SessionUploadState state = sessionCacheService.getState(sessionId);
         
         int waitSeconds = 0;
-        while (state != null && (state.getState() == UploadState.EMBEDDING || state.getState() == UploadState.INGESTING) && waitSeconds < 120) {
-            log.info("Session {} is currently {}, waiting for ingestion to complete before generating response...", sessionId, state.getState());
+        while (state != null && state.getPendingIngestionsCount() > 0 && waitSeconds < 120) {
+            log.info("Session {} has {} pending ingestions, waiting for them to complete before generating response...", sessionId, state.getPendingIngestionsCount());
+            try {
+                String statusPayload = objectMapper.writeValueAsString(state.getDocumentStatuses());
+                publishToken(messageId, "ingestion_status", statusPayload);
+            } catch (Exception e) {
+                log.error("Failed to serialize ingestion status", e);
+            }
             try {
                 Thread.sleep(1000);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                break;
+                throw new GenerationCancelledException("");
+            }
+            if (chatSession.cancelled.get()) {
+                throw new GenerationCancelledException("");
             }
             state = sessionCacheService.getState(sessionId);
             waitSeconds++;
         }
         
-        boolean stillIndexing = state != null && (state.getState() == UploadState.EMBEDDING || state.getState() == UploadState.INGESTING);
+        boolean stillIndexing = state != null && state.getPendingIngestionsCount() > 0;
         List<DocumentReference> uploadedDocs;
         if (state != null && state.getActiveDocumentNames() != null) {
             uploadedDocs = state.getActiveDocumentNames().stream()
@@ -270,12 +387,16 @@ public class LlmWorkerService {
             } catch (Exception ignored) {}
         });
 
+        if (chatSession.cancelled.get() || Thread.currentThread().isInterrupted()) {
+            throw new GenerationCancelledException("");
+        }
+        
         ContextResult contextResult = contextBuilderService.buildContext(query, sessionId, sessionContext, stillIndexing, progressSink).block();
 
         org.springframework.ai.google.genai.GoogleGenAiChatOptions options = modelFactory.getChatOptions(session.getUser(), model);
         String finalSystemPrompt = modelFactory.injectResponseStyle(session.getUser(), contextResult.systemPrompt());
 
-        String fullResponse = streamAnswer(messageId, finalSystemPrompt, contextResult.prompt(), options);
+        String fullResponse = streamAnswer(messageId, finalSystemPrompt, contextResult.prompt(), options, chatSession);
         progressSink.tryEmitComplete();
 
 
@@ -304,9 +425,6 @@ public class LlmWorkerService {
 
         publishToken(messageId, "done", "");
         
-        // Trigger follow-up questions generation in the background
-        suggestedQuestionsService.triggerFollowUpForSession(sessionId);
-
         // Memory injection
         boolean isMemorable = memoryGatingService.isMemorable(query, fullResponse);
         Double topScore = contextResult.topScore() != null ? contextResult.topScore() : 0.0;
@@ -321,6 +439,9 @@ public class LlmWorkerService {
             // Add to current episode for topic shift detection
             topicShiftDetectorService.appendAssistantResponse(sessionId, fullResponse);
         }
+        } finally {
+            chatGenerationManager.unregister(messageId);
+        }
     }
 
     /**
@@ -331,7 +452,7 @@ public class LlmWorkerService {
      * "retry" reset event before calling this a second time so the frontend
      * clears the discarded first-pass text instead of appending onto it.
      */
-    private String streamAnswer(Long messageId, String systemPrompt, String userPrompt, org.springframework.ai.google.genai.GoogleGenAiChatOptions options) {
+    private String streamAnswer(Long messageId, String systemPrompt, String userPrompt, org.springframework.ai.google.genai.GoogleGenAiChatOptions options, ChatGenerationManager.ChatSession chatSession) {
         try {
             publishToken(messageId, "progress", new com.accenture.intern.docmind.dto.chat.ProgressEvent(
                     com.accenture.intern.docmind.dto.chat.ProgressStage.GENERATION,
@@ -340,6 +461,8 @@ public class LlmWorkerService {
         } catch (Exception ignored) {}
 
         StringBuilder fullResponse = new StringBuilder();
+        java.util.concurrent.atomic.AtomicInteger tokenCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        java.util.concurrent.atomic.AtomicLong lastSaveTime = new java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis());
 
         chatClient.prompt()
                 .system(systemPrompt)
@@ -348,9 +471,22 @@ public class LlmWorkerService {
                 .stream()
                 .content()
                 .doOnNext(token -> {
+                    if (chatSession.cancelled.get() || Thread.currentThread().isInterrupted()) {
+                        throw new GenerationCancelledException(fullResponse.toString());
+                    }
                     if (token != null) {
                         fullResponse.append(token);
                         publishToken(messageId, "message", token);
+                        
+                        int count = tokenCount.incrementAndGet();
+                        long now = System.currentTimeMillis();
+                        if (count % 100 == 0 || (now - lastSaveTime.get()) > 2000) {
+                            lastSaveTime.set(now);
+                            messageRepository.findById(messageId).ifPresent(msg -> {
+                                msg.setContent(fullResponse.toString());
+                                messageRepository.save(msg);
+                            });
+                        }
                     }
                 })
                 .blockLast(); // Block until completion
@@ -376,5 +512,15 @@ public class LlmWorkerService {
             msg.setStatus(status);
             messageRepository.save(msg);
         });
+    }
+
+    private GenerationCancelledException extractCancelledException(Throwable e) {
+        while (e != null) {
+            if (e instanceof GenerationCancelledException) {
+                return (GenerationCancelledException) e;
+            }
+            e = e.getCause();
+        }
+        return null;
     }
 }

@@ -9,7 +9,8 @@ public record DirectExecutionPlan(
     String strategy,
     RetrievalPlan retrievalPlan,
     List<EntityResolution> entities,
-    boolean visualSearch
+    boolean visualSearch,
+    String imageType
 ) implements ExecutionPlan {
     
     @Override
@@ -35,5 +36,10 @@ public record DirectExecutionPlan(
     @Override
     public boolean isVisualSearch() {
         return visualSearch;
+    }
+
+    @Override
+    public String getImageType() {
+        return imageType;
     }
 }
