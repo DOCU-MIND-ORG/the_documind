@@ -2,7 +2,7 @@
 
 Welcome to **DocuMind**!
 
-🔗 **Repository Link:** [https://github.com/pyt702/Documind](https://github.com/pyt702/Documind)
+🔗 **Repository Link:** [https://github.com/DOCU-MIND-ORG/the_documind](https://github.com/DOCU-MIND-ORG/the_documind)
 
 ## What is DocuMind?
 DocuMind is an intelligent, AI-powered document analysis and Q&A platform designed to transform how you interact with large text files. Instead of manually scrolling through hundreds of pages of PDFs, reports, or research papers, DocuMind allows you to simply upload your documents and have a conversational interface with them. 
