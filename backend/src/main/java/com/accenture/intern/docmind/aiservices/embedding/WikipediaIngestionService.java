@@ -205,13 +205,28 @@ public class WikipediaIngestionService {
                     String src = img.attr("src");
                     if (src.startsWith("//")) src = "https:" + src;
                     
+                    // Wikipedia thumbnails often look like:
+                    // https://upload.wikimedia.org/wikipedia/commons/thumb/a/a0/File.jpg/220px-File.jpg
+                    // We want to extract the original image URL for the 'imageUrl' field.
+                    String originalUrl = src;
+                    if (src.contains("/thumb/")) {
+                        int thumbIndex = src.indexOf("/thumb/");
+                        String basePath = src.substring(0, thumbIndex) + "/";
+                        String rest = src.substring(thumbIndex + 7); // after "/thumb/"
+                        int lastSlashIndex = rest.lastIndexOf("/");
+                        if (lastSlashIndex != -1) {
+                            String originalPath = rest.substring(0, lastSlashIndex);
+                            originalUrl = basePath + originalPath;
+                        }
+                    }
+                    
                     String alt = img.attr("alt");
                     String caption = captionEl != null ? captionEl.text() : alt;
                     
                     if (caption == null || caption.isBlank()) caption = "Image without caption";
 
                     Map<String, Object> imgMetadata = new HashMap<>(baseMetadata);
-                    imgMetadata.put("imageUrl", src);
+                    imgMetadata.put("imageUrl", originalUrl);
                     imgMetadata.put("thumbnailUrl", src);
                     imgMetadata.put("altText", alt);
                     imgMetadata.put("caption", caption);

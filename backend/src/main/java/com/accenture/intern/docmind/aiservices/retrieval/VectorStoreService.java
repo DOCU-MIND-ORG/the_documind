@@ -64,9 +64,9 @@ public class VectorStoreService {
                     if (targetDocuments != null && !targetDocuments.isEmpty()) {
                         String docs = targetDocuments.stream()
                                 .map(com.accenture.intern.docmind.util.FilenameNormalizer::normalize)
-                                .map(d -> "'" + d.replace("'", "\\'") + "'")
-                                .collect(Collectors.joining(", "));
-                        filterStr += "sourceName in [" + docs + "]";
+                                .map(d -> "sourceName == '" + d.replace("'", "\\'") + "'")
+                                .collect(Collectors.joining(" || "));
+                        filterStr += "(" + docs + ")";
                     }
 
                     if (imageOnly) {
@@ -90,10 +90,15 @@ public class VectorStoreService {
                     }
 
                     if (!filterStr.isEmpty()) {
+                        log.info("Generated Pinecone filter: {}", filterStr);
                         builder.filterExpression(filterStr);
                     }
 
-                    return vectorStore.similaritySearch(builder.build());
+                    SearchRequest builtRequest = builder.build();
+                    if (builtRequest.getFilterExpression() != null) {
+                        log.info("Filter actually sent to Pinecone: {}", builtRequest.getFilterExpression().toString());
+                    }
+                    return vectorStore.similaritySearch(builtRequest);
                 })
                 .subscribeOn(Schedulers.boundedElastic())
                 .onErrorResume(e -> {

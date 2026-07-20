@@ -1,0 +1,96 @@
+{
+  "results" : [ {
+    "queryId" : "three_way_multiverse",
+    "query" : "Compare how Loki, Stranger Things, and Spider-Man: No Way Home each portray alternate realities.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 3,
+    "targetDocuments" : [ "loki (tv series)", "stranger things", "spider man: no way home" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 32,
+    "chunkDistribution" : {
+      "spider man: no way home" : 14,
+      "loki (tv series)" : 11,
+      "stranger things" : 7
+    },
+    "planDistribution" : {
+      "ef1b2d71-e24f-4a44-951e-a3a380f0bfce" : 10,
+      "2e3fd1eb-d19c-48ff-a518-baa49d8c97d7" : 7,
+      "28cd8d8d-8dff-486d-a129-0635c078e7eb" : 15
+    },
+    "retrievedVisuals" : 3,
+    "visualDistribution" : {
+      "spider man: no way home" : 2,
+      "stranger things" : 1
+    },
+    "telemetry" : {
+      "denseHits" : 131,
+      "keywordHits" : 1,
+      "rrfHits" : 120,
+      "afterRerankHits" : 45,
+      "afterMultiSignalHits" : 32,
+      "contextExpandedHits" : 32,
+      "finalHits" : 32,
+      "visualTier" : "Same Document",
+      "visualCandidates" : 3,
+      "plannerLatency" : 3560,
+      "denseLatency" : 10454,
+      "keywordLatency" : 10454,
+      "fusionLatency" : 10459,
+      "rerankLatency" : 48214,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 20015,
+      "plannerReason" : "Analyze alternate reality portrayal in Loki",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "summary_stranger",
+    "query" : "Provide a comprehensive summary of Stranger Things.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DIRECT",
+    "actualStrategy" : "SINGLE_SOURCE",
+    "generatedPlans" : 1,
+    "targetDocuments" : [ "stranger things" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 11,
+    "chunkDistribution" : {
+      "stranger things" : 11
+    },
+    "planDistribution" : {
+      "fad4a909-2ff8-4a12-910f-67559d987d4f" : 11
+    },
+    "retrievedVisuals" : 4,
+    "visualDistribution" : {
+      "stranger things" : 4
+    },
+    "telemetry" : {
+      "denseHits" : 60,
+      "keywordHits" : 0,
+      "rrfHits" : 60,
+      "afterRerankHits" : 15,
+      "afterMultiSignalHits" : 11,
+      "contextExpandedHits" : 11,
+      "finalHits" : 11,
+      "visualTier" : "Same Section",
+      "visualCandidates" : 4,
+      "plannerLatency" : 1731,
+      "denseLatency" : 695,
+      "keywordLatency" : 695,
+      "fusionLatency" : 695,
+      "rerankLatency" : 9452,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 11225,
+      "plannerReason" : "Provide a comprehensive summary of the Stranger Things series.",
+      "executionPath" : "WHOLE_DOCUMENT"
+    }
+  } ],
+  "runId" : "948bbd94-1104-47cb-8c41-c3e8a8fdc477",
+  "passed" : 2,
+  "totalQueries" : 2,
+  "profile" : "retrieval"
+}

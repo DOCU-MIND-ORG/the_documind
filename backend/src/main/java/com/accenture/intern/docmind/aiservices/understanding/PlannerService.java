@@ -30,7 +30,6 @@ public class PlannerService {
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     private final FastIntentService fastIntentService;
     private final com.accenture.intern.docmind.repository.DocumentChunkRepository documentChunkRepository;
-
     private static final Set<String> DEICTIC_WORDS = Set.of(
             "this", "that", "it", "given", "uploaded", "attached", "above", "provided");
 
@@ -55,9 +54,8 @@ public class PlannerService {
                             "FAST_PASS",
                             new RetrievalPlan(fastIntent.name(), cleanQuery, Collections.emptyList(),
                                     RetrievalExecutionMode.WHOLE_DOCUMENT, Scope.NONE, false),
-                            Collections.emptyList(), false, null));
+                            Collections.emptyList(), false, null, "FAST_PASS", "FAST_PASS"));
         }
-
         return runUnifiedLlmRouter(cleanQuery, query, history, sessionContext, progressSink)
                 .flatMap(response -> {
                     String tier = response.executionTier() != null ? response.executionTier().toUpperCase() : "DIRECT";
@@ -73,14 +71,17 @@ public class PlannerService {
                             initialPlan = buildRetrievalPlan(response.plans().get(0), response, cleanQuery,
                                     sessionContext, response.entities());
                         }
-                        return Mono.just(new AdaptiveExecutionPlan(response.strategy(), "Adaptive retrieval for: " + query, expectedEntities,
-                                1, 2, initialPlan, response.entities(), Boolean.TRUE.equals(response.visualSearch()), response.imageType()));
+                        return Mono.just(new AdaptiveExecutionPlan(response.strategy(),
+                                "Adaptive retrieval for: " + query, expectedEntities,
+                                1, 2, initialPlan, response.entities(), Boolean.TRUE.equals(response.visualSearch()),
+                                response.imageType(), "ADAPTIVE_EXECUTION", response.reason()));
                     }
 
                     List<RetrievalPlan> retrievalPlans = new java.util.ArrayList<>();
                     if (response.plans() != null) {
                         for (LlmRoutingResponse.Plan planDto : response.plans()) {
-                            retrievalPlans.add(buildRetrievalPlan(planDto, response, cleanQuery, sessionContext, response.entities()));
+                            retrievalPlans.add(buildRetrievalPlan(planDto, response, cleanQuery, sessionContext,
+                                    response.entities()));
                         }
                     }
 
@@ -89,8 +90,24 @@ public class PlannerService {
                                 RetrievalExecutionMode.RANKED_RETRIEVAL, Scope.CORPUS, false));
                     }
 
+                    java.util.Set<String> allResolvedTargets = new java.util.HashSet<>();
+                    for (RetrievalPlan plan : retrievalPlans) {
+                        if (plan.targetDocuments() != null) {
+                            allResolvedTargets.addAll(plan.targetDocuments());
+                        }
+                    }
+
+                    String strategy = response.strategy();
+                    if (allResolvedTargets.size() > 1) {
+                        strategy = "MULTI_SOURCE";
+                        log.info(
+                                "ROUTER: Deterministically forcing MULTI_SOURCE strategy due to {} resolved target documents",
+                                allResolvedTargets.size());
+                    }
+
                     if ("DECOMPOSE".equals(tier) || retrievalPlans.size() > 1) {
-                        log.info("ROUTER: DECOMPOSE execution triggered for query: {}. Generated {} sub-plans.", query, retrievalPlans.size());
+                        log.info("ROUTER: DECOMPOSE execution triggered for query: {}. Generated {} sub-plans.", query,
+                                retrievalPlans.size());
                         MergeOperation mergeOp = MergeOperation.NONE;
                         if (response.mergeOperation() != null) {
                             try {
@@ -99,13 +116,15 @@ public class PlannerService {
                                 mergeOp = MergeOperation.NONE;
                             }
                         }
-                        return Mono.just(new StaticExecutionPlan(response.strategy(), retrievalPlans, mergeOp, response.entities(),
-                                Boolean.TRUE.equals(response.visualSearch()), response.imageType()));
+                        return Mono.just(new StaticExecutionPlan(strategy, retrievalPlans, mergeOp, response.entities(),
+                                Boolean.TRUE.equals(response.visualSearch()), response.imageType(), "STATIC_EXECUTION",
+                                response.reason()));
                     }
 
                     log.info("ROUTER: DIRECT execution triggered for query: {}", query);
-                    return Mono.just(new DirectExecutionPlan(response.strategy(), retrievalPlans.get(0), response.entities(),
-                            Boolean.TRUE.equals(response.visualSearch()), response.imageType()));
+                    return Mono.just(new DirectExecutionPlan(strategy, retrievalPlans.get(0), response.entities(),
+                            Boolean.TRUE.equals(response.visualSearch()), response.imageType(), "DIRECT_EXECUTION",
+                            response.reason()));
                 });
     }
 
@@ -114,7 +133,8 @@ public class PlannerService {
         String optimizedQuery = planDto.optimizedQuery() != null && !planDto.optimizedQuery().isBlank()
                 ? planDto.optimizedQuery()
                 : cleanQuery;
-        List<String> targetDocuments = planDto.targetDocuments() != null ? new java.util.ArrayList<>(planDto.targetDocuments())
+        List<String> targetDocuments = planDto.targetDocuments() != null
+                ? new java.util.ArrayList<>(planDto.targetDocuments())
                 : new java.util.ArrayList<>();
 
         RetrievalExecutionMode executionMode;
@@ -127,74 +147,49 @@ public class PlannerService {
             executionMode = RetrievalExecutionMode.RANKED_RETRIEVAL;
         }
 
-        if (executionMode == RetrievalExecutionMode.WHOLE_DOCUMENT || executionMode == RetrievalExecutionMode.CONTIGUOUS) {
-            String matchedDoc = null;
+        List<String> resolvedDocs = new java.util.ArrayList<>();
+        List<String> availableDocs = new java.util.ArrayList<>();
+        if (sessionContext != null && sessionContext.uploadedDocuments() != null) {
+            availableDocs.addAll(sessionContext.uploadedDocuments().stream().map(DocumentReference::filename).toList());
+        }
+        try {
+            availableDocs.addAll(documentChunkRepository.findDistinctSourceNames());
+        } catch (Exception e) {
+            log.error("Failed to query global corpus: {}", e.getMessage());
+        }
 
-            // 1. Check Session Documents
-            if (sessionContext != null && sessionContext.uploadedDocuments() != null && !sessionContext.uploadedDocuments().isEmpty()) {
-                int docCount = sessionContext.uploadedDocuments().size();
-                if (docCount == 1) {
-                    matchedDoc = sessionContext.uploadedDocuments().get(0).filename();
-                } else {
-                    if (!targetDocuments.isEmpty()) {
-                        String llmTarget = targetDocuments.get(0).toLowerCase();
-                        for (DocumentReference doc : sessionContext.uploadedDocuments()) {
-                            if (doc.filename().toLowerCase().contains(llmTarget) || llmTarget.contains(doc.filename().toLowerCase())) {
-                                matchedDoc = doc.filename();
-                                break;
-                            }
-                        }
-                    }
-                    if (matchedDoc == null && entities != null && !entities.isEmpty()) {
-                        for (EntityResolution entity : entities) {
-                            String entityName = entity.canonicalEntity().toLowerCase();
-                            for (DocumentReference doc : sessionContext.uploadedDocuments()) {
-                                if (doc.filename().toLowerCase().contains(entityName)) {
-                                    matchedDoc = doc.filename();
-                                    break;
-                                }
-                            }
-                            if (matchedDoc != null) break;
-                        }
+        // Try to match each target document suggested by LLM
+        for (String target : targetDocuments) {
+            String llmTarget = normalizeForMatch(target);
+            for (String doc : availableDocs) {
+                String normalizedDoc = normalizeForMatch(doc);
+                if (normalizedDoc.contains(llmTarget) || llmTarget.contains(normalizedDoc)) {
+                    if (!resolvedDocs.contains(doc))
+                        resolvedDocs.add(doc);
+                }
+            }
+        }
+
+        // Try to match entities if no targets matched
+        if (entities != null && !entities.isEmpty()) {
+            for (EntityResolution entity : entities) {
+                String entityName = normalizeForMatch(entity.canonicalEntity());
+                for (String doc : availableDocs) {
+                    String normalizedDoc = normalizeForMatch(doc);
+                    if (normalizedDoc.contains(entityName)) {
+                        if (!resolvedDocs.contains(doc))
+                            resolvedDocs.add(doc);
                     }
                 }
             }
+        }
 
-            // 2. Fallback to Global Corpus Documents if not found in session
-            if (matchedDoc == null) {
-                try {
-                    List<String> corpusFiles = documentChunkRepository.findDistinctSourceNames();
-                    if (!targetDocuments.isEmpty()) {
-                        String llmTarget = targetDocuments.get(0).toLowerCase();
-                        for (String f : corpusFiles) {
-                            if (f.toLowerCase().contains(llmTarget) || llmTarget.contains(f.toLowerCase())) {
-                                matchedDoc = f;
-                                break;
-                            }
-                        }
-                    }
-                    if (matchedDoc == null && entities != null && !entities.isEmpty()) {
-                        for (EntityResolution entity : entities) {
-                            String entityName = entity.canonicalEntity().toLowerCase();
-                            for (String f : corpusFiles) {
-                                if (f.toLowerCase().contains(entityName)) {
-                                    matchedDoc = f;
-                                    break;
-                                }
-                            }
-                            if (matchedDoc != null) break;
-                        }
-                    }
-                } catch (Exception e) {
-                    log.error("Failed to query global corpus for entity resolution: {}", e.getMessage());
-                }
-            }
+        targetDocuments.clear();
+        targetDocuments.addAll(resolvedDocs);
 
-            // 3. Finalize
-            if (matchedDoc != null) {
-                targetDocuments.clear();
-                targetDocuments.add(matchedDoc);
-            } else {
+        if (executionMode == RetrievalExecutionMode.WHOLE_DOCUMENT
+                || executionMode == RetrievalExecutionMode.CONTIGUOUS) {
+            if (targetDocuments.isEmpty()) {
                 executionMode = RetrievalExecutionMode.RANKED_RETRIEVAL;
             }
         }
@@ -213,6 +208,12 @@ public class PlannerService {
 
         return new RetrievalPlan(purpose, optimizedQuery,
                 targetDocuments, executionMode, scope, Boolean.TRUE.equals(planDto.isStructuralQuery()));
+    }
+
+    private String normalizeForMatch(String text) {
+        if (text == null)
+            return "";
+        return text.toLowerCase().replaceAll("[^a-z0-9]", "");
     }
 
     private Mono<LlmRoutingResponse> runUnifiedLlmRouter(String cleanQuery, String originalQuery,
@@ -250,12 +251,25 @@ public class PlannerService {
                 ? String.join("\n- ", uploadedDocs)
                 : "None";
 
-        StringBuilder aliasesStr = new StringBuilder();
-        if (aliases != null && !aliases.isEmpty()) {
-            aliases.forEach((alias, filename) -> aliasesStr.append("- ").append(alias).append(" -> ").append(filename)
-                    .append("\n"));
-        } else {
-            aliasesStr.append("None\n");
+        // Global corpus document metadata for alias resolution and domain scoping
+        List<com.accenture.intern.docmind.dto.chat.DocumentDescriptor> globalDescriptors = List.of(
+                new com.accenture.intern.docmind.dto.chat.DocumentDescriptor("Transformer (deep learning)",
+                        List.of("Transformer", "Transformers", "Transformer model"), "technology", "article"),
+                new com.accenture.intern.docmind.dto.chat.DocumentDescriptor("Attention mechanism",
+                        List.of("Attention", "Self-attention"), "technology", "article"),
+                new com.accenture.intern.docmind.dto.chat.DocumentDescriptor("Large language model",
+                        List.of("LLM", "Large language models", "LLMs"), "technology", "article"),
+                new com.accenture.intern.docmind.dto.chat.DocumentDescriptor("Retrieval-augmented generation",
+                        List.of("RAG", "Retrieval augmented generation"), "technology", "article"),
+                new com.accenture.intern.docmind.dto.chat.DocumentDescriptor("Neural network",
+                        List.of("Neural networks", "ANN", "Artificial neural network"), "technology", "article"),
+                new com.accenture.intern.docmind.dto.chat.DocumentDescriptor(
+                        "Reinforcement learning from human feedback", List.of("RLHF"), "technology", "article"));
+        String corpusMetadataJson = "";
+        try {
+            corpusMetadataJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(globalDescriptors);
+        } catch (Exception e) {
+            log.error("Failed to serialize corpus metadata", e);
         }
 
         String prompt = """
@@ -264,18 +278,22 @@ public class PlannerService {
                 expanded query in a single response. This is a hot-path call — be concise and precise.
 
                 ═══════════════════════════════════════════════════════════════════
-                SESSION STATE
+                SESSION STATE & CORPUS KNOWLEDGE
                 ═══════════════════════════════════════════════════════════════════
                 The user has uploaded the following active documents in this session:
                 - %s
 
-                Available aliases for deterministic matching:
+                KNOWN CORPUS DOCUMENTS AND ALIASES:
                 %s
-                IMPORTANT: If the user uses references like "the first one", "all of them", "the astronomy article",
-                "the latest upload", or "these three", resolve them strictly to the exact filenames from the list above using the aliases map.
-                Populate the "target_documents" JSON array with the exact filenames you resolved.
-                If no specific document is requested, leave "target_documents" empty.
 
+                IMPORTANT: Before assigning a strategy, check if the query contains references
+                matching any aliases in the KNOWN CORPUS DOCUMENTS AND ALIASES list.
+                If it does, resolve them strictly to the exact `canonical` document names.
+                Populate the "target_documents" JSON array with the exact `canonical` filenames you resolved.
+                If the query contains known aliases, you should prefer a SINGLE_SOURCE or MULTI_SOURCE query.
+                If the query contains a named entity that resolves to a canonical document alias, DO NOT choose CONCEPT_EXPANSION unless the user is explicitly asking about an abstract theme.
+                If no specific document is requested, leave "target_documents" empty.
+                
                 ═══════════════════════════════════════════════════════════════════
                 PART A0 — BOT IDENTITY / CAPABILITY CHECK
                 ═══════════════════════════════════════════════════════════════════
@@ -287,15 +305,32 @@ public class PlannerService {
                 PART A — STRATEGY CLASSIFICATION
                 ═══════════════════════════════════════════════════════════════════
 
+                Routing priority (Evaluate in this order):
+                1. BOT_QA (if applicable from Part A0)
+                2. TIMELINE_QUERY
+                3. EPISODIC_SUMMARY
+                4. SPECIFIC_TOPIC
+                5. META_DOC_SEARCH
+                6. MULTI_SOURCE
+                7. SINGLE_SOURCE
+                8. CONCEPT_EXPANSION
+
                 Classify into EXACTLY ONE of these strategies:
 
+                1. MULTI_SOURCE
+                   Use when the query explicitly asks about two or more known entities, documents, movies, books, or topics.
+                   Examples: "Compare Document A and Document B", "Explain Topic X and Topic Y", "Contrast Entity 1 with Entity 2".
+                   → Set "execution_tier": "DECOMPOSE" and "merge_operation": "COMPARE" (or "UNION").
+                   → A retrieval plan should correspond to a distinct evidence source, not merely a requested document or analysis section. Merge requests that can be satisfied from the same evidence. Split only when the required evidence is substantially different. Do NOT generate separate retrieval plans solely because the user requests multiple output sections (tables, timelines, rankings, graphs). These are generation tasks.
                 1. CONCEPT_EXPANSION
                    Triggered when the query is about a SINGLE abstract/implicit topic where the concept
-                   won't appear verbatim in the text (e.g. "resilience", "grief", "innovation").
+                   won't appear verbatim in the text.
+                   NOT for queries about specific characters, movies, or entities listed in the known aliases.
                    NOT for exhaustive enumeration queries ("every", "all", "complete list") — those need
                    ADAPTIVE to verify completeness.
                    → Set "execution_tier": "DECOMPOSE" and "merge_operation": "UNION".
-                   → Generate 3-4 separate plans expanding the concept into concrete action-oriented searches.
+                   → Think in terms of DISTINCT RETRIEVAL OBJECTIVES. Identify the core facets of the concept, group related facets, and generate one retrieval plan per distinct evidence cluster. Avoid redundant overlapping searches.
+                   The expanded queries MUST preserve the user's primary entity, subject, or concept. Never replace it with another topic (and DO NOT just copy words from prompt examples).
 
                 2. META_DOC_SEARCH
                    Triggered when the user asks for a semantic corpus search ABOUT their document collection
@@ -326,8 +361,8 @@ public class PlannerService {
                 ═══════════════════════════════════════════════════════════════════
                 Set "execution_tier" to one of:
                 - "DIRECT": The query can be resolved in a single step (e.g., "What is X?"). You must output EXACTLY 1 plan.
-                - "DECOMPOSE": The full set of sub-queries can be written before any retrieval begins, and the sub-queries are independent (results of one don't affect another). Output MULTIPLE plans.
-                - "ADAPTIVE": Use when the next retrieval step depends on what earlier steps discover, OR when the query implies complete coverage ("all", "every", "throughout the book", "across all chapters") and you can't enumerate the relevant sections upfront. Output EXACTLY 1 plan for the FIRST hop.
+                - "DECOMPOSE": Use when all required retrieval objectives can be determined before retrieval begins. The retrieval plans are independent and can execute in parallel. The results of one retrieval must not be required to formulate another retrieval. Output MULTIPLE plans.
+                - "ADAPTIVE": Use when later retrievals cannot be formulated until earlier retrieval results have been examined. Output EXACTLY 1 plan for the FIRST hop.
 
                 Set "merge_operation":
                 - "NONE": For DIRECT or ADAPTIVE.
@@ -337,7 +372,7 @@ public class PlannerService {
                 ═══════════════════════════════════════════════════════════════════
                 PART C — RETRIEVAL PLANS
                 ═══════════════════════════════════════════════════════════════════
-                You must generate a list of "plans". Each plan requires:
+                You must generate a list of "plans". A plan retrieves raw text evidence; it does NOT format output. Do NOT create plans for "building a timeline", "drawing a graph", or "ranking entities"—those are generation tasks that the LLM will do later using the retrieved text. Each plan requires:
                 - "purpose": A short description of what this plan is looking for.
                 - "optimized_query": A keyword-dense rewrite of the user's query. Expand abstract concepts, BUT you MUST preserve the user's core exact nouns (e.g. "laws", "list", "chapters", "index"). Do not aggressively replace them with abstract synonyms (e.g. replacing "laws" with "principles"). Preserve, then expand.
                 - "target_documents": An array of specific filenames if requested.
@@ -356,25 +391,25 @@ public class PlannerService {
 
                 RANKED
                 - Default. Use for facts, explanations, comparisons, definitions, QA over isolated passages.
-                - Examples: "What is narcissism?", "Who was Pericles?", "What are the 18 laws?"
+                - Examples: "What is X?", "Who was Person Y?", "What are the core principles?"
 
                 CONTIGUOUS
                 - Use when the answer requires reading one logical section in its original sequential order.
                   Choose CONTIGUOUS whenever preserving the flow of one section matters more than selecting
                   isolated high-relevance passages. The retriever will find the section automatically —
                   you do NOT need to name the chapter.
-                - Examples: "Tell me the story of Pericles", "Walk me through the case study of Steve Jobs",
+                - Examples: "Tell me the story of X", "Walk me through the case study of Y",
                   "Explain Law 1 in detail", "What happens in the opening example?", "Describe the narrative"
 
                 WHOLE_DOCUMENT
                 - Use ONLY for true whole-document operations that require reading the entire document:
                   summarizing the whole book, comparing all chapters, generating a full overview.
                 - Do NOT use for single-section narrative queries — use CONTIGUOUS instead.
-                - Examples: "Summarize the entire Laws of Human Nature", "Compare all 18 laws"
+                - Examples: "Summarize the entire document", "Compare all chapters of Document X"
 
                 ═══════════════════════════════════════════════════════════════════
                 PART F — VISUAL SEARCH
-                ═══════════════════════════════════════════════════════════════════        
+                ═══════════════════════════════════════════════════════════════════
                 Set "visual_search": true if the user explicitly asks for an image, picture, visual, diagram, photo, wallpaper, screenshot, or graphic (e.g. "show me images", "are there pictures"), OR if the query involves:
                 - Architectures, system designs, or workflows
                 - Geographical or spatial relationships
@@ -391,7 +426,8 @@ public class PlannerService {
                 ═══════════════════════════════════════════════════════════════════
                 {
                   "is_bot_qa": false,
-                  "strategy": "SINGLE_SOURCE | CONCEPT_EXPANSION | META_DOC_SEARCH",
+                  "reason": "Explain why this strategy was chosen",
+                  "strategy": "SINGLE_SOURCE | MULTI_SOURCE | CONCEPT_EXPANSION | META_DOC_SEARCH",
                   "execution_tier": "DIRECT | DECOMPOSE | ADAPTIVE",
                   "retrieval_mode": "RANKED | CONTIGUOUS | WHOLE_DOCUMENT",
                   "merge_operation": "NONE | UNION | COMPARE",
@@ -410,12 +446,17 @@ public class PlannerService {
                 ═══════════════════════════════════════════════════════════════════
                 CONVERSATION HISTORY
                 ═══════════════════════════════════════════════════════════════════
+                Conversation history is only for resolving references such as "that movie" or "the previous topic."
+                Do NOT derive the retrieval strategy from earlier messages unless the current query explicitly refers to them.
+
                 %s
 
                 User Query: "%s"
-                """
-                .formatted(activeDocsStr, aliasesStr.toString(), history != null ? history : "No prior history.",
-                        query);
+                """;
+
+        String formattedPrompt = String.format(prompt, activeDocsStr, corpusMetadataJson,
+                history != null ? history : "No prior history.",
+                query);
 
         GoogleGenAiChatOptions options = new GoogleGenAiChatOptions();
         options.setModel(ModelName.GEMINI_3_1_FLASH_LITE.getModelString());
@@ -423,7 +464,7 @@ public class PlannerService {
 
         long t0 = System.currentTimeMillis();
         return Mono.fromCallable(() -> {
-            String rawResponse = chatClient.prompt().user(prompt).options(options).call().content();
+            String rawResponse = chatClient.prompt().user(formattedPrompt).options(options).call().content();
             try {
                 String jsonToParse = rawResponse;
                 if (rawResponse != null) {
@@ -462,6 +503,7 @@ public class PlannerService {
                             fallbackStrategy, e.getMessage());
                     return Mono.just(new LlmRoutingResponse(
                             fallbackStrategy,
+                            "Fallback due to error: " + e.getMessage(),
                             false,
                             java.util.Collections.emptyList(),
                             "DIRECT",

@@ -1,0 +1,28 @@
+{
+  "version": "2.0",
+  "corpusVersion": "ml-v1",
+  "description": "Pipeline and observability assertions.",
+  "queries": [
+    {
+      "id": "telemetry_validation",
+      "category": "Telemetry Validation",
+      "query": "Compare how Neural networks, Transformers, Large language models, and Retrieval-augmented generation handle context and memory.",
+      "expectedTier": "DECOMPOSE",
+      "expectedStrategy": "MULTI_SOURCE",
+      "mustContainDocuments": [
+        "neural network",
+        "transformer (deep learning)",
+        "large language model",
+        "retrieval augmented generation"
+      ],
+      "minimumChunksPerDocument": {
+        "neural network": 1,
+        "transformer (deep learning)": 1,
+        "large language model": 1,
+        "retrieval augmented generation": 1
+      },
+      "minCitations": 4,
+      "expectedDocumentsCount": 4
+    }
+  ]
+}

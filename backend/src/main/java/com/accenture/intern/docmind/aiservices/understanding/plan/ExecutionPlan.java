@@ -21,6 +21,16 @@ public sealed interface ExecutionPlan permits
     String strategy();
 
     /**
+     * @return The purpose of the execution plan.
+     */
+    String purpose();
+
+    /**
+     * @return The reason for the chosen execution plan.
+     */
+    String reason();
+
+    /**
      * @return The list of retrieval plans to execute.
      */
     List<RetrievalPlan> getPlans();

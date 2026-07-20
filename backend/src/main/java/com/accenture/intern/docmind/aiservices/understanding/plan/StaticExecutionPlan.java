@@ -11,7 +11,9 @@ public record StaticExecutionPlan(
     MergeOperation mergeOperation,
     List<EntityResolution> entities,
     boolean visualSearch,
-    String imageType
+    String imageType,
+    String purpose,
+    String reason
 ) implements ExecutionPlan {
     
     @Override

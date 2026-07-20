@@ -1,0 +1,121 @@
+{
+  "version": "2.0",
+  "corpusVersion": "ml-v1",
+  "description": "Regression tests that must never fail.",
+  "queries": [
+    {
+      "id": "compare_transformer_llm",
+      "category": "Comparison",
+      "query": "Compare how Transformers and Large language models are related.",
+      "expectedTier": "DECOMPOSE",
+      "expectedStrategy": "MULTI_SOURCE",
+      "mustContainDocuments": [
+        "transformer (deep learning)",
+        "large language model"
+      ],
+      "minimumChunksPerDocument": {
+        "transformer (deep learning)": 1,
+        "large language model": 1
+      },
+      "allowedVisualSources": [
+        "transformer (deep learning)",
+        "large language model"
+      ],
+      "minCitations": 2,
+      "expectedDocumentsCount": 2,
+      "groundTruth": "Large Language Models (LLMs) are the application, and Transformers are the underlying architecture. Almost all modern LLMs are built using the Transformer architecture's self-attention layers to process text."
+    },
+    {
+      "id": "single_doc_rag",
+      "category": "Single Source",
+      "query": "Explain the core concept of RAG.",
+      "expectedTier": "DIRECT",
+      "expectedStrategy": "SINGLE_SOURCE",
+      "mustContainDocuments": [
+        "retrieval augmented generation"
+      ],
+      "forbiddenDocuments": [
+        "transformer (deep learning)"
+      ],
+      "minimumChunksPerDocument": {
+        "retrieval augmented generation": 1
+      },
+      "allowedVisualSources": [
+        "retrieval-augmented generation"
+      ],
+      "minCitations": 1,
+      "expectedDocumentsCount": 1,
+      "groundTruth": "Retrieval-Augmented Generation (RAG) improves an LLM by first retrieving relevant factual documents from an external database and passing them to the LLM as context, ensuring the generated answer is accurate and grounded."
+    },
+    {
+      "id": "compare_rlhf_rag",
+      "category": "Comparison",
+      "query": "Compare RLHF and RAG as methods for improving LLM outputs.",
+      "expectedTier": "DECOMPOSE",
+      "expectedStrategy": "MULTI_SOURCE",
+      "mustContainDocuments": [
+        "reinforcement learning",
+        "retrieval augmented generation"
+      ],
+      "minimumChunksPerDocument": {
+        "reinforcement learning": 1,
+        "retrieval augmented generation": 1
+      },
+      "allowedVisualSources": [
+        "reinforcement learning",
+        "retrieval-augmented generation"
+      ],
+      "minCitations": 2,
+      "expectedDocumentsCount": 2,
+      "groundTruth": "RLHF improves LLM outputs by altering the model's weights during training to align its behavior with human preferences. RAG improves outputs at inference time by providing external factual data, reducing hallucinations without changing the model's weights."
+    },
+    {
+      "id": "nn_summary",
+      "category": "Summary",
+      "query": "Summarize the basic components of an Artificial Neural Network.",
+      "expectedTier": "DIRECT",
+      "expectedStrategy": "SINGLE_SOURCE",
+      "mustContainDocuments": [
+        "neural network"
+      ],
+      "forbiddenDocuments": [
+        "large language model"
+      ],
+      "minimumChunksPerDocument": {
+        "neural network": 1
+      },
+      "allowedVisualSources": [
+        "neural network"
+      ],
+      "minCitations": 1,
+      "expectedDocumentsCount": 1,
+      "groundTruth": "An Artificial Neural Network consists of an input layer, one or more hidden layers, and an output layer. Each layer contains interconnected nodes (neurons) that apply weights, biases, and non-linear activation functions to process signals."
+    },
+    {
+      "id": "exclude_llm",
+      "category": "Exclusion",
+      "query": "Explain the concept of attention mechanisms in Neural Networks. Do not discuss Large Language Models or LLMs.",
+      "expectedTier": "DECOMPOSE",
+      "expectedStrategy": "MULTI_SOURCE",
+      "mustContainDocuments": [
+        "attention mechanism",
+        "neural network"
+      ],
+      "forbiddenDocuments": [
+        "large language model",
+        "transformer (deep learning)"
+      ],
+      "minimumChunksPerDocument": {
+        "attention mechanism": 1,
+        "neural network": 1
+      },
+      "allowedVisualSources": [
+        "attention mechanism",
+        "neural network"
+      ],
+      "minCitations": 2,
+      "expectedDocumentsCount": 2,
+      "groundTruth": "In neural networks, an attention mechanism allows the network to focus on specific parts of the input sequence when generating a specific part of the output. It computes alignment scores between the encoder and decoder states to create a dynamic context vector."
+    }
+  ]
+}

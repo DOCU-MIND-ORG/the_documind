@@ -49,7 +49,6 @@ public class SessionController {
     }
    
 
-    // DELETE /api/sessions/{id}
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteSession(
             @PathVariable Long id,
@@ -57,6 +56,25 @@ public class SessionController {
     ) {
         sessionService.deleteSession(principal.getName(),id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/{id}")
+    public ResponseEntity<SessionResponse> patchSession(
+            @PathVariable Long id,
+            @RequestBody java.util.Map<String, Object> updates,
+            Principal principal
+    ) {
+        SessionResponse response = sessionService.patchSession(principal.getName(), id, updates);
+        return ResponseEntity.ok(response);
+    }
+
+    @PatchMapping("/reorder")
+    public ResponseEntity<Void> reorderSessions(
+            @RequestBody java.util.List<com.accenture.intern.docmind.dto.folder.ReorderRequest> requests,
+            Principal principal
+    ) {
+        sessionService.reorderSessions(principal.getName(), requests);
+        return ResponseEntity.ok().build();
     }
 
     // PUT /api/sessions/{id}/rename

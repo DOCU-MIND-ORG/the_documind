@@ -102,7 +102,7 @@ function StackedDeck({ images, maxStack, onExpand, onKeyDown }) {
                   zIndex: 10 + (maxStack - index),
                 }}
               >
-                <img src={img.imageUrl} alt="" className="w-full h-full object-cover rounded-sm" />
+                <img src={img.thumbnailUrl || img.imageUrl} alt="" className="w-full h-full object-cover rounded-sm" />
               </div>
             );
           })}
@@ -172,7 +172,7 @@ function ImageCard({ img, isHovered, onHover, onLeave, onClick }) {
       onClick={img.imageUrl ? onClick : undefined}
       aria-label={img.imageUrl ? `Open ${img.caption ?? "image"}` : img.caption}
     >
-      <img src={img.imageUrl} alt={img.caption ?? "Extracted content"} className="w-full h-full object-cover block" />
+      <img src={img.thumbnailUrl || img.imageUrl} alt={img.caption ?? "Extracted content"} className="w-full h-full object-cover block" />
 
       {img.imageUrl && (
         <div className={`absolute inset-0 bg-black/50 flex items-center justify-center text-white transition-opacity duration-150 pointer-events-none ${isHovered ? 'opacity-100' : 'opacity-0'}`} aria-hidden="true">

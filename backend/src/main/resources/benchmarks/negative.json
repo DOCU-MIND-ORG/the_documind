@@ -1,0 +1,18 @@
+{
+  "version": "2.0",
+  "corpusVersion": "ml-v1",
+  "description": "Negative retrieval and out-of-corpus queries.",
+  "queries": [
+    {
+      "id": "biology_hallucination",
+      "category": "Negative",
+      "query": "Explain how photosynthesis works in plants.",
+      "expectedTier": "DIRECT",
+      "expectedStrategy": "OUT_OF_DOMAIN",
+      "mustContainDocuments": [],
+      "minCitations": 0,
+      "expectedDocumentsCount": 0,
+      "knownIssue": "Planner might try to search for it but retriever should return nothing."
+    }
+  ]
+}

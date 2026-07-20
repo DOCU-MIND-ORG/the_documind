@@ -1,0 +1,99 @@
+{
+  "results" : [ {
+    "queryId" : "three_way_ml",
+    "query" : "Compare how Neural networks, Transformers, and Large language models are related to one another.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 1,
+    "plannedDocuments" : [ "neural network", "transformer (deep learning)", "large language model" ],
+    "retrievalCandidates" : [ "transformer (deep learning)", "large language model", "neural network" ],
+    "finalDocuments" : [ "transformer (deep learning)", "large language model", "neural network" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 14,
+    "chunkDistribution" : {
+      "transformer (deep learning)" : 8,
+      "large language model" : 4,
+      "neural network" : 2
+    },
+    "planDistribution" : {
+      "74460f18-5815-44f8-b175-c61b154b1a36" : 14
+    },
+    "retrievedVisuals" : 8,
+    "visualDistribution" : {
+      "transformer (deep learning)" : 3,
+      "large language model" : 4,
+      "neural network" : 1
+    },
+    "telemetry" : {
+      "denseHits" : 45,
+      "keywordHits" : 0,
+      "rrfHits" : 40,
+      "afterRerankHits" : 15,
+      "afterMultiSignalHits" : 14,
+      "contextExpandedHits" : 14,
+      "finalHits" : 14,
+      "retrievalCandidateDocs" : [ "transformer (deep learning)", "large language model", "neural network" ],
+      "visualTier" : "Same Section",
+      "visualCandidates" : 8,
+      "plannerLatency" : 2652,
+      "denseLatency" : 2427,
+      "keywordLatency" : 2427,
+      "fusionLatency" : 2431,
+      "rerankLatency" : 6775,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 10496,
+      "plannerReason" : "Retrieve foundational definitions and architectural relationships between Neural networks, Transformers, and Large language models.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "summary_rag",
+    "query" : "Provide a comprehensive summary of Retrieval-augmented generation.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DIRECT",
+    "actualStrategy" : "SINGLE_SOURCE",
+    "generatedPlans" : 1,
+    "plannedDocuments" : [ "retrieval augmented generation" ],
+    "retrievalCandidates" : [ "retrieval augmented generation" ],
+    "finalDocuments" : [ "retrieval augmented generation" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 8,
+    "chunkDistribution" : {
+      "retrieval augmented generation" : 8
+    },
+    "planDistribution" : {
+      "86ec6fd6-858e-4af7-bd77-a3020e73bfdd" : 8
+    },
+    "retrievedVisuals" : 0,
+    "visualDistribution" : { },
+    "telemetry" : {
+      "denseHits" : 60,
+      "keywordHits" : 0,
+      "rrfHits" : 60,
+      "afterRerankHits" : 15,
+      "afterMultiSignalHits" : 8,
+      "contextExpandedHits" : 8,
+      "finalHits" : 8,
+      "retrievalCandidateDocs" : [ "retrieval augmented generation" ],
+      "visualTier" : null,
+      "visualCandidates" : 0,
+      "plannerLatency" : 1603,
+      "denseLatency" : 411,
+      "keywordLatency" : 411,
+      "fusionLatency" : 411,
+      "rerankLatency" : 6389,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 7673,
+      "plannerReason" : "Provide a comprehensive summary of the RAG document.",
+      "executionPath" : "WHOLE_DOCUMENT"
+    }
+  } ],
+  "profile" : "retrieval",
+  "totalQueries" : 2,
+  "passed" : 2,
+  "runId" : "d1fa6a58-65d3-47ad-9baf-1e1d274354f0"
+}

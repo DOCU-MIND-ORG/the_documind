@@ -1,0 +1,11 @@
+{
+  "version": "1.0",
+  "suites": [
+    "regression",
+    "planner",
+    "retrieval",
+    "reasoning",
+    "negative",
+    "pipeline"
+  ]
+}

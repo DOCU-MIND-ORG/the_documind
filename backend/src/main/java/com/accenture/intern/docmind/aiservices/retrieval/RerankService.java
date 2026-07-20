@@ -18,6 +18,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
+
+import reactor.core.publisher.Mono;
 import com.accenture.intern.docmind.dto.retrieval.RetrievalCandidate;
 
 @Slf4j
@@ -54,6 +56,11 @@ public class RerankService {
     private HuggingFaceTokenizer tokenizer;
     private OrtEnvironment env;
     private OrtSession session;
+    private final com.accenture.intern.docmind.config.RetrievalProperties retrievalProperties;
+
+    public RerankService(com.accenture.intern.docmind.config.RetrievalProperties retrievalProperties) {
+        this.retrievalProperties = retrievalProperties;
+    }
 
     @Value("classpath:onnx/ms-marco-MiniLM-L-6-v2/model.onnx")
     private Resource modelResource;
@@ -108,23 +115,31 @@ public class RerankService {
         }
     }
 
-    public List<RetrievalCandidate> rerank(String query, List<RetrievalCandidate> candidates, int topN, Long sessionId) {
-        if (session == null || candidates.isEmpty()) {
-            return candidates.stream().limit(topN).collect(Collectors.toList());
+    public Mono<com.accenture.intern.docmind.dto.chat.RerankResult> rerank(String query, List<RetrievalCandidate> candidates, int topN, Long sessionId) {
+        if (candidates == null || candidates.isEmpty()) {
+            return Mono.just(new com.accenture.intern.docmind.dto.chat.RerankResult(Collections.emptyList(), 0, 0));
         }
 
         try {
             long startTime = System.currentTimeMillis();
+            
+            // Cap the input list before cross-encoder processing to save latency.
+            // Since candidates is already sorted by RRF (Reciprocal Rank Fusion) score,
+            // we discard the tail end.
+            int maxCandidates = retrievalProperties.getMaxRerankCandidates();
+            List<RetrievalCandidate> cappedCandidates = candidates.size() > maxCandidates 
+                ? candidates.subList(0, maxCandidates) 
+                : candidates;
 
-            List<Encoding> encodings = new ArrayList<>(candidates.size());
+            List<Encoding> encodings = new ArrayList<>(cappedCandidates.size());
             int maxLen = 0;
-            for (RetrievalCandidate cand : candidates) {
+            for (RetrievalCandidate cand : cappedCandidates) {
                 Encoding encoding = tokenizer.encode(query, cand.chunk().getText());
                 encodings.add(encoding);
                 maxLen = Math.max(maxLen, encoding.getIds().length);
             }
 
-            int batchSize = candidates.size();
+            int batchSize = cappedCandidates.size();
             long[][] batchInputIds = new long[batchSize][maxLen];
             long[][] batchAttentionMask = new long[batchSize][maxLen];
             long[][] batchTokenTypeIds = new long[batchSize][maxLen];
@@ -149,7 +164,7 @@ public class RerankService {
             try (OrtSession.Result results = session.run(inputs)) {
                 float[][] logits = (float[][]) results.get(0).getValue();
                 for (int i = 0; i < batchSize; i++) {
-                    RetrievalCandidate cand = candidates.get(i);
+                    RetrievalCandidate cand = cappedCandidates.get(i);
                     float score = logits[i][0]; 
                     float sigmoidScore = (float) (1.0 / (1.0 + Math.exp(-score)));
                     RetrievalCandidate updatedCand = cand.withSemanticScore(sigmoidScore);
@@ -162,13 +177,15 @@ public class RerankService {
             }
 
             scoredCandidates.sort((a, b) -> Double.compare(b.semanticScore(), a.semanticScore()));
-            log.info("Reranked {} docs in {}ms (batched)", candidates.size(), (System.currentTimeMillis() - startTime));
+            log.info("Reranked {} docs in {}ms (batched)", cappedCandidates.size(), (System.currentTimeMillis() - startTime));
 
-            return selectDiverse(scoredCandidates, topN);
+            com.accenture.intern.docmind.dto.chat.RerankResult result = selectDiverse(scoredCandidates, topN);
+            return Mono.just(new com.accenture.intern.docmind.dto.chat.RerankResult(result.candidates(), result.afterRerankHits(), result.latency() + (System.currentTimeMillis() - startTime)));
 
         } catch (Exception e) {
             log.error("Error during reranking. Falling back to original retrieval.", e);
-            return candidates.stream().limit(topN).collect(Collectors.toList());
+            List<RetrievalCandidate> fallback = candidates.stream().limit(topN).collect(Collectors.toList());
+            return Mono.just(new com.accenture.intern.docmind.dto.chat.RerankResult(fallback, fallback.size(), 0));
         }
     }
 
@@ -183,9 +200,11 @@ public class RerankService {
      * novel information from other chunks (or other documents) to surface
      * naturally.
      */
-    private List<RetrievalCandidate> selectDiverse(List<RetrievalCandidate> scoredDocs, int topN) {
+    private com.accenture.intern.docmind.dto.chat.RerankResult selectDiverse(List<RetrievalCandidate> scoredDocs, int topN) {
+        long t0 = System.currentTimeMillis();
         if (scoredDocs.isEmpty()) {
-            return List.of();
+            long latency = System.currentTimeMillis() - t0;
+            return new com.accenture.intern.docmind.dto.chat.RerankResult(Collections.emptyList(), 0, latency);
         }
 
         List<RetrievalCandidate> selected = new ArrayList<>();
@@ -222,7 +241,8 @@ public class RerankService {
             }
         }
 
-        return selected;
+        long latency = System.currentTimeMillis() - t0;
+        return new com.accenture.intern.docmind.dto.chat.RerankResult(selected, selected.size(), latency);
     }
 
     private Set<String> wordSet(String text) {

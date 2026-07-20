@@ -396,7 +396,7 @@ public class LlmWorkerService {
         org.springframework.ai.google.genai.GoogleGenAiChatOptions options = modelFactory.getChatOptions(session.getUser(), model);
         String finalSystemPrompt = modelFactory.injectResponseStyle(session.getUser(), contextResult.systemPrompt());
 
-        String fullResponse = streamAnswer(messageId, finalSystemPrompt, contextResult.prompt(), options, chatSession);
+        String fullResponse = streamAnswer(messageId, finalSystemPrompt, contextResult.prompt(), options, chatSession, contextResult.emptySearch());
         progressSink.tryEmitComplete();
 
 
@@ -452,13 +452,31 @@ public class LlmWorkerService {
      * "retry" reset event before calling this a second time so the frontend
      * clears the discarded first-pass text instead of appending onto it.
      */
-    private String streamAnswer(Long messageId, String systemPrompt, String userPrompt, org.springframework.ai.google.genai.GoogleGenAiChatOptions options, ChatGenerationManager.ChatSession chatSession) {
+    private String streamAnswer(Long messageId, String systemPrompt, String userPrompt, org.springframework.ai.google.genai.GoogleGenAiChatOptions options, ChatGenerationManager.ChatSession chatSession, boolean emptySearch) {
         try {
             publishToken(messageId, "progress", new com.accenture.intern.docmind.dto.chat.ProgressEvent(
                     com.accenture.intern.docmind.dto.chat.ProgressStage.GENERATION,
                     com.accenture.intern.docmind.dto.chat.ProgressStatus.RUNNING,
                     "Generating final answer...", null, null, null).toJson(objectMapper));
         } catch (Exception ignored) {}
+
+        if (emptySearch) {
+            String fallback = "I couldn't find any relevant information. Please try to be more precise.";
+            String[] words = fallback.split("(?<=\\s)");
+            for (String word : words) {
+                if (chatSession.cancelled.get() || Thread.currentThread().isInterrupted()) {
+                    throw new GenerationCancelledException(fallback);
+                }
+                publishToken(messageId, "message", word);
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new GenerationCancelledException(fallback);
+                }
+            }
+            return fallback;
+        }
 
         StringBuilder fullResponse = new StringBuilder();
         java.util.concurrent.atomic.AtomicInteger tokenCount = new java.util.concurrent.atomic.AtomicInteger(0);

@@ -139,7 +139,7 @@ public class MessagesPineconeVectorStore implements VectorStore {
             SearchRecordsRequestQuery query = new SearchRecordsRequestQuery();
             query.setInputs(Collections.singletonMap("text", request.getQuery()));
             
-            int topK = request.getTopK() > 0 ? request.getTopK() : 5;
+            int topK = request.getTopK() > 0 ? request.getTopK() : 15;
             query.setTopK(topK);
 
             if (request.getFilterExpression() != null) {

@@ -14,7 +14,9 @@ public record AdaptiveExecutionPlan(
     RetrievalPlan initialRetrievalPlan,
     List<EntityResolution> entities,
     boolean visualSearch,
-    String imageType
+    String imageType,
+    String purpose,
+    String reason
 ) implements ExecutionPlan {
     
     @Override

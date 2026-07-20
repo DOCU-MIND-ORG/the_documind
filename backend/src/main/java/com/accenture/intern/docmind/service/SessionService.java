@@ -46,6 +46,7 @@ public class SessionService {
     private final MessageRepository messageRepository;
     private final AttachmentRepository attachmentRepository;
     private final ViewAttachmentRepository viewAttachmentRepository;
+    private final com.accenture.intern.docmind.repository.FolderRepository folderRepository;
     private final EmailService emailService;
     private final SessionCacheService sessionCacheService;
     private final RedisTemplate<String, Object> redisTemplate;
@@ -161,6 +162,70 @@ public class SessionService {
         session.setUpdatedAt(LocalDateTime.now());
         Session savedSession = sessionRepository.save(session);
         return mapToResponse(savedSession);
+    }
+
+    public SessionResponse patchSession(String userEmail, Long sessionId, Map<String, Object> updates) {
+        User user = userRepository.findByEmail(userEmail);
+        if (user == null) {
+            throw new RuntimeException("User Not Found 🚫");
+        }
+
+        Session session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new RuntimeException("No Session found 🚫"));
+
+        if (!session.getUser().getId().equals(user.getId())) {
+            throw new RuntimeException("Access Denied !! You seems to be 👽");
+        }
+
+        if (updates.containsKey("title")) {
+            session.setTitle((String) updates.get("title"));
+        }
+        if (updates.containsKey("archived")) {
+            session.setArchived((Boolean) updates.get("archived"));
+        }
+        if (updates.containsKey("addFolderId")) {
+            Object fIdObj = updates.get("addFolderId");
+            if (fIdObj != null) {
+                Long folderId = Long.valueOf(fIdObj.toString());
+                com.accenture.intern.docmind.entity.Folder folder = folderRepository.findById(folderId).orElse(null);
+                if (folder != null) session.getFolders().add(folder);
+            }
+        }
+        if (updates.containsKey("removeFolderId")) {
+            Object fIdObj = updates.get("removeFolderId");
+            if (fIdObj != null) {
+                Long folderId = Long.valueOf(fIdObj.toString());
+                session.getFolders().removeIf(f -> f.getId().equals(folderId));
+            }
+        }
+        if (updates.containsKey("displayOrder")) {
+            session.setDisplayOrder((Integer) updates.get("displayOrder"));
+        }
+
+        session.setUpdatedAt(LocalDateTime.now());
+        Session savedSession = sessionRepository.save(session);
+        return mapToResponse(savedSession);
+    }
+
+    public void reorderSessions(String userEmail, java.util.List<com.accenture.intern.docmind.dto.folder.ReorderRequest> requests) {
+        User user = userRepository.findByEmail(userEmail);
+        if (user == null) {
+            throw new RuntimeException("User Not Found");
+        }
+
+        java.util.Map<Long, Integer> orderMap = requests.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        com.accenture.intern.docmind.dto.folder.ReorderRequest::getId,
+                        com.accenture.intern.docmind.dto.folder.ReorderRequest::getOrder
+                ));
+
+        List<Session> sessions = sessionRepository.findAllById(orderMap.keySet());
+        for (Session session : sessions) {
+            if (session.getUser().getId().equals(user.getId())) {
+                session.setDisplayOrder(orderMap.get(session.getSessionId()));
+                sessionRepository.save(session);
+            }
+        }
     }
 
     public PaginatedMessageResponse getSessionMessages(String userEmail, Long sessionId, Long cursor, int size) {
@@ -291,6 +356,8 @@ public class SessionService {
                 .archived(session.getArchived())
                 .createdAt(session.getCreatedAt())
                 .updatedAt(session.getUpdatedAt())
+                .folderIds(session.getFolders() != null ? session.getFolders().stream().map(com.accenture.intern.docmind.entity.Folder::getId).collect(java.util.stream.Collectors.toList()) : java.util.Collections.emptyList())
+                .displayOrder(session.getDisplayOrder() != null ? session.getDisplayOrder() : 0)
                 .build();
     }
 

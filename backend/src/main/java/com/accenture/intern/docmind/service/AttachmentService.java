@@ -388,11 +388,13 @@ public class AttachmentService {
                         "'{}' duplicates existing attachment #{} owned by this same user — reusing it instead of inserting a new row",
                         originalName, attachment.getAttachmentId());
             } else {
+                String normalized = originalName.replaceAll("\\.[^.]+$", "").toLowerCase().replaceAll("[^a-z0-9\\s]", " ").replaceAll("\\s+", " ").trim();
                 attachment = Attachment.builder()
                         .session(session)
                         .userId(session.getUser().getId())
                         .type(type)
                         .fileName(originalName)
+                        .normalizedTitle(normalized)
                         .storagePath(storagePath)
                         .url(publicUrl)
                         .cloudinaryPublicId(cloudinaryPublicId)
@@ -515,11 +517,13 @@ public class AttachmentService {
             // 6. Persist the Attachment record, linked directly to the session
             // it was added in (provenance) — survives even if that session is
             // later deleted (see SessionService#deleteSession).
+            String normalized = originalName.replaceAll("\\.[^.]+$", "").toLowerCase().replaceAll("[^a-z0-9\\s]", " ").replaceAll("\\s+", " ").trim();
             Attachment attachment = Attachment.builder()
                     .session(session)
                     .userId(session.getUser().getId())
                     .type(AttachmentType.WIKIPEDIA)
                     .fileName(originalName)
+                    .normalizedTitle(normalized)
                     .storagePath(wikipediaUrl)
                     .url(wikipediaUrl)
                     .mimeType("text/html")

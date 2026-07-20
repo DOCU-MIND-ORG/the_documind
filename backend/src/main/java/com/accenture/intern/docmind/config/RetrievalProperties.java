@@ -39,5 +39,10 @@ public class RetrievalProperties {
 
     public double getContiguousMinConfidence() { return contiguousMinConfidence; }
     public void setContiguousMinConfidence(double contiguousMinConfidence) { this.contiguousMinConfidence = contiguousMinConfidence; }
-}
 
+    /** Maximum number of candidates to pass to the ONNX cross-encoder. */
+    private int maxRerankCandidates = 50;
+
+    public int getMaxRerankCandidates() { return maxRerankCandidates; }
+    public void setMaxRerankCandidates(int maxRerankCandidates) { this.maxRerankCandidates = maxRerankCandidates; }
+}

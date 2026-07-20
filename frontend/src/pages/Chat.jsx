@@ -14,6 +14,7 @@ import ProgressIndicator from '../components/ProgressIndicator.jsx';
 import ThinkingProcess from '../components/ThinkingProcess.jsx';
 import Constellation from '../components/Constellation.jsx';
 import Modal from '../components/Modal.jsx';
+import { useAudioRecorder } from '../hooks/useAudioRecorder.js';
 import { chatReducer, initialChatState } from '../state/chatReducer.js';
 import { useTheme } from '../context/ThemeContext.jsx';
 import AccentureLoader from '../components/AccentureLoader.jsx';
@@ -23,8 +24,20 @@ import ChatMessage from '../components/ChatMessage.jsx';
 
 
 const SendIcon = () => (
-  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-    <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5m-7 7l7-7 7 7" />
+  </svg>
+);
+
+const MicIcon = () => (
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+  </svg>
+);
+
+const PlusIcon = () => (
+  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m-7-7h14" />
   </svg>
 );
 
@@ -34,10 +47,12 @@ const PaperclipIcon = () => (
   </svg>
 );
 
-const LinkIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-    <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-  </svg>
+const WikipediaIcon = () => (
+  <div className="w-[20px] h-[20px] bg-white rounded-full flex items-center justify-center shrink-0">
+    <svg className="w-[13px] h-[13px] text-black" viewBox="0 0 640 512" fill="currentColor">
+      <path d="M640 51.2l-.3 12.2c-28.1.8-45 15.8-55.8 40.3-25 57.8-103.3 240-155.3 358.6H415l-81.9-193.1c-32.5 74.3-76.2 173.7-82.8 193.1H238c-55-121-125-279.6-155.8-358.6-10.8-24.5-27.5-39.5-55.8-40.3l-.3-12.2h135.9l.3 12.2c-24 1.5-27.6 14.3-16.5 33.2 24 41.5 70.8 139.3 104.8 246.7 22.3-51.8 62.3-156.3 75.3-211 2.5-10.8-2.5-22-16.8-28.9l.3-12.2H422.3l-.3 12.2c-19.8 4.3-25.3 21-16 46 22 58.3 59 164.8 77.8 215.8 42-108.3 87.5-217.5 107.5-261.8 7.5-16.5-1.5-27.8-16.5-33.2l.3-12.2H640z" />
+    </svg>
+  </div>
 );
 
 const XIcon = () => (
@@ -94,7 +109,7 @@ const isUploadAnchorMessage = (msg) => UPLOAD_ANCHOR_PATTERN.test((msg.text || '
 const VirtuosoFooter = React.memo(({ context }) => {
   const { isWaitingForBackend, streamingMessage, setActiveCitation, isProcessingUpload, pendingFiles, bottomRef } = context;
   return (
-    <div className="max-w-4xl mx-auto py-6 pb-8 space-y-12">
+    <div className="max-w-4xl mx-auto py-6 pb-[140px] space-y-12">
       {streamingMessage && (
         <ChatMessage
           msg={streamingMessage}
@@ -134,6 +149,14 @@ export default function Chat() {
   const { user } = useAuth();
   const { sessions, addSession } = useSessions();
   const { showToast } = useToast();
+
+  const handleAudioTranscription = useCallback((text) => {
+    if (text) {
+      setInput((prev) => (prev ? prev + ' ' + text : text));
+    }
+  }, []);
+
+  const { isRecording, isTranscribing, startRecording, stopRecording, liveText } = useAudioRecorder(handleAudioTranscription);
   const { openMobileSidebar } = useOutletContext();
 
   const [state, dispatch] = useReducer(chatReducer, {
@@ -143,11 +166,11 @@ export default function Chat() {
 
   const [input, setInput] = useState('');
   const [isDragging, setIsDragging] = useState(false);
-  
+
   const [pendingFilesBySession, setPendingFilesBySession] = useState({});
   const currentSessionKey = state.sessionId || 'new';
   const pendingFiles = pendingFilesBySession[currentSessionKey] || [];
-  
+
   const updatePendingFilesForSession = useCallback((sessionId, updater) => {
     setPendingFilesBySession(prev => {
       const currentFiles = prev[sessionId] || [];
@@ -187,11 +210,7 @@ export default function Chat() {
   const [shareEmailAddress, setShareEmailAddress] = useState('');
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [isProcessingUpload, setIsProcessingUpload] = useState(false);
-  const [isHeaderOpen, setIsHeaderOpen] = useState(true);
-
-  useEffect(() => {
-    setIsHeaderOpen(true);
-  }, [routeSessionId]);
+  const [isHeaderOpen, setIsHeaderOpen] = useState(false);
 
   const handleShareUrl = async () => {
     setShowShareMenu(false);
@@ -311,48 +330,48 @@ export default function Chat() {
     let cancelled = false;
     dispatch({ type: 'MESSAGES_LOADING', sessionId: state.sessionId });
     sessionService.getMessages(state.sessionId)
-      .then(res => { 
+      .then(res => {
         if (!cancelled) {
           const isArray = Array.isArray(res);
           const messages = isArray ? res : res.messages;
-          dispatch({ 
-            type: 'MESSAGES_LOADED', 
-            sessionId: state.sessionId, 
-            payload: { 
-              messages, 
-              hasMore: isArray ? false : res.hasMore, 
-              nextCursor: isArray ? null : res.nextCursor 
-            } 
-          }); 
+          dispatch({
+            type: 'MESSAGES_LOADED',
+            sessionId: state.sessionId,
+            payload: {
+              messages,
+              hasMore: isArray ? false : res.hasMore,
+              nextCursor: isArray ? null : res.nextCursor
+            }
+          });
 
           if (messages.length > 0) {
             const lastMsg = messages[messages.length - 1];
             if (lastMsg.role === 'ASSISTANT' && lastMsg.status === 'PROCESSING') {
-               dispatch({
-                 type: 'RECONNECT_STREAM',
-                 sessionId: state.sessionId,
-                 payload: { assistantPlaceholder: lastMsg }
-               });
-               
-               chatService.startStream(
-                 state.sessionId,
-                 lastMsg.id,
-                 (action) => {
-                   dispatch({ ...action, sessionId: state.sessionId, payload: { ...action.payload, messageId: lastMsg.id } });
-                   if (action.type === 'STREAM_ERROR') {
-                     showToast(action.payload.error?.message || 'Stream disconnected', 'error');
-                   }
-                 }
-               );
+              dispatch({
+                type: 'RECONNECT_STREAM',
+                sessionId: state.sessionId,
+                payload: { assistantPlaceholder: lastMsg }
+              });
+
+              chatService.startStream(
+                state.sessionId,
+                lastMsg.id,
+                (action) => {
+                  dispatch({ ...action, sessionId: state.sessionId, payload: { ...action.payload, messageId: lastMsg.id } });
+                  if (action.type === 'STREAM_ERROR') {
+                    showToast(action.payload.error?.message || 'Stream disconnected', 'error');
+                  }
+                }
+              );
             }
           }
         }
       })
-      .catch(err => { 
-        if (!cancelled) { 
-          dispatch({ type: 'MESSAGES_LOAD_FAILED', sessionId: state.sessionId }); 
-          showToast(err.message || 'Failed to load messages', 'error'); 
-        } 
+      .catch(err => {
+        if (!cancelled) {
+          dispatch({ type: 'MESSAGES_LOAD_FAILED', sessionId: state.sessionId });
+          showToast(err.message || 'Failed to load messages', 'error');
+        }
       });
     return () => { cancelled = true; };
   }, [state.sessionId]);
@@ -379,25 +398,25 @@ export default function Chat() {
   // Background polling for responses generated while offline/reloaded
   useEffect(() => {
     if (!state.sessionId || state.isStreaming || state.messagesLoading) return;
-    
+
     const visibleMessages = state.messages.filter(msg => !isUploadAnchorMessage(msg));
     if (visibleMessages.length === 0) return;
-    
+
     const lastMessage = visibleMessages[visibleMessages.length - 1];
-    
+
     // If the last visible message is an uncompleted assistant placeholder, check for active generation
     if (lastMessage.role === 'ASSISTANT' && lastMessage.status === 'PROCESSING') {
       let cancelled = false;
-      
+
       const checkActive = async () => {
         try {
           const activeState = await chatService.getActiveGeneration(state.sessionId);
           if (cancelled) return;
-          
+
           if (activeState && activeState.status === 'RUNNING' && activeState.messageId) {
             // Backend is still generating! Reconnect to the stream.
             const assistantId = parseInt(activeState.messageId, 10);
-            
+
             const placeholder = {
               id: assistantId,
               role: 'ASSISTANT',
@@ -408,14 +427,14 @@ export default function Chat() {
               visuals: [],
               createdAt: lastMessage.createdAt || new Date().toISOString(),
             };
-            
+
             dispatch({
               type: 'RECONNECT_STREAM',
               payload: {
                 assistantPlaceholder: placeholder
               }
             });
-            
+
             // Reconnect! (passing no lastEventId so the backend streams from 0-0)
             await chatService.startStream(
               state.sessionId, assistantId,
@@ -433,39 +452,39 @@ export default function Chat() {
             if (cancelled) return;
             const isArray = Array.isArray(res);
             const newMessages = isArray ? res : res.messages;
-            
+
             // Check if it's STILL processing in the DB despite not being active
             // This means it was orphaned (e.g. server crash). Mark it as error locally.
-            const stillProcessing = newMessages.length > 0 && 
-                                  newMessages[newMessages.length - 1].role === 'ASSISTANT' && 
-                                  newMessages[newMessages.length - 1].status === 'PROCESSING';
-            
+            const stillProcessing = newMessages.length > 0 &&
+              newMessages[newMessages.length - 1].role === 'ASSISTANT' &&
+              newMessages[newMessages.length - 1].status === 'PROCESSING';
+
             if (stillProcessing) {
               newMessages[newMessages.length - 1].status = 'ERROR';
               newMessages[newMessages.length - 1].text = (newMessages[newMessages.length - 1].text || '') + '\n\n*(Generation interrupted or failed)*';
             }
-            
-            dispatch({ 
-              type: 'MESSAGES_LOADED', 
-              sessionId: state.sessionId, 
-              payload: { 
-                messages: newMessages, 
-                hasMore: isArray ? false : res.hasMore, 
-                nextCursor: isArray ? null : res.nextCursor 
-              } 
+
+            dispatch({
+              type: 'MESSAGES_LOADED',
+              sessionId: state.sessionId,
+              payload: {
+                messages: newMessages,
+                hasMore: isArray ? false : res.hasMore,
+                nextCursor: isArray ? null : res.nextCursor
+              }
             });
           }
         } catch (e) {
           // ignore
         }
       };
-      
+
       checkActive();
       return () => { cancelled = true; };
     }
   }, [state.sessionId, state.messages, state.isStreaming, state.messagesLoading]);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [state.messages, state.streamingMessage]);
+
 
   // Polls GET /api/sessions/{id}/suggested-questions every 2s until ingestion's
   // question-generation step reports READY or FAILED, then stops. Started after
@@ -475,7 +494,7 @@ export default function Chat() {
       clearInterval(suggestionsPollRef.current);
       suggestionsPollRef.current = null;
     }
-    
+
     setIsGeneratingQuestions(true);
 
     const poll = async () => {
@@ -525,11 +544,11 @@ export default function Chat() {
   const addFiles = useCallback((files) => {
     const validFiles = [];
     for (const f of files) {
-      const isExcel = f.type === 'application/vnd.ms-excel' || 
-                      f.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || 
-                      f.name.toLowerCase().endsWith('.xls') || 
-                      f.name.toLowerCase().endsWith('.xlsx');
-      
+      const isExcel = f.type === 'application/vnd.ms-excel' ||
+        f.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        f.name.toLowerCase().endsWith('.xls') ||
+        f.name.toLowerCase().endsWith('.xlsx');
+
       if (isExcel) {
         showToast('Excel files are not supported.', 'error');
         continue;
@@ -553,7 +572,7 @@ export default function Chat() {
     const toUpload = (filesToUpload || pendingFiles).filter(f => f.status === 'pending');
     const newJobIds = [];
     if (toUpload.length === 0) return newJobIds;
-    
+
     for (let i = 0; i < toUpload.length; i++) {
       const fileToUpload = toUpload[i];
       updatePendingFilesForSession(targetSessionId, prev => prev.map(f => f.name === fileToUpload.name ? { ...f, status: 'uploading' } : f));
@@ -598,20 +617,20 @@ export default function Chat() {
         const activeJobs = data.filter(d => d.state !== 'READY' && d.state !== 'FAILED');
         if (activeJobs.length > 0) {
           setPendingFiles(prev => {
-             const newFiles = [...prev];
-             let changed = false;
-             activeJobs.forEach(job => {
-               if (!newFiles.some(f => String(f.jobId) === String(job.jobId))) {
-                 newFiles.push({
-                   jobId: job.jobId,
-                   name: job.filename || `Document ${job.jobId}`,
-                   status: 'uploading',
-                   backendState: job.state
-                 });
-                 changed = true;
-               }
-             });
-             return changed ? newFiles : prev;
+            const newFiles = [...prev];
+            let changed = false;
+            activeJobs.forEach(job => {
+              if (!newFiles.some(f => String(f.jobId) === String(job.jobId))) {
+                newFiles.push({
+                  jobId: job.jobId,
+                  name: job.filename || `Document ${job.jobId}`,
+                  status: 'uploading',
+                  backendState: job.state
+                });
+                changed = true;
+              }
+            });
+            return changed ? newFiles : prev;
           });
         }
       })
@@ -623,9 +642,9 @@ export default function Chat() {
     if (!state.sessionId) return;
     const hasActiveIngestions = pendingFiles.some(f => f.jobId && f.status !== 'error' && f.status !== 'done');
     if (!hasActiveIngestions) return;
-    
+
     const interval = setInterval(() => {
-      fetch(`${import.meta.env.VITE_API_URL || ''}/api/sessions/${state.sessionId}/ingestion-status`, { 
+      fetch(`${import.meta.env.VITE_API_URL || ''}/api/sessions/${state.sessionId}/ingestion-status`, {
         credentials: 'include'
       })
         .then(res => {
@@ -633,28 +652,28 @@ export default function Chat() {
           return res.json();
         })
         .then(data => {
-           if (!Array.isArray(data)) return;
-           setPendingFiles(prev => {
-             let changed = false;
-             const next = prev.map(f => {
-               if (!f.jobId) return f;
-               const match = data.find(d => String(d.jobId) === String(f.jobId));
-               if (match) {
-                   if (match.state === 'READY' && f.status !== 'done') {
-                       changed = true;
-                       return { ...f, status: 'done', backendState: match.state };
-                   } else if (match.state === 'FAILED' && f.status !== 'error') {
-                       changed = true;
-                       return { ...f, status: 'error', backendState: match.state };
-                   } else if (match.state !== 'READY' && match.state !== 'FAILED' && f.backendState !== match.state) {
-                       changed = true;
-                       return { ...f, status: 'uploading', backendState: match.state }; 
-                   }
-               }
-               return f;
-             });
-             return changed ? next : prev;
-           });
+          if (!Array.isArray(data)) return;
+          setPendingFiles(prev => {
+            let changed = false;
+            const next = prev.map(f => {
+              if (!f.jobId) return f;
+              const match = data.find(d => String(d.jobId) === String(f.jobId));
+              if (match) {
+                if (match.state === 'READY' && f.status !== 'done') {
+                  changed = true;
+                  return { ...f, status: 'done', backendState: match.state };
+                } else if (match.state === 'FAILED' && f.status !== 'error') {
+                  changed = true;
+                  return { ...f, status: 'error', backendState: match.state };
+                } else if (match.state !== 'READY' && match.state !== 'FAILED' && f.backendState !== match.state) {
+                  changed = true;
+                  return { ...f, status: 'uploading', backendState: match.state };
+                }
+              }
+              return f;
+            });
+            return changed ? next : prev;
+          });
         })
         .catch(err => console.error("Poll error", err));
     }, 2000);
@@ -685,7 +704,7 @@ export default function Chat() {
         const created = await sessionService.create(title);
         activeSessionId = created.sessionId;
         addSession(created);
-        
+
         setPendingFilesBySession(prev => {
           const files = prev['new'] || [];
           if (files.length === 0) return prev;
@@ -809,6 +828,8 @@ export default function Chat() {
   const onKeyDown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); } };
   const onInputChange = (e) => { setInput(e.target.value); const ta = e.target; ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 160) + 'px'; };
 
+  const displayPlaceholder = isRecording ? "Listening..." : isTranscribing ? "Transcribing..." : "Ask anything";
+
   const firstName = user?.name?.split(' ')[0] || 'there';
   const isNewChat = !state.sessionId;
   const userQuestions = state.messages.filter(m => m.role === 'USER' && m.text && m.text.trim().length > 0);
@@ -837,6 +858,39 @@ export default function Chat() {
       onDragOver={onDragOver}
       onDrop={onDrop}
     >
+      {isRecording && (
+        <div className="absolute inset-0 z-[100] flex flex-col items-center justify-between bg-black/5 dark:bg-black/60 backdrop-blur-xl animate-fade-in pointer-events-auto py-16">
+          
+          <div className="flex-none">
+            <Constellation invert={false} className="w-32 h-32 md:w-48 md:h-48 opacity-90 drop-shadow-xl" />
+          </div>
+          
+          <div className="flex-1 flex flex-col items-center justify-center w-full max-w-3xl px-8 my-8 overflow-y-auto custom-scrollbar">
+            {liveText ? (
+              <p className="text-xl md:text-3xl font-medium text-primary leading-relaxed tracking-wide drop-shadow-md transition-all text-center blur-[1px] opacity-80 hover:blur-none hover:opacity-100 duration-500">
+                {liveText}
+              </p>
+            ) : (
+              <p className="text-xl font-medium text-tertiary drop-shadow-md transition-all animate-pulse text-center blur-[1px] opacity-70">
+                Listening...
+              </p>
+            )}
+          </div>
+
+          <div className="flex-none">
+            <button 
+              onClick={stopRecording}
+              className="px-8 py-3.5 flex items-center gap-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 dark:text-red-400 dark:bg-white/10 dark:hover:bg-white/20 rounded-full text-[15px] font-semibold transition-all shadow-xl active:scale-95 backdrop-blur-xl border border-red-500/20 dark:border-white/10 dark:hover:border-white/20"
+              title="Stop recording"
+            >
+              <div className="w-3.5 h-3.5 bg-red-500 rounded-[4px] animate-pulse shadow-[0_0_12px_rgba(239,68,68,0.8)]"></div>
+              Stop Recording
+            </button>
+          </div>
+
+        </div>
+      )}
+
       {isDragging && (
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center backdrop-blur-sm border-2 border-dashed border-blue-500/60 pointer-events-none"
           style={{ backgroundColor: 'color-mix(in srgb, var(--color-bg-base) 85%, transparent)' }}>
@@ -860,185 +914,185 @@ export default function Chat() {
         <header className="flex items-center gap-3 h-14 px-4 shrink-0 z-30 relative divider-vert"
           style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-surface)' }}>
           <button
-          className="md:hidden p-2 -ml-1 text-secondary rounded-xl interactive"
-          onClick={openMobileSidebar}
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
+            className="md:hidden p-2 -ml-1 text-secondary rounded-xl interactive"
+            onClick={openMobileSidebar}
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
 
-        <div className="flex-1 flex items-center justify-between min-w-0 gap-2">
-          <div className="relative shrink-0 max-w-[45%] sm:max-w-none">
-            <button
-              type="button"
-              onClick={() => setModelMenuOpen(prev => !prev)}
-              className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-[15px] font-semibold text-primary rounded-xl interactive cursor-pointer select-none max-w-full"
-            >
-              <span className="hidden sm:inline">DocuMind</span>
-              <span className="text-tertiary font-medium truncate max-w-[150px] sm:max-w-none">{displayModelName}</span>
-              <svg className={`w-3.5 h-3.5 shrink-0 text-tertiary transition-transform duration-200 ${modelMenuOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-              </svg>
-            </button>
-
-            {modelMenuOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setModelMenuOpen(false)} />
-                <div className="absolute left-0 mt-2 z-50 w-[280px] max-w-[calc(100vw-3rem)] menu-popup py-1.5 animate-fade-in-up">
-                  {models.map(m => {
-                    const isSelected = m.id === selectedModel;
-                    return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => handleModelSelect(m.id)}
-                        className="flex items-start w-full text-left px-4 py-2.5 interactive group cursor-pointer"
-                      >
-                        <div className="w-5 shrink-0 pt-0.5">
-                          {isSelected && (
-                            <svg className="w-3.5 h-3.5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                            </svg>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0 pr-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[13px] font-semibold text-primary group-hover:text-blue-500 transition-colors">
-                              {m.name}
-                            </span>
-                            {m.isNew && (
-                              <span className="px-2 py-0.5 text-[9px] font-medium bg-blue-500/10 text-blue-500 rounded-full shrink-0">New</span>
-                            )}
-                          </div>
-                          <p className="text-[11px] text-secondary mt-0.5 leading-normal">{m.description}</p>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </div>
-
-          {!isNewChat && (
-            <div className="flex items-center gap-1 sm:gap-2 relative min-w-0 justify-end">
-              <div className="px-2 sm:px-3 py-1 sm:py-1.5 bg-[var(--color-bg-base)] border border-[var(--color-border)] rounded-lg max-w-[120px] sm:max-w-[300px] min-w-0 shrink">
-                <h1 className="text-[11px] sm:text-[13px] font-medium text-secondary truncate leading-tight">
-                  {session?.title || 'Loading…'}
-                </h1>
-              </div>
-              
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowQuestionsMenu(prev => !prev)}
-                  className={`p-1 sm:p-1.5 rounded-md transition-colors shrink-0 ${showQuestionsMenu ? 'text-blue-500 bg-blue-500/10' : 'text-secondary hover:text-primary hover:bg-[var(--color-bg-surface-hover)]'}`}
-                  title="Session History"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </button>
-                
-                {showQuestionsMenu && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setShowQuestionsMenu(false)} />
-                    <div className="absolute top-full right-0 mt-2 z-50 w-64 md:w-80 max-h-[300px] overflow-y-auto menu-popup py-1.5 animate-fade-in-up">
-                      <div className="px-3 py-2 text-xs font-semibold text-secondary uppercase tracking-wider border-b border-[var(--color-border)] mb-1 flex items-center justify-between">
-                        <span>Questions Asked</span>
-                        <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-blue-500/15 text-blue-500 text-[11px] font-bold">{userQuestions.length}</span>
-                      </div>
-                      {userQuestions.length === 0 ? (
-                        <div className="px-4 py-3 text-[12px] text-tertiary">No questions asked yet.</div>
-                      ) : (
-                        userQuestions.map((q, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => {
-                              setShowQuestionsMenu(false);
-                              const filteredMessages = state.messages.filter(msg => !isUploadAnchorMessage(msg));
-                              const targetIndex = filteredMessages.findIndex(m => m.id === q.id);
-                              
-                              if (virtuosoRef.current && targetIndex !== -1) {
-                                virtuosoRef.current.scrollToIndex({
-                                  index: targetIndex,
-                                  align: 'center',
-                                  behavior: 'smooth'
-                                });
-                              }
-                            }}
-                            className="flex flex-col w-full text-left px-3 py-2 hover:bg-[var(--color-bg-surface-hover)] transition-colors group"
-                          >
-                            <span className="text-[12px] text-primary line-clamp-2 group-hover:text-blue-500 transition-colors">
-                              {q.text}
-                            </span>
-                            <span className="text-[10px] text-tertiary mt-0.5">
-                              {new Date(q.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-
+          <div className="flex-1 flex items-center justify-between min-w-0 gap-2">
+            <div className="relative shrink-0 max-w-[45%] sm:max-w-none">
               <button
                 type="button"
-                onClick={() => setShowShareMenu(prev => !prev)}
-                className="p-1 sm:p-1.5 text-secondary hover:text-primary hover:bg-[var(--color-bg-surface-hover)] rounded-md transition-colors shrink-0"
-                title="Share options"
+                onClick={() => setModelMenuOpen(prev => !prev)}
+                className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-[15px] font-semibold text-primary rounded-xl interactive cursor-pointer select-none max-w-full"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                <span className="hidden sm:inline">DocuMind</span>
+                <span className="text-tertiary font-medium truncate max-w-[150px] sm:max-w-none">{displayModelName}</span>
+                <svg className={`w-3.5 h-3.5 shrink-0 text-tertiary transition-transform duration-200 ${modelMenuOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
                 </svg>
               </button>
-              {showShareMenu && (
+
+              {modelMenuOpen && (
                 <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowShareMenu(false)} />
-                  <div className="absolute top-full right-0 mt-2 z-50 w-48 menu-popup py-1.5 animate-fade-in-up">
-                    <button
-                      onClick={handleShareUrl}
-                      className="flex items-center gap-2 w-full text-left px-4 py-2 text-[13px] text-primary hover:bg-[var(--color-bg-surface-hover)] transition-colors"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" /></svg>
-                      Share public URL
-                    </button>
-                    <button
-                      onClick={handleSendMail}
-                      className="flex items-center gap-2 w-full text-left px-4 py-2 text-[13px] text-primary hover:bg-[var(--color-bg-surface-hover)] transition-colors"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-                      Send via mail
-                    </button>
-                    <div className="h-px bg-[var(--color-border)] my-1" />
-                    <button
-                      onClick={handleExportMarkdown}
-                      className="flex items-center gap-2 w-full text-left px-4 py-2 text-[13px] text-primary hover:bg-[var(--color-bg-surface-hover)] transition-colors"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                      Export markdown
-                    </button>
-                    <button
-                      onClick={handleExportPdf}
-                      disabled={isExportingPdf}
-                      className="flex items-center gap-2 w-full text-left px-4 py-2 text-[13px] text-primary hover:bg-[var(--color-bg-surface-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isExportingPdf ? (
-                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
-                      ) : (
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 11v6m-3-3h6" /></svg>
-                      )}
-                      {isExportingPdf ? 'Preparing PDF…' : 'Export PDF'}
-                    </button>
+                  <div className="fixed inset-0 z-40" onClick={() => setModelMenuOpen(false)} />
+                  <div className="absolute left-0 mt-2 z-50 w-[280px] max-w-[calc(100vw-3rem)] menu-popup py-1.5 animate-fade-in-up">
+                    {models.map(m => {
+                      const isSelected = m.id === selectedModel;
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => handleModelSelect(m.id)}
+                          className="flex items-start w-full text-left px-4 py-2.5 interactive group cursor-pointer"
+                        >
+                          <div className="w-5 shrink-0 pt-0.5">
+                            {isSelected && (
+                              <svg className="w-3.5 h-3.5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                              </svg>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0 pr-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[13px] font-semibold text-primary group-hover:text-blue-500 transition-colors">
+                                {m.name}
+                              </span>
+                              {m.isNew && (
+                                <span className="px-2 py-0.5 text-[9px] font-medium bg-blue-500/10 text-blue-500 rounded-full shrink-0">New</span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-secondary mt-0.5 leading-normal">{m.description}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </>
               )}
             </div>
-          )}
-        </div>
-      </header>
+
+            {!isNewChat && (
+              <div className="flex items-center gap-1 sm:gap-2 relative min-w-0 justify-end">
+                <div className="px-2 sm:px-3 py-1 sm:py-1.5 bg-[var(--color-bg-base)] border border-[var(--color-border)] rounded-lg max-w-[120px] sm:max-w-[300px] min-w-0 shrink">
+                  <h1 className="text-[11px] sm:text-[13px] font-medium text-secondary truncate leading-tight">
+                    {session?.title || 'Loading…'}
+                  </h1>
+                </div>
+
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowQuestionsMenu(prev => !prev)}
+                    className={`p-1 sm:p-1.5 rounded-md transition-colors shrink-0 ${showQuestionsMenu ? 'text-blue-500 bg-blue-500/10' : 'text-secondary hover:text-primary hover:bg-[var(--color-bg-surface-hover)]'}`}
+                    title="Session History"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </button>
+
+                  {showQuestionsMenu && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setShowQuestionsMenu(false)} />
+                      <div className="absolute top-full right-0 mt-2 z-50 w-64 md:w-80 max-h-[300px] overflow-y-auto menu-popup py-1.5 animate-fade-in-up">
+                        <div className="px-3 py-2 text-xs font-semibold text-secondary uppercase tracking-wider border-b border-[var(--color-border)] mb-1 flex items-center justify-between">
+                          <span>Questions Asked</span>
+                          <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-blue-500/15 text-blue-500 text-[11px] font-bold">{userQuestions.length}</span>
+                        </div>
+                        {userQuestions.length === 0 ? (
+                          <div className="px-4 py-3 text-[12px] text-tertiary">No questions asked yet.</div>
+                        ) : (
+                          userQuestions.map((q, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => {
+                                setShowQuestionsMenu(false);
+                                const filteredMessages = state.messages.filter(msg => !isUploadAnchorMessage(msg));
+                                const targetIndex = filteredMessages.findIndex(m => m.id === q.id);
+
+                                if (virtuosoRef.current && targetIndex !== -1) {
+                                  virtuosoRef.current.scrollToIndex({
+                                    index: targetIndex,
+                                    align: 'center',
+                                    behavior: 'smooth'
+                                  });
+                                }
+                              }}
+                              className="flex flex-col w-full text-left px-3 py-2 hover:bg-[var(--color-bg-surface-hover)] transition-colors group"
+                            >
+                              <span className="text-[12px] text-primary line-clamp-2 group-hover:text-blue-500 transition-colors">
+                                {q.text}
+                              </span>
+                              <span className="text-[10px] text-tertiary mt-0.5">
+                                {new Date(q.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowShareMenu(prev => !prev)}
+                  className="p-1 sm:p-1.5 text-secondary hover:text-primary hover:bg-[var(--color-bg-surface-hover)] rounded-md transition-colors shrink-0"
+                  title="Share options"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                  </svg>
+                </button>
+                {showShareMenu && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowShareMenu(false)} />
+                    <div className="absolute top-full right-0 mt-2 z-50 w-48 menu-popup py-1.5 animate-fade-in-up">
+                      <button
+                        onClick={handleShareUrl}
+                        className="flex items-center gap-2 w-full text-left px-4 py-2 text-[13px] text-primary hover:bg-[var(--color-bg-surface-hover)] transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" /></svg>
+                        Share public URL
+                      </button>
+                      <button
+                        onClick={handleSendMail}
+                        className="flex items-center gap-2 w-full text-left px-4 py-2 text-[13px] text-primary hover:bg-[var(--color-bg-surface-hover)] transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                        Send via mail
+                      </button>
+                      <div className="h-px bg-[var(--color-border)] my-1" />
+                      <button
+                        onClick={handleExportMarkdown}
+                        className="flex items-center gap-2 w-full text-left px-4 py-2 text-[13px] text-primary hover:bg-[var(--color-bg-surface-hover)] transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                        Export markdown
+                      </button>
+                      <button
+                        onClick={handleExportPdf}
+                        disabled={isExportingPdf}
+                        className="flex items-center gap-2 w-full text-left px-4 py-2 text-[13px] text-primary hover:bg-[var(--color-bg-surface-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isExportingPdf ? (
+                          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 11v6m-3-3h6" /></svg>
+                        )}
+                        {isExportingPdf ? 'Preparing PDF…' : 'Export PDF'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </header>
       )}
 
       {isHeaderOpen ? (
@@ -1050,7 +1104,7 @@ export default function Chat() {
           title="Close header drawer"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-             <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
           </svg>
         </button>
       ) : (
@@ -1062,7 +1116,7 @@ export default function Chat() {
           title="Open header drawer"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-             <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
           </svg>
         </button>
       )}
@@ -1148,64 +1202,39 @@ export default function Chat() {
           />
         )}
       </div>
-      <div className="shrink-0 px-4 sm:px-6 pb-5 pt-3 relative"
-        style={{ borderTop: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-surface)' }}>
-
-        <div className="max-w-4xl mx-auto relative">
-          {isInputOpen && (
-            <button
-              type="button"
-              onClick={() => setIsInputOpen(false)}
-              className="absolute -top-[34px] right-2 p-1.5 rounded-t-lg border-x border-t text-tertiary hover:text-secondary cursor-pointer transition-colors shadow-sm"
-              style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-bg-surface)' }}
-              title="Close input drawer"
-            >
-              <ChevronDownIcon />
-            </button>
-          )}
-
-          {!isInputOpen && (
-            <button
-              type="button"
-              onClick={() => setIsInputOpen(true)}
-              className="fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-2xl border flex items-center justify-center cursor-pointer transition-transform hover:scale-110 active:scale-95 z-50 animate-fade-in-up"
-              style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-text-primary)' }}
-              title="Open input drawer"
-            >
-              <Constellation className="w-14 h-14" invert={false} />
-            </button>
-          )}
-
-          {isInputOpen && (
-            <div className="w-full flex flex-col gap-3">
-              {state.suggestedQuestions.length > 0 && !state.isStreaming && (
-                <div className="w-full overflow-x-auto custom-scrollbar pb-2 flex gap-2 snap-x animate-fade-in-up">
-                  {state.suggestedQuestions.map((q, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => handleSend(null, q)}
-                      className="shrink-0 snap-start px-4 py-2.5 rounded-full border text-[13px] font-medium flex items-center gap-2 interactive cursor-pointer transition-all hover:border-blue-500/50 hover:text-blue-500 shadow-sm"
-                      style={{ backgroundColor: 'var(--color-bg-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
-                    >
-                      <span className="text-blue-500">✨</span>
-                      {q}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <form onSubmit={handleSend} className="w-full">
+      <div
+        className="absolute bottom-0 left-0 right-0 px-4 sm:px-6 pb-6 pt-12 pointer-events-none z-10"
+        style={{ background: 'linear-gradient(to top, var(--color-bg-default) 50%, transparent)' }}
+      >
+        <div className="max-w-4xl mx-auto relative pointer-events-auto">
+          <div className="w-full flex flex-col gap-3">
+            {state.suggestedQuestions.length > 0 && !state.isStreaming && (
+              <div className="w-full overflow-x-auto custom-scrollbar pb-2 flex gap-2 snap-x animate-fade-in-up">
+                {state.suggestedQuestions.map((q, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => handleSend(null, q)}
+                    className="shrink-0 snap-start px-4 py-2.5 rounded-full border text-[13px] font-medium flex items-center gap-2 interactive cursor-pointer transition-all hover:border-blue-500/50 hover:text-blue-500 shadow-sm"
+                    style={{ backgroundColor: 'var(--color-bg-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+                  >
+                    <span className="text-blue-500">✨</span>
+                    {q}
+                  </button>
+                ))}
+              </div>
+            )}
+            <form onSubmit={handleSend} className="w-full">
               {pendingFiles.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-2 px-1">
                   {pendingFiles.map((f, i) => (
                     <div
                       key={i}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${f.status === 'uploading' ? 'bg-blue-500/10 border-blue-500/30 text-blue-500' :
-                          f.status === 'done' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600' :
-                            f.status === 'error' ? 'bg-red-500/10 border-red-500/30 text-red-500' :
-                              'bg-subtle border-t text-secondary'
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-medium transition-all shadow-sm ${f.status === 'uploading' ? 'bg-blue-50 dark:bg-blue-900/30 border border-blue-500/30 text-blue-600 dark:text-blue-400' :
+                        f.status === 'done' ? 'bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400' :
+                          f.status === 'error' ? 'bg-red-50 dark:bg-red-900/30 border border-red-500/30 text-red-600 dark:text-red-400' :
+                            'bg-white dark:bg-[#2f2f2f] border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200'
                         }`}
-                      style={['pending'].includes(f.status) ? { backgroundColor: 'var(--color-bg-subtle)', borderColor: 'var(--color-border)' } : {}}
                     >
                       {f.status === 'uploading' && <div className="w-2.5 h-2.5 border border-blue-400/50 border-t-blue-400 rounded-full animate-spin" />}
                       {f.status === 'done' && <span>✓</span>}
@@ -1278,30 +1307,24 @@ export default function Chat() {
               )}
 
               <div
-                className="flex items-end gap-2.5 rounded-2xl px-4 py-3 transition-all"
-                style={{
-                  backgroundColor: 'var(--color-bg-input)',
-                  border: '1px solid var(--color-border)',
-                }}
-                onFocus={(e) => e.currentTarget.style.borderColor = 'var(--color-accent)'}
-                onBlur={(e) => e.currentTarget.style.borderColor = 'var(--color-border)'}
+                className="flex items-end gap-2 rounded-full px-3 py-2 transition-all shadow-none bg-gray-100 dark:bg-[#2f2f2f]"
               >
-                <div className="flex items-center">
+                <div className="flex items-center gap-1 pb-[1px]">
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="p-1.5 text-tertiary hover:text-secondary rounded-lg interactive shrink-0"
+                    className="w-8 h-8 flex items-center justify-center text-primary hover:text-secondary rounded-full interactive shrink-0 transition-colors"
                     title="Attach file"
                   >
-                    <PaperclipIcon />
+                    <PlusIcon />
                   </button>
                   <button
                     type="button"
                     onClick={() => setShowWikiInput(!showWikiInput)}
-                    className={`p-1.5 rounded-lg interactive shrink-0 transition-colors ${showWikiInput ? 'text-blue-500 bg-blue-500/10' : 'text-tertiary hover:text-secondary'}`}
+                    className={`w-8 h-8 rounded-full interactive shrink-0 transition-colors flex items-center justify-center ${showWikiInput ? 'text-blue-500 bg-blue-500/10' : 'text-primary hover:text-secondary'}`}
                     title="Attach Wikipedia page"
                   >
-                    <LinkIcon />
+                    <WikipediaIcon />
                   </button>
                 </div>
 
@@ -1310,13 +1333,32 @@ export default function Chat() {
                   value={input}
                   onChange={onInputChange}
                   onKeyDown={onKeyDown}
-                  placeholder="Ask anything…"
+                  placeholder={displayPlaceholder}
                   rows={1}
                   disabled={state.status === 'STREAMING' || state.messagesLoading}
                   autoFocus
-                  className="flex-1 bg-transparent border-0 text-[13px] text-primary outline-none resize-none max-h-40 min-h-[22px] py-0.5 leading-relaxed disabled:opacity-50"
-                  style={{ height: '22px', color: 'var(--color-text-primary)', caretColor: 'var(--color-accent)' }}
+                  className="flex-1 bg-transparent border-0 text-[15px] text-primary outline-none resize-none max-h-40 min-h-[32px] py-1 leading-[24px] disabled:opacity-50"
+                  style={{ height: '32px', color: 'var(--color-text-primary)', caretColor: 'var(--color-accent)' }}
                 />
+
+              <div className="flex items-center gap-2 pr-1.5">
+                {state.status !== 'STREAMING' && (
+                  <button
+                    type="button"
+                    onClick={isRecording ? stopRecording : startRecording}
+                    className={`mb-[1px] rounded-full transition-colors active:scale-95 shrink-0 cursor-pointer flex items-center justify-center w-8 h-8 ${isRecording ? 'text-red-500 hover:bg-red-500/10' : 'text-tertiary hover:text-primary hover:bg-black/5 dark:hover:bg-white/5'}`}
+                    title={isRecording ? "Stop recording" : "Record audio"}
+                    disabled={state.messagesLoading || isTranscribing}
+                  >
+                    {isTranscribing ? (
+                      <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                    ) : isRecording ? (
+                      <StopIcon />
+                    ) : (
+                      <MicIcon />
+                    )}
+                  </button>
+                )}
 
                 {state.status === 'STREAMING' ? (
                   <button
@@ -1332,30 +1374,25 @@ export default function Chat() {
                         chatService.cancelGeneration(backendMsgId);
                       }
                     }}
-                    className="p-2 bg-surface border hover:bg-subtle text-primary rounded-xl transition-all active:scale-95 hover:scale-105 shrink-0 cursor-pointer shadow-sm"
-                    style={{ borderColor: 'var(--color-border)' }}
+                    className="mb-[1px] flex items-center gap-1.5 px-3 py-1.5 bg-gray-200 dark:bg-gray-700 rounded-full text-xs font-medium hover:opacity-80 transition-opacity"
                     title="Stop generating"
                   >
-                    <StopIcon />
+                    <StopIcon className="w-3 h-3" />
+                    Stop
                   </button>
                 ) : (
                   <button
                     type="submit"
                     disabled={(!input.trim() && !pendingFiles.some(f => f.status === 'pending')) || state.messagesLoading}
-                    className="p-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-25 disabled:cursor-not-allowed text-white rounded-xl transition-all active:scale-95 hover:scale-105 disabled:scale-100 shrink-0 cursor-pointer"
-                    title="Send message"
+                    className="mb-[1px] text-white bg-black dark:bg-white dark:text-black hover:opacity-80 rounded-full transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed shrink-0 cursor-pointer flex items-center justify-center w-8 h-8"
                   >
                     <SendIcon />
                   </button>
                 )}
               </div>
-
-              <p className="text-center text-[11px] text-tertiary mt-2 select-none">
-                Enter to send &nbsp;·&nbsp; Shift+Enter for new line &nbsp;·&nbsp; Drop files anywhere
-              </p>
-              </form>
             </div>
-          )}
+          </form>
+        </div>
         </div>
       </div>
 

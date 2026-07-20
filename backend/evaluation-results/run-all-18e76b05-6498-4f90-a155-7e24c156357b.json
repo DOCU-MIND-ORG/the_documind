@@ -1,0 +1,829 @@
+{
+  "results" : [ {
+    "queryId" : "compare_transformer_llm",
+    "query" : "Compare how Transformers and Large language models are related.",
+    "passed" : false,
+    "failureReason" : "Missing required document Transformer (deep learning) or insufficient citations. Required: 1",
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "plannedDocuments" : [ "transformer (deep learning)", "large language model" ],
+    "retrievalCandidates" : [ "transformer (deep learning)", "large language model" ],
+    "finalDocuments" : [ "transformer (deep learning)", "large language model" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 30,
+    "chunkDistribution" : {
+      "transformer (deep learning)" : 22,
+      "large language model" : 8
+    },
+    "planDistribution" : {
+      "16a6f3ae-220e-401f-94a6-4d8b05fa3057" : 15,
+      "60013c3f-0292-4cff-9512-4dfeab338836" : 15
+    },
+    "retrievedVisuals" : 17,
+    "visualDistribution" : {
+      "transformer (deep learning)" : 9,
+      "large language model" : 8
+    },
+    "telemetry" : {
+      "denseHits" : 80,
+      "keywordHits" : 0,
+      "rrfHits" : 80,
+      "afterRerankHits" : 30,
+      "afterMultiSignalHits" : 30,
+      "contextExpandedHits" : 30,
+      "finalHits" : 30,
+      "retrievalCandidateDocs" : [ "transformer (deep learning)", "large language model" ],
+      "visualTier" : "Same Section",
+      "visualCandidates" : 18,
+      "plannerLatency" : 2741,
+      "denseLatency" : 6228,
+      "keywordLatency" : 6228,
+      "fusionLatency" : 6249,
+      "rerankLatency" : 20453,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 15312,
+      "plannerReason" : "Retrieve core definition and architectural role of Transformers.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "single_doc_rag",
+    "query" : "Explain how RAG improves upon standard LLM generation.",
+    "passed" : false,
+    "failureReason" : "Expected tier DIRECT but got DECOMPOSE",
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "plannedDocuments" : [ "large language model", "retrieval augmented generation" ],
+    "retrievalCandidates" : [ "large language model", "retrieval augmented generation" ],
+    "finalDocuments" : [ "retrieval augmented generation", "large language model" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 24,
+    "chunkDistribution" : {
+      "retrieval augmented generation" : 8,
+      "large language model" : 16
+    },
+    "planDistribution" : {
+      "866145fa-3dc1-42ad-ada0-ed1391d2856e" : 13,
+      "f2798bc0-53a8-470c-90ee-773729d5b68a" : 11
+    },
+    "retrievedVisuals" : 6,
+    "visualDistribution" : {
+      "retrieval augmented generation" : 1,
+      "large language model" : 5
+    },
+    "telemetry" : {
+      "denseHits" : 80,
+      "keywordHits" : 0,
+      "rrfHits" : 80,
+      "afterRerankHits" : 30,
+      "afterMultiSignalHits" : 24,
+      "contextExpandedHits" : 24,
+      "finalHits" : 24,
+      "retrievalCandidateDocs" : [ "large language model", "retrieval augmented generation" ],
+      "visualTier" : "Same Section",
+      "visualCandidates" : 6,
+      "plannerLatency" : 2243,
+      "denseLatency" : 1488,
+      "keywordLatency" : 1488,
+      "fusionLatency" : 1490,
+      "rerankLatency" : 35498,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 19362,
+      "plannerReason" : "Retrieve core definition and limitations of standard LLM generation.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "compare_rlhf_rag",
+    "query" : "Compare RLHF and RAG as methods for improving LLM outputs.",
+    "passed" : false,
+    "failureReason" : "Expected 2 unique documents but retrieved 3",
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "plannedDocuments" : [ "reinforcement learning", "large language model", "retrieval augmented generation" ],
+    "retrievalCandidates" : [ "reinforcement learning", "large language model", "retrieval augmented generation" ],
+    "finalDocuments" : [ "retrieval augmented generation", "large language model", "reinforcement learning" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 29,
+    "chunkDistribution" : {
+      "retrieval augmented generation" : 15,
+      "large language model" : 10,
+      "reinforcement learning" : 4
+    },
+    "planDistribution" : {
+      "dda97913-d9ae-4e17-8ef9-f8d8d508f05b" : 15,
+      "441453d7-dc2d-4845-b9fc-ef90814f4708" : 14
+    },
+    "retrievedVisuals" : 13,
+    "visualDistribution" : {
+      "retrieval augmented generation" : 5,
+      "large language model" : 7,
+      "reinforcement learning" : 1
+    },
+    "telemetry" : {
+      "denseHits" : 80,
+      "keywordHits" : 0,
+      "rrfHits" : 80,
+      "afterRerankHits" : 30,
+      "afterMultiSignalHits" : 29,
+      "contextExpandedHits" : 29,
+      "finalHits" : 29,
+      "retrievalCandidateDocs" : [ "reinforcement learning", "large language model", "retrieval augmented generation" ],
+      "visualTier" : "Same Document",
+      "visualCandidates" : 13,
+      "plannerLatency" : 2518,
+      "denseLatency" : 1745,
+      "keywordLatency" : 1745,
+      "fusionLatency" : 1754,
+      "rerankLatency" : 21588,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 13587,
+      "plannerReason" : "Retrieve information on RLHF for LLM improvement",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "nn_summary",
+    "query" : "Summarize the basic components of an Artificial Neural Network.",
+    "passed" : false,
+    "failureReason" : "Missing required document Neural network or insufficient citations. Required: 1",
+    "actualTier" : "DIRECT",
+    "actualStrategy" : "SINGLE_SOURCE",
+    "generatedPlans" : 1,
+    "plannedDocuments" : [ "neural network" ],
+    "retrievalCandidates" : [ "neural network" ],
+    "finalDocuments" : [ "neural network" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 3,
+    "chunkDistribution" : {
+      "neural network" : 3
+    },
+    "planDistribution" : {
+      "f0273b5f-a22b-49fe-8f85-bd1520864666" : 3
+    },
+    "retrievedVisuals" : 2,
+    "visualDistribution" : {
+      "neural network" : 2
+    },
+    "telemetry" : {
+      "denseHits" : 19,
+      "keywordHits" : 0,
+      "rrfHits" : 19,
+      "afterRerankHits" : 15,
+      "afterMultiSignalHits" : 3,
+      "contextExpandedHits" : 3,
+      "finalHits" : 3,
+      "retrievalCandidateDocs" : [ "neural network" ],
+      "visualTier" : "Same Section",
+      "visualCandidates" : 2,
+      "plannerLatency" : 1945,
+      "denseLatency" : 371,
+      "keywordLatency" : 371,
+      "fusionLatency" : 372,
+      "rerankLatency" : 2275,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 3536,
+      "plannerReason" : "Retrieve core components and architecture of an Artificial Neural Network",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "exclude_llm",
+    "query" : "Explain the concept of attention mechanisms in Neural Networks. Do not discuss Large Language Models or LLMs.",
+    "passed" : false,
+    "failureReason" : "Missing required document Attention mechanism or insufficient citations. Required: 1",
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "plannedDocuments" : [ "attention mechanism", "neural network" ],
+    "retrievalCandidates" : [ "attention mechanism", "neural network" ],
+    "finalDocuments" : [ "attention mechanism", "neural network" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 20,
+    "chunkDistribution" : {
+      "attention mechanism" : 18,
+      "neural network" : 2
+    },
+    "planDistribution" : {
+      "f4bd4457-492a-465b-acd9-533ff7861476" : 15,
+      "2b626922-1f98-4d05-adb1-2450b213e803" : 5
+    },
+    "retrievedVisuals" : 7,
+    "visualDistribution" : {
+      "attention mechanism" : 5,
+      "neural network" : 2
+    },
+    "telemetry" : {
+      "denseHits" : 89,
+      "keywordHits" : 0,
+      "rrfHits" : 80,
+      "afterRerankHits" : 30,
+      "afterMultiSignalHits" : 25,
+      "contextExpandedHits" : 25,
+      "finalHits" : 20,
+      "retrievalCandidateDocs" : [ "attention mechanism", "neural network" ],
+      "visualTier" : "Same Section",
+      "visualCandidates" : 7,
+      "plannerLatency" : 2503,
+      "denseLatency" : 1366,
+      "keywordLatency" : 1366,
+      "fusionLatency" : 1369,
+      "rerankLatency" : 15217,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 10218,
+      "plannerReason" : "Retrieve core definition and mechanics of attention mechanisms.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "concept_intelligence",
+    "query" : "Explain the concept of artificial intelligence using all relevant documents in the knowledge base.",
+    "passed" : false,
+    "failureReason" : "Expected strategy CONCEPT_EXPANSION but got MULTI_SOURCE",
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 3,
+    "plannedDocuments" : [ "neural network", "large language model", "transformer (deep learning)", "attention mechanism", "reinforcement learning" ],
+    "retrievalCandidates" : [ "neural network", "transformer (deep learning)", "attention mechanism", "large language model", "reinforcement learning" ],
+    "finalDocuments" : [ "attention mechanism", "transformer (deep learning)", "large language model", "neural network", "reinforcement learning" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 39,
+    "chunkDistribution" : {
+      "attention mechanism" : 7,
+      "transformer (deep learning)" : 8,
+      "large language model" : 11,
+      "neural network" : 9,
+      "reinforcement learning" : 4
+    },
+    "planDistribution" : {
+      "46a0083a-1cd9-4a3c-aa92-112881c069da" : 10,
+      "112383cd-b139-4c69-81eb-b74c35bd3164" : 15,
+      "0788a1f0-dcf2-439a-85d0-05d0027ed12a" : 14
+    },
+    "retrievedVisuals" : 14,
+    "visualDistribution" : {
+      "attention mechanism" : 2,
+      "transformer (deep learning)" : 6,
+      "large language model" : 4,
+      "neural network" : 1,
+      "reinforcement learning" : 1
+    },
+    "telemetry" : {
+      "denseHits" : 146,
+      "keywordHits" : 2,
+      "rrfHits" : 136,
+      "afterRerankHits" : 45,
+      "afterMultiSignalHits" : 39,
+      "contextExpandedHits" : 39,
+      "finalHits" : 39,
+      "retrievalCandidateDocs" : [ "neural network", "transformer (deep learning)", "attention mechanism", "large language model", "reinforcement learning" ],
+      "visualTier" : "Same Section",
+      "visualCandidates" : 14,
+      "plannerLatency" : 2546,
+      "denseLatency" : 2845,
+      "keywordLatency" : 2845,
+      "fusionLatency" : 2847,
+      "rerankLatency" : 44162,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 17855,
+      "plannerReason" : "Explain the foundational role of neural networks and deep learning architectures in AI.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "exclude_nn",
+    "query" : "Compare Transformers and Large Language Models but exclude Neural Networks.",
+    "passed" : false,
+    "failureReason" : "Missing required document Transformer (deep learning) or insufficient citations. Required: 1",
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "plannedDocuments" : [ "transformer (deep learning)", "large language model", "neural network" ],
+    "retrievalCandidates" : [ "transformer (deep learning)", "large language model" ],
+    "finalDocuments" : [ "transformer (deep learning)", "large language model" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 28,
+    "chunkDistribution" : {
+      "transformer (deep learning)" : 15,
+      "large language model" : 13
+    },
+    "planDistribution" : {
+      "f6ea049c-e3b8-4fb6-b345-6a0b9ed09a31" : 15,
+      "b63196da-1414-4b98-8a5a-c7fc8c630797" : 13
+    },
+    "retrievedVisuals" : 22,
+    "visualDistribution" : {
+      "transformer (deep learning)" : 12,
+      "large language model" : 10
+    },
+    "telemetry" : {
+      "denseHits" : 91,
+      "keywordHits" : 0,
+      "rrfHits" : 80,
+      "afterRerankHits" : 30,
+      "afterMultiSignalHits" : 28,
+      "contextExpandedHits" : 28,
+      "finalHits" : 28,
+      "retrievalCandidateDocs" : [ "transformer (deep learning)", "large language model" ],
+      "visualTier" : "Same Section",
+      "visualCandidates" : 23,
+      "plannerLatency" : 2366,
+      "denseLatency" : 1477,
+      "keywordLatency" : 1477,
+      "fusionLatency" : 1479,
+      "rerankLatency" : 15550,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 10676,
+      "plannerReason" : "Retrieve core characteristics and architectural details of Transformers for comparison.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "attention_transformer",
+    "query" : "Compare how Attention Mechanisms and Transformers improve context modeling.",
+    "passed" : false,
+    "failureReason" : "Missing required document Attention mechanism or insufficient citations. Required: 1",
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "plannedDocuments" : [ "attention mechanism", "transformer (deep learning)" ],
+    "retrievalCandidates" : [ "attention mechanism", "transformer (deep learning)" ],
+    "finalDocuments" : [ "attention mechanism", "transformer (deep learning)" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 27,
+    "chunkDistribution" : {
+      "attention mechanism" : 11,
+      "transformer (deep learning)" : 16
+    },
+    "planDistribution" : {
+      "18483007-7870-487c-aaca-271af08af810" : 15,
+      "baf82d1e-6d9f-4e5b-8587-294bb0f5f190" : 12
+    },
+    "retrievedVisuals" : 16,
+    "visualDistribution" : {
+      "attention mechanism" : 4,
+      "transformer (deep learning)" : 12
+    },
+    "telemetry" : {
+      "denseHits" : 83,
+      "keywordHits" : 0,
+      "rrfHits" : 80,
+      "afterRerankHits" : 30,
+      "afterMultiSignalHits" : 27,
+      "contextExpandedHits" : 27,
+      "finalHits" : 27,
+      "retrievalCandidateDocs" : [ "attention mechanism", "transformer (deep learning)" ],
+      "visualTier" : "Same Section",
+      "visualCandidates" : 16,
+      "plannerLatency" : 2370,
+      "denseLatency" : 1067,
+      "keywordLatency" : 1067,
+      "fusionLatency" : 1070,
+      "rerankLatency" : 14788,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 9726,
+      "plannerReason" : "Analyze how the attention mechanism functions to improve context modeling.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "three_way_ml",
+    "query" : "Compare how Neural networks, Transformers, and Large language models are related to one another.",
+    "passed" : false,
+    "failureReason" : "Missing required document Neural network or insufficient citations. Required: 1",
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 1,
+    "plannedDocuments" : [ "neural network", "transformer (deep learning)", "large language model" ],
+    "retrievalCandidates" : [ "transformer (deep learning)", "large language model", "neural network" ],
+    "finalDocuments" : [ "transformer (deep learning)", "large language model", "neural network" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 15,
+    "chunkDistribution" : {
+      "transformer (deep learning)" : 9,
+      "large language model" : 4,
+      "neural network" : 2
+    },
+    "planDistribution" : {
+      "f1b702c0-ff83-4346-8fea-f8a94c8e7ebd" : 15
+    },
+    "retrievedVisuals" : 8,
+    "visualDistribution" : {
+      "transformer (deep learning)" : 3,
+      "large language model" : 4,
+      "neural network" : 1
+    },
+    "telemetry" : {
+      "denseHits" : 45,
+      "keywordHits" : 0,
+      "rrfHits" : 40,
+      "afterRerankHits" : 15,
+      "afterMultiSignalHits" : 15,
+      "contextExpandedHits" : 15,
+      "finalHits" : 15,
+      "retrievalCandidateDocs" : [ "transformer (deep learning)", "large language model", "neural network" ],
+      "visualTier" : "Same Section",
+      "visualCandidates" : 8,
+      "plannerLatency" : 2167,
+      "denseLatency" : 706,
+      "keywordLatency" : 706,
+      "fusionLatency" : 707,
+      "rerankLatency" : 5128,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 8058,
+      "plannerReason" : "Retrieve foundational definitions and architectural relationships between Neural networks, Transformers, and Large language models.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "summary_rag",
+    "query" : "Provide a comprehensive summary of Retrieval-augmented generation.",
+    "passed" : false,
+    "failureReason" : "Missing required document Retrieval-augmented generation or insufficient citations. Required: 1",
+    "actualTier" : "DIRECT",
+    "actualStrategy" : "SINGLE_SOURCE",
+    "generatedPlans" : 1,
+    "plannedDocuments" : [ "retrieval augmented generation" ],
+    "retrievalCandidates" : [ "retrieval augmented generation" ],
+    "finalDocuments" : [ "retrieval augmented generation" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 8,
+    "chunkDistribution" : {
+      "retrieval augmented generation" : 8
+    },
+    "planDistribution" : {
+      "80b7ee3b-db4b-472c-921f-b43790322ed1" : 8
+    },
+    "retrievedVisuals" : 0,
+    "visualDistribution" : { },
+    "telemetry" : {
+      "denseHits" : 60,
+      "keywordHits" : 0,
+      "rrfHits" : 60,
+      "afterRerankHits" : 15,
+      "afterMultiSignalHits" : 8,
+      "contextExpandedHits" : 8,
+      "finalHits" : 8,
+      "retrievalCandidateDocs" : [ "retrieval augmented generation" ],
+      "visualTier" : null,
+      "visualCandidates" : 0,
+      "plannerLatency" : 1714,
+      "denseLatency" : 609,
+      "keywordLatency" : 609,
+      "fusionLatency" : 609,
+      "rerankLatency" : 6257,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 7896,
+      "plannerReason" : "Provide a comprehensive summary of the RAG document.",
+      "executionPath" : "WHOLE_DOCUMENT"
+    }
+  }, {
+    "queryId" : "transformer_vs_rnn",
+    "query" : "Compare how Transformers and Neural Networks handle sequential data processing.",
+    "passed" : false,
+    "failureReason" : "Expected 2 unique documents but retrieved 4",
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "plannedDocuments" : [ "transformer (deep learning)", "neural network" ],
+    "retrievalCandidates" : [ "transformer (deep learning)", "neural network", "reinforcement learning", "attention mechanism", "retrieval augmented generation", "large language model" ],
+    "finalDocuments" : [ "attention mechanism", "transformer (deep learning)", "neural network", "reinforcement learning" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 27,
+    "chunkDistribution" : {
+      "attention mechanism" : 5,
+      "transformer (deep learning)" : 18,
+      "neural network" : 3,
+      "reinforcement learning" : 1
+    },
+    "planDistribution" : {
+      "9ab19552-d39f-4d57-bdbd-bec7ccb43d1c" : 12,
+      "12d7229b-e335-46f1-b245-dbe8c24c06fb" : 15
+    },
+    "retrievedVisuals" : 17,
+    "visualDistribution" : {
+      "attention mechanism" : 2,
+      "transformer (deep learning)" : 13,
+      "neural network" : 1,
+      "reinforcement learning" : 1
+    },
+    "telemetry" : {
+      "denseHits" : 145,
+      "keywordHits" : 0,
+      "rrfHits" : 140,
+      "afterRerankHits" : 45,
+      "afterMultiSignalHits" : 30,
+      "contextExpandedHits" : 30,
+      "finalHits" : 27,
+      "retrievalCandidateDocs" : [ "transformer (deep learning)", "neural network", "reinforcement learning", "attention mechanism", "retrieval augmented generation", "large language model" ],
+      "visualTier" : "Same Section",
+      "visualCandidates" : 18,
+      "plannerLatency" : 2475,
+      "denseLatency" : 1782,
+      "keywordLatency" : 1782,
+      "fusionLatency" : 1817,
+      "rerankLatency" : 22896,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 17437,
+      "plannerReason" : "Analyze sequential data processing mechanisms in Transformer models.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "self_attention",
+    "query" : "What is the self-attention mechanism and why is it important?",
+    "passed" : false,
+    "failureReason" : "Missing required document Attention mechanism or insufficient citations. Required: 1",
+    "actualTier" : "DIRECT",
+    "actualStrategy" : "SINGLE_SOURCE",
+    "generatedPlans" : 1,
+    "plannedDocuments" : [ "attention mechanism" ],
+    "retrievalCandidates" : [ "attention mechanism" ],
+    "finalDocuments" : [ "attention mechanism" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 12,
+    "chunkDistribution" : {
+      "attention mechanism" : 12
+    },
+    "planDistribution" : {
+      "9f334394-465c-4b79-b389-8c6a97d29d81" : 12
+    },
+    "retrievedVisuals" : 3,
+    "visualDistribution" : {
+      "attention mechanism" : 3
+    },
+    "telemetry" : {
+      "denseHits" : 30,
+      "keywordHits" : 0,
+      "rrfHits" : 30,
+      "afterRerankHits" : 15,
+      "afterMultiSignalHits" : 12,
+      "contextExpandedHits" : 12,
+      "finalHits" : 12,
+      "retrievalCandidateDocs" : [ "attention mechanism" ],
+      "visualTier" : "Same Section",
+      "visualCandidates" : 3,
+      "plannerLatency" : 1798,
+      "denseLatency" : 463,
+      "keywordLatency" : 463,
+      "fusionLatency" : 463,
+      "rerankLatency" : 3088,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 5348,
+      "plannerReason" : "Define self-attention mechanism and explain its importance in deep learning architectures.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "alias_rlhf",
+    "query" : "How does RLHF improve the safety of LLMs?",
+    "passed" : false,
+    "failureReason" : "Missing required document Reinforcement learning from human feedback or insufficient citations. Required: 1",
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "plannedDocuments" : [ "reinforcement learning", "large language model" ],
+    "retrievalCandidates" : [ "reinforcement learning", "large language model" ],
+    "finalDocuments" : [ "large language model", "reinforcement learning" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 24,
+    "chunkDistribution" : {
+      "large language model" : 16,
+      "reinforcement learning" : 8
+    },
+    "planDistribution" : {
+      "8bd7c262-2a0f-4862-a0d9-cc97eb20f315" : 12,
+      "c4b23886-79a5-4078-b910-33636a353ac2" : 12
+    },
+    "retrievedVisuals" : 8,
+    "visualDistribution" : {
+      "large language model" : 7,
+      "reinforcement learning" : 1
+    },
+    "telemetry" : {
+      "denseHits" : 70,
+      "keywordHits" : 1,
+      "rrfHits" : 70,
+      "afterRerankHits" : 30,
+      "afterMultiSignalHits" : 24,
+      "contextExpandedHits" : 24,
+      "finalHits" : 24,
+      "retrievalCandidateDocs" : [ "reinforcement learning", "large language model" ],
+      "visualTier" : "Same Section",
+      "visualCandidates" : 8,
+      "plannerLatency" : 2506,
+      "denseLatency" : 1533,
+      "keywordLatency" : 1533,
+      "fusionLatency" : 1534,
+      "rerankLatency" : 14085,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 9827,
+      "plannerReason" : "Retrieve technical definition and safety alignment mechanisms of RLHF.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "hidden_entity",
+    "query" : "Who introduced the original Transformer architecture in 2017?",
+    "passed" : false,
+    "failureReason" : "Missing required document Transformer (deep learning) or insufficient citations. Required: 1",
+    "actualTier" : "DIRECT",
+    "actualStrategy" : "SINGLE_SOURCE",
+    "generatedPlans" : 1,
+    "plannedDocuments" : [ "transformer (deep learning)" ],
+    "retrievalCandidates" : [ "transformer (deep learning)" ],
+    "finalDocuments" : [ "transformer (deep learning)" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 15,
+    "chunkDistribution" : {
+      "transformer (deep learning)" : 15
+    },
+    "planDistribution" : {
+      "9e0c2672-2173-4619-9f36-08277fb112f7" : 15
+    },
+    "retrievedVisuals" : 7,
+    "visualDistribution" : {
+      "transformer (deep learning)" : 7
+    },
+    "telemetry" : {
+      "denseHits" : 30,
+      "keywordHits" : 0,
+      "rrfHits" : 30,
+      "afterRerankHits" : 15,
+      "afterMultiSignalHits" : 15,
+      "contextExpandedHits" : 15,
+      "finalHits" : 15,
+      "retrievalCandidateDocs" : [ "transformer (deep learning)" ],
+      "visualTier" : "Same Section",
+      "visualCandidates" : 8,
+      "plannerLatency" : 2053,
+      "denseLatency" : 374,
+      "keywordLatency" : 374,
+      "fusionLatency" : 374,
+      "rerankLatency" : 4214,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 6826,
+      "plannerReason" : "Identify the authors and origin of the 2017 Transformer architecture paper.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "implicit_document",
+    "query" : "Across different machine learning approaches, how do modern architectures address the problem of context window limitations?",
+    "passed" : false,
+    "failureReason" : "Expected strategy CONCEPT_EXPANSION but got MULTI_SOURCE",
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 3,
+    "plannedDocuments" : [ "transformer (deep learning)", "attention mechanism", "large language model", "neural network" ],
+    "retrievalCandidates" : [ "transformer (deep learning)", "attention mechanism", "large language model", "neural network" ],
+    "finalDocuments" : [ "attention mechanism", "transformer (deep learning)", "large language model" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 27,
+    "chunkDistribution" : {
+      "attention mechanism" : 5,
+      "transformer (deep learning)" : 16,
+      "large language model" : 6
+    },
+    "planDistribution" : {
+      "346c4561-e018-44d2-914f-a10beb4fdaf0" : 4,
+      "ee4cf5e4-da6a-426d-954f-669d8dac5745" : 8,
+      "4ab242f4-8c04-43f3-9b21-c26bc1a72545" : 15
+    },
+    "retrievedVisuals" : 11,
+    "visualDistribution" : {
+      "attention mechanism" : 3,
+      "transformer (deep learning)" : 7,
+      "large language model" : 1
+    },
+    "telemetry" : {
+      "denseHits" : 128,
+      "keywordHits" : 0,
+      "rrfHits" : 120,
+      "afterRerankHits" : 45,
+      "afterMultiSignalHits" : 32,
+      "contextExpandedHits" : 32,
+      "finalHits" : 27,
+      "retrievalCandidateDocs" : [ "transformer (deep learning)", "attention mechanism", "large language model", "neural network" ],
+      "visualTier" : "Same Section",
+      "visualCandidates" : 11,
+      "plannerLatency" : 3075,
+      "denseLatency" : 3003,
+      "keywordLatency" : 3003,
+      "fusionLatency" : 3004,
+      "rerankLatency" : 38395,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 14529,
+      "plannerReason" : "Analyze how Transformer architectures and attention mechanisms manage long-range dependencies and context window constraints.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "biology_hallucination",
+    "query" : "Explain how photosynthesis works in plants.",
+    "passed" : false,
+    "failureReason" : "Expected tier DIRECT but got DECOMPOSE",
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "CONCEPT_EXPANSION",
+    "generatedPlans" : 3,
+    "plannedDocuments" : [ ],
+    "retrievalCandidates" : [ "the art of seduction robert greene", "neural network", "the odyssey (2026 film)", "spider man: no way home", "attention mechanism", "large language model", "reinforcement learning", "retrieval augmented generation" ],
+    "finalDocuments" : [ "spider man: no way home", "the art of seduction robert greene", "large language model", "neural network" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 5,
+    "chunkDistribution" : {
+      "spider man: no way home" : 1,
+      "the art of seduction robert greene" : 2,
+      "large language model" : 1,
+      "neural network" : 1
+    },
+    "planDistribution" : {
+      "b30dc16e-9c0c-43c6-9822-21a0b3a9487a" : 1,
+      "60d48aeb-22fe-41a0-8aaa-a1e80a839c1a" : 1,
+      "9e770a3f-deec-4341-84f4-d5f4c7d1fb71" : 3
+    },
+    "retrievedVisuals" : 2,
+    "visualDistribution" : {
+      "neural network" : 2
+    },
+    "telemetry" : {
+      "denseHits" : 180,
+      "keywordHits" : 0,
+      "rrfHits" : 180,
+      "afterRerankHits" : 45,
+      "afterMultiSignalHits" : 7,
+      "contextExpandedHits" : 7,
+      "finalHits" : 5,
+      "retrievalCandidateDocs" : [ "the art of seduction robert greene", "neural network", "the odyssey (2026 film)", "spider man: no way home", "attention mechanism", "large language model", "reinforcement learning", "retrieval augmented generation" ],
+      "visualTier" : "Same Section",
+      "visualCandidates" : 2,
+      "plannerLatency" : 2509,
+      "denseLatency" : 1895,
+      "keywordLatency" : 1895,
+      "fusionLatency" : 1900,
+      "rerankLatency" : 26950,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 11674,
+      "plannerReason" : "Explain the light-dependent reactions of photosynthesis",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "telemetry_validation",
+    "query" : "Compare how Neural networks, Transformers, Large language models, and Retrieval-augmented generation handle context and memory.",
+    "passed" : false,
+    "failureReason" : "Expected 4 unique documents but retrieved 3",
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "plannedDocuments" : [ "neural network", "transformer (deep learning)", "large language model", "retrieval augmented generation" ],
+    "retrievalCandidates" : [ "transformer (deep learning)", "large language model", "retrieval augmented generation", "neural network" ],
+    "finalDocuments" : [ "retrieval augmented generation", "transformer (deep learning)", "large language model" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 25,
+    "chunkDistribution" : {
+      "retrieval augmented generation" : 6,
+      "transformer (deep learning)" : 11,
+      "large language model" : 8
+    },
+    "planDistribution" : {
+      "c4e3a732-20cd-4db6-afe8-e22657bd01ce" : 10,
+      "9e0b743c-d2d9-4974-a664-1faeae2e883c" : 15
+    },
+    "retrievedVisuals" : 14,
+    "visualDistribution" : {
+      "transformer (deep learning)" : 13,
+      "large language model" : 1
+    },
+    "telemetry" : {
+      "denseHits" : 110,
+      "keywordHits" : 0,
+      "rrfHits" : 96,
+      "afterRerankHits" : 30,
+      "afterMultiSignalHits" : 25,
+      "contextExpandedHits" : 25,
+      "finalHits" : 25,
+      "retrievalCandidateDocs" : [ "transformer (deep learning)", "large language model", "retrieval augmented generation", "neural network" ],
+      "visualTier" : "Same Section",
+      "visualCandidates" : 15,
+      "plannerLatency" : 2524,
+      "denseLatency" : 1310,
+      "keywordLatency" : 1310,
+      "fusionLatency" : 1312,
+      "rerankLatency" : 17995,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 11454,
+      "plannerReason" : "Analyze context and memory mechanisms in Neural networks and Transformers.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  } ],
+  "profile" : "all",
+  "totalQueries" : 17,
+  "passed" : 0,
+  "runId" : "18e76b05-6498-4f90-a155-7e24c156357b"
+}

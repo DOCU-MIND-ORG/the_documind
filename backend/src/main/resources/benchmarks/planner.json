@@ -1,0 +1,54 @@
+{
+  "version": "2.0",
+  "corpusVersion": "ml-v1",
+  "description": "Planner ambiguity and routing tests.",
+  "queries": [
+    {
+      "id": "concept_intelligence",
+      "category": "Concept Expansion",
+      "query": "Explain the concept of artificial intelligence using all relevant documents in the knowledge base.",
+      "expectedTier": "DECOMPOSE",
+      "expectedStrategy": "CONCEPT_EXPANSION",
+      "mustContainDocuments": [],
+      "minCitations": 2
+    },
+    {
+      "id": "exclude_nn",
+      "category": "Exclusion",
+      "query": "Compare Transformers and Large Language Models but exclude Neural Networks.",
+      "expectedTier": "DECOMPOSE",
+      "expectedStrategy": "MULTI_SOURCE",
+      "mustContainDocuments": [
+        "transformer (deep learning)",
+        "large language model"
+      ],
+      "forbiddenDocuments": [
+        "neural network"
+      ],
+      "minimumChunksPerDocument": {
+        "transformer (deep learning)": 1,
+        "large language model": 1
+      },
+      "minCitations": 2,
+      "expectedDocumentsCount": 2
+    },
+    {
+      "id": "attention_transformer",
+      "category": "Cross Universe",
+      "query": "Compare how Attention Mechanisms and Transformers improve context modeling.",
+      "expectedTier": "DECOMPOSE",
+      "expectedStrategy": "MULTI_SOURCE",
+      "mustContainDocuments": [
+        "attention mechanism",
+        "transformer (deep learning)"
+      ],
+      "minimumChunksPerDocument": {
+        "attention mechanism": 1,
+        "transformer (deep learning)": 1
+      },
+      "minCitations": 2,
+      "expectedDocumentsCount": 2,
+      "groundTruth": "Attention mechanisms allow models to dynamically focus on relevant parts of the input sequence. Transformers rely entirely on self-attention, discarding recurrence, enabling parallel processing and superior modeling of long-range context."
+    }
+  ]
+}

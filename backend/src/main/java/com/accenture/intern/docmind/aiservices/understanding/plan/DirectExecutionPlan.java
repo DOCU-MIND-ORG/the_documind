@@ -7,12 +7,23 @@ import java.util.List;
 
 public record DirectExecutionPlan(
     String strategy,
-    RetrievalPlan retrievalPlan,
+    List<RetrievalPlan> plans,
+    MergeOperation mergeOperation,
     List<EntityResolution> entities,
     boolean visualSearch,
-    String imageType
+    String imageType,
+    String reason,
+    String purpose
 ) implements ExecutionPlan {
-    
+
+    public DirectExecutionPlan(String strategy, RetrievalPlan plan, boolean visualSearch, String imageType, String reason, String purpose) {
+        this(strategy, List.of(plan), MergeOperation.UNION, List.of(), visualSearch, imageType, reason, purpose);
+    }
+
+    public DirectExecutionPlan(String strategy, RetrievalPlan plan, List<EntityResolution> entities, boolean visualSearch, String imageType, String reason, String purpose) {
+        this(strategy, List.of(plan), MergeOperation.UNION, entities, visualSearch, imageType, reason, purpose);
+    }
+
     @Override
     public String executionTier() {
         return "DIRECT";
@@ -20,12 +31,12 @@ public record DirectExecutionPlan(
 
     @Override
     public List<RetrievalPlan> getPlans() {
-        return List.of(retrievalPlan);
+        return plans;
     }
 
     @Override
     public MergeOperation getMergeOperation() {
-        return MergeOperation.NONE;
+        return mergeOperation;
     }
 
     @Override

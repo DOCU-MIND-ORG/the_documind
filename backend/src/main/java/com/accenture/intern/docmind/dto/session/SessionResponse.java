@@ -17,5 +17,7 @@ public class SessionResponse {
     private Boolean archived;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private java.util.List<Long> folderIds;
+    private Integer displayOrder;
     private java.util.List<MessageResponse> messages;
 }

@@ -73,4 +73,10 @@ public interface AttachmentRepository extends JpaRepository<Attachment, Long> {
      * the shared corpus.
      */
     List<Attachment> findByUserIdOrderByUploadedAtDesc(Long userId);
+
+    /**
+     * Finds any attachments whose normalized title matches one of the provided n-grams exactly.
+     */
+    @Query("SELECT a FROM Attachment a WHERE a.normalizedTitle IN :ngrams")
+    List<Attachment> findByNormalizedTitleIn(@Param("ngrams") List<String> ngrams);
 }

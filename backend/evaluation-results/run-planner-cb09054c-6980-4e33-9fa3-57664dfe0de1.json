@@ -1,0 +1,135 @@
+{
+  "profile" : "planner",
+  "totalQueries" : 3,
+  "passed" : 3,
+  "runId" : "cb09054c-6980-4e33-9fa3-57664dfe0de1",
+  "results" : [ {
+    "queryId" : "concept_multiverse",
+    "query" : "Explain the concept of the multiverse using all relevant documents in the knowledge base.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "CONCEPT_EXPANSION",
+    "generatedPlans" : 3,
+    "targetDocuments" : [ ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 1,
+    "chunkDistribution" : {
+      "loki (tv series)" : 1
+    },
+    "planDistribution" : {
+      "8934eec5-092c-4ff0-9415-30acee0d9a15" : 1
+    },
+    "retrievedVisuals" : 0,
+    "visualDistribution" : { },
+    "telemetry" : {
+      "denseHits" : 180,
+      "keywordHits" : 0,
+      "rrfHits" : 180,
+      "afterRerankHits" : 45,
+      "afterMultiSignalHits" : 1,
+      "contextExpandedHits" : 1,
+      "finalHits" : 1,
+      "visualTier" : "Same Document",
+      "visualCandidates" : 0,
+      "plannerLatency" : 2614,
+      "denseLatency" : 3779,
+      "keywordLatency" : 3779,
+      "fusionLatency" : 3838,
+      "rerankLatency" : 84473,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 29611,
+      "plannerReason" : "Search for theoretical definitions and scientific frameworks of the multiverse.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "exclude_stranger",
+    "query" : "Compare Loki and Spider-Man: No Way Home but exclude Stranger Things.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "targetDocuments" : [ "loki (tv series)", "spider man: no way home" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 29,
+    "chunkDistribution" : {
+      "spider man: no way home" : 13,
+      "loki (tv series)" : 16
+    },
+    "planDistribution" : {
+      "97a1ca19-85f3-432e-9789-fccce929903d" : 14,
+      "b010e23c-9a7d-4fa2-9f3e-78bde6b3e1e8" : 15
+    },
+    "retrievedVisuals" : 2,
+    "visualDistribution" : {
+      "spider man: no way home" : 2
+    },
+    "telemetry" : {
+      "denseHits" : 83,
+      "keywordHits" : 0,
+      "rrfHits" : 80,
+      "afterRerankHits" : 30,
+      "afterMultiSignalHits" : 29,
+      "contextExpandedHits" : 29,
+      "finalHits" : 29,
+      "visualTier" : "Same Document",
+      "visualCandidates" : 2,
+      "plannerLatency" : 2392,
+      "denseLatency" : 1411,
+      "keywordLatency" : 1411,
+      "fusionLatency" : 1412,
+      "rerankLatency" : 83622,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 40640,
+      "plannerReason" : "Retrieve key plot points, themes, and character arcs for Loki.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "loki_spiderman_multiverse",
+    "query" : "Compare how Loki and Spider-Man: No Way Home explain multiverse instability.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "targetDocuments" : [ "loki (tv series)", "spider man: no way home" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 19,
+    "chunkDistribution" : {
+      "spider man: no way home" : 11,
+      "loki (tv series)" : 8
+    },
+    "planDistribution" : {
+      "25188275-54cd-4759-955e-d20690db69b0" : 12,
+      "a2b05da4-6be8-4219-a240-d8576a0c88b6" : 7
+    },
+    "retrievedVisuals" : 1,
+    "visualDistribution" : {
+      "spider man: no way home" : 1
+    },
+    "telemetry" : {
+      "denseHits" : 80,
+      "keywordHits" : 0,
+      "rrfHits" : 80,
+      "afterRerankHits" : 30,
+      "afterMultiSignalHits" : 19,
+      "contextExpandedHits" : 19,
+      "finalHits" : 19,
+      "visualTier" : "Same Document",
+      "visualCandidates" : 1,
+      "plannerLatency" : 2357,
+      "denseLatency" : 1507,
+      "keywordLatency" : 1507,
+      "fusionLatency" : 1513,
+      "rerankLatency" : 45106,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 22517,
+      "plannerReason" : "Analyze multiverse instability in Loki",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  } ]
+}

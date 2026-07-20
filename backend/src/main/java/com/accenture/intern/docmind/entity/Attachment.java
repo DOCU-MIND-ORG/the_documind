@@ -48,6 +48,9 @@ public class Attachment {
     /** Original filename as uploaded by the user */
     private String fileName;
 
+    /** Normalized title for deterministic domain detection (alphanumeric, no extension) */
+    private String normalizedTitle;
+
     /** Relative path on disk, if any. Null if fully migrated to Cloudinary. */
     private String storagePath;
 

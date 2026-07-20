@@ -7,6 +7,10 @@ public record VisualEvidence(
     String thumbnailUrl,
     String caption,
     double score,
-    String sourceDocument
+    String sourceDocument,
+    String sectionPath,
+    Integer page,
+    String heading,
+    String retrievalReason
 ) {
 }

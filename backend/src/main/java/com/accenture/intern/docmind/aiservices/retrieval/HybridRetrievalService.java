@@ -112,7 +112,7 @@ public class HybridRetrievalService {
      */
     private static final int MIN_SOURCE_MATCH_WORD_LENGTH = 4;
 
-    public Mono<List<RetrievalCandidate>> retrieve(String query, Long sessionId) {
+    public Mono<com.accenture.intern.docmind.dto.chat.HybridRetrievalResult> retrieve(String query, Long sessionId) {
         return retrieve(List.of(), query, sessionId, CANDIDATE_POOL_SIZE, false, List.of(), false, null);
     }
 
@@ -145,14 +145,14 @@ public class HybridRetrievalService {
     /**
      * Overload used by the MULTI_SOURCE wide-pool path and META_DOC_SEARCH.
      */
-    public Mono<List<RetrievalCandidate>> retrieve(String query, Long sessionId, int candidatePoolSize) {
+    public Mono<com.accenture.intern.docmind.dto.chat.HybridRetrievalResult> retrieve(String query, Long sessionId, int candidatePoolSize) {
         return retrieve(List.of(), query, sessionId, candidatePoolSize, false, List.of(), false, null);
     }
 
     /**
      * Overload with skipWholeDocument flag — delegates with query as both filename and retrieval query.
      */
-    public Mono<List<RetrievalCandidate>> retrieve(String query, Long sessionId, int candidatePoolSize,
+    public Mono<com.accenture.intern.docmind.dto.chat.HybridRetrievalResult> retrieve(String query, Long sessionId, int candidatePoolSize,
             boolean skipWholeDocument) {
         return retrieve(List.of(), query, sessionId, candidatePoolSize, skipWholeDocument, List.of(), false, null);
     }
@@ -172,7 +172,7 @@ public class HybridRetrievalService {
      *                           set by the RetrievalOrchestrator based on query provenance
      * @param imageOnly          when true, restricts both dense and keyword retrieval to chunks of type IMAGE.
      */
-    public Mono<List<RetrievalCandidate>> retrieve(List<EntityResolution> entities, String retrievalQuery,
+    public Mono<com.accenture.intern.docmind.dto.chat.HybridRetrievalResult> retrieve(List<EntityResolution> entities, String retrievalQuery,
             Long sessionId, int candidatePoolSize, boolean skipWholeDocument, List<String> targetDocuments, boolean imageOnly, String imageType) {
         long t0 = System.currentTimeMillis();
 
@@ -204,13 +204,15 @@ public class HybridRetrievalService {
                                     log.warn("Document '{}' exceeds 60 chunks (total: {}). Truncating to prevent context flooding.", matchedSource, chunks.size());
                                     chunks = chunks.subList(0, 60);
                                 }
-                                return chunks.stream()
+                                List<RetrievalCandidate> chunksList = chunks.stream()
                                     .map(this::toDocument)
                                     .map(doc -> {
                                         doc.getMetadata().put("wholeDocumentMatch", true);
                                         return new RetrievalCandidate(doc, 1.0); // Highest possible base score
                                     })
                                     .collect(Collectors.toList());
+                                long latency = System.currentTimeMillis() - t0;
+                                return new com.accenture.intern.docmind.dto.chat.HybridRetrievalResult(chunksList, chunksList.size(), 0, chunksList.size(), latency, latency, latency);
                             })
                             .subscribeOn(Schedulers.boundedElastic());
                 })
@@ -228,7 +230,7 @@ public class HybridRetrievalService {
      * is what was causing "tell about X" to surface only 1-2 sections of X's
      * resume and miss the rest.
      */
-    public Mono<List<RetrievalCandidate>> wholeDocumentRetrieve(String sourceName) {
+    public Mono<com.accenture.intern.docmind.dto.chat.HybridRetrievalResult> wholeDocumentRetrieve(String sourceName) {
         String normalizedSourceName = com.accenture.intern.docmind.util.FilenameNormalizer.normalize(sourceName);
         return Mono.fromCallable(() -> {
             List<DocumentChunk> chunks = documentChunkRepository.findBySourceNameIgnoreCaseOrderByChunkIndexAsc(sourceName);
@@ -253,7 +255,7 @@ public class HybridRetrievalService {
                     }
                     
                     log.info("Whole-document retrieval: {} chunks from '{}'", docs.size(), sourceName);
-                    return docs;
+                    return new com.accenture.intern.docmind.dto.chat.HybridRetrievalResult(docs, docs.size(), 0, docs.size(), 0, 0, 0);
                 });
     }
 
@@ -363,38 +365,82 @@ public class HybridRetrievalService {
     }
 
 
-    private Mono<List<RetrievalCandidate>> rankedRetrieve(String query, Long sessionId, long t0, int candidatePoolSize, List<String> targetDocuments, boolean imageOnly, List<EntityResolution> entities, String imageType) {
-        Mono<List<Document>> denseMono = vectorStoreService.retrieve(query, imageOnly ? 30 : candidatePoolSize, targetDocuments, imageOnly, entities, imageType)
-                .doOnNext(docs -> log.info("[TIMING] dense (Pinecone) search: {}ms, {} hits",
-                        System.currentTimeMillis() - t0, docs.size()));
-        Mono<List<Document>> keywordMono = keywordSearch(query, imageOnly ? 30 : candidatePoolSize, imageOnly, entities, imageType)
-                .doOnNext(docs -> log.info("[TIMING] keyword (Postgres BM25) search: {}ms, {} hits",
-                        System.currentTimeMillis() - t0, docs.size()));
+    private Mono<com.accenture.intern.docmind.dto.chat.HybridRetrievalResult> rankedRetrieve(String query, Long sessionId, long t0, int candidatePoolSize, List<String> targetDocuments, boolean imageOnly, List<EntityResolution> entities, String imageType) {
+        Mono<List<Document>> denseMono;
+        Mono<List<Document>> keywordMono;
+
+        if (targetDocuments != null && targetDocuments.size() > 1 && !imageOnly) {
+            int guaranteedCount = 5;
+            
+            Mono<List<Document>> guaranteedDense = reactor.core.publisher.Flux.fromIterable(targetDocuments)
+                .flatMap(doc -> vectorStoreService.retrieve(query, guaranteedCount, List.of(doc), imageOnly, entities, imageType), 4)
+                .collectList()
+                .map(lists -> lists.stream().flatMap(List::stream).collect(Collectors.toList()));
+                
+            Mono<List<Document>> guaranteedKeyword = reactor.core.publisher.Flux.fromIterable(targetDocuments)
+                .flatMap(doc -> keywordSearch(query, guaranteedCount, imageOnly, entities, imageType, List.of(doc)), 4)
+                .collectList()
+                .map(lists -> lists.stream().flatMap(List::stream).collect(Collectors.toList()));
+
+            Mono<List<Document>> globalDense = vectorStoreService.retrieve(query, candidatePoolSize, targetDocuments, imageOnly, entities, imageType);
+            Mono<List<Document>> globalKeyword = keywordSearch(query, candidatePoolSize, imageOnly, entities, imageType, targetDocuments);
+            
+            denseMono = Mono.zip(guaranteedDense, globalDense, (List<Document> t1, List<Document> t2) -> {
+                    Map<String, Document> byId = new LinkedHashMap<>();
+                    t1.forEach(d -> byId.putIfAbsent(d.getId(), d));
+                    t2.forEach(d -> byId.putIfAbsent(d.getId(), d));
+                    return (List<Document>) new ArrayList<>(byId.values());
+                })
+                .doOnNext(docs -> log.info("[TIMING] dense (Pinecone) concurrent search: {}ms, {} hits", System.currentTimeMillis() - t0, docs.size()));
+                
+            keywordMono = Mono.zip(guaranteedKeyword, globalKeyword, (List<Document> t1, List<Document> t2) -> {
+                    Map<String, Document> byId = new LinkedHashMap<>();
+                    t1.forEach(d -> byId.putIfAbsent(d.getId(), d));
+                    t2.forEach(d -> byId.putIfAbsent(d.getId(), d));
+                    return (List<Document>) new ArrayList<>(byId.values());
+                })
+                .doOnNext(docs -> log.info("[TIMING] keyword (Postgres BM25) concurrent search: {}ms, {} hits", System.currentTimeMillis() - t0, docs.size()));
+        } else {
+            denseMono = vectorStoreService.retrieve(query, imageOnly ? 30 : candidatePoolSize, targetDocuments, imageOnly, entities, imageType)
+                    .doOnNext(docs -> log.info("[TIMING] dense (Pinecone) search: {}ms, {} hits",
+                            System.currentTimeMillis() - t0, docs.size()));
+            keywordMono = keywordSearch(query, imageOnly ? 30 : candidatePoolSize, imageOnly, entities, imageType, targetDocuments)
+                    .doOnNext(docs -> log.info("[TIMING] keyword (Postgres BM25) search: {}ms, {} hits",
+                            System.currentTimeMillis() - t0, docs.size()));
+        }
 
         return Mono.zip(denseMono, keywordMono)
-                .map(tuple -> fuse(tuple.getT1(), tuple.getT2()))
-                .flatMap(fused -> {
-                    if (fused.isEmpty() && imageOnly && entities != null && !entities.isEmpty()) {
+                .map(tuple -> {
+                    long denseLatency = System.currentTimeMillis() - t0;
+                    long keywordLatency = denseLatency;
+                    List<RetrievalCandidate> fused = fuse(tuple.getT1(), tuple.getT2(), candidatePoolSize);
+                    return new com.accenture.intern.docmind.dto.chat.HybridRetrievalResult(fused, tuple.getT1().size(), tuple.getT2().size(), fused.size(), denseLatency, keywordLatency, System.currentTimeMillis() - t0);
+                })
+                .flatMap(fusedRes -> {
+                    if (fusedRes.candidates().isEmpty() && imageOnly && entities != null && !entities.isEmpty()) {
                         log.warn("Strict metadata filter yielded 0 results. Falling back to pure semantic visual search...");
                         Mono<List<Document>> fallbackDense = vectorStoreService.retrieve(query, 30, targetDocuments, imageOnly, null, imageType);
-                        Mono<List<Document>> fallbackKeyword = keywordSearch(query, 30, imageOnly, null, imageType);
+                        Mono<List<Document>> fallbackKeyword = keywordSearch(query, 30, imageOnly, null, imageType, null);
                         return Mono.zip(fallbackDense, fallbackKeyword)
-                                .map(tuple2 -> fuse(tuple2.getT1(), tuple2.getT2()));
+                                .map(tuple2 -> {
+                                    List<RetrievalCandidate> fallbackFused = fuse(tuple2.getT1(), tuple2.getT2(), candidatePoolSize);
+                                    return new com.accenture.intern.docmind.dto.chat.HybridRetrievalResult(fallbackFused, tuple2.getT1().size(), tuple2.getT2().size(), fallbackFused.size(), System.currentTimeMillis() - t0, System.currentTimeMillis() - t0, System.currentTimeMillis() - t0);
+                                });
                     }
-                    return Mono.just(fused);
+                    return Mono.just(fusedRes);
                 })
-                .doOnNext(fused -> {
+                .doOnNext(fusedRes -> {
                     Set<Object> sources = new LinkedHashSet<>();
-                    for (RetrievalCandidate cand : fused) {
+                    for (RetrievalCandidate cand : fusedRes.candidates()) {
                         sources.add(cand.chunk().getMetadata().getOrDefault("sourceName", "unknown"));
                     }
                     log.info(
                             "Hybrid retrieval: fused {} unique candidates company-wide (boosting session {}); sources in pool: {}",
-                            fused.size(), sessionId, sources);
+                            fusedRes.candidates().size(), sessionId, sources);
                 });
     }
 
-    private Mono<List<Document>> keywordSearch(String query, int topK, boolean imageOnly, List<EntityResolution> entities, String imageType) {
+    private Mono<List<Document>> keywordSearch(String query, int topK, boolean imageOnly, List<EntityResolution> entities, String imageType, List<String> targetDocuments) {
         String[] tokens = query.toLowerCase().split("\\s+");
         if (tokens.length < 3) {
             log.info("[ROUTING] BM25 skipped — query too short");
@@ -410,6 +456,9 @@ public class HybridRetrievalService {
                             return documentChunkRepository.keywordSearchImages(query, topK, null);
                         }
                     } else {
+                        if (targetDocuments != null && !targetDocuments.isEmpty()) {
+                            return documentChunkRepository.keywordSearchInSources(query, topK, targetDocuments);
+                        }
                         return documentChunkRepository.keywordSearch(query, topK);
                     }
                 })
@@ -459,7 +508,7 @@ public class HybridRetrievalService {
      * Documents found by both retrievers naturally rise to the top since they
      * accumulate a score contribution from each list.
      */
-    private List<RetrievalCandidate> fuse(List<Document> denseResults, List<Document> keywordResults) {
+    private List<RetrievalCandidate> fuse(List<Document> denseResults, List<Document> keywordResults, int candidatePoolSize) {
         Map<String, Double> rrfScores = new HashMap<>();
         Map<String, Document> byId = new LinkedHashMap<>();
 
@@ -472,7 +521,7 @@ public class HybridRetrievalService {
                         rrfScores.getOrDefault(a.getId(), 0.0)))
                 .collect(Collectors.toList());
 
-        List<Document> diverseDocs = ensureSourceDiversity(sortedDocuments, 15);
+        List<Document> diverseDocs = ensureSourceDiversity(sortedDocuments, candidatePoolSize);
         
         return diverseDocs.stream()
                 .map(doc -> new RetrievalCandidate(doc, rrfScores.getOrDefault(doc.getId(), 0.0)))
@@ -480,6 +529,10 @@ public class HybridRetrievalService {
     }
 
     private List<Document> ensureSourceDiversity(List<Document> candidates, int maxSize) {
+        Map<String, Long> initialDistribution = candidates.stream()
+                .collect(Collectors.groupingBy(d -> (String) d.getMetadata().getOrDefault("sourceName", "unknown"), Collectors.counting()));
+        log.info("RRF Distribution BEFORE diversity filter: {}", initialDistribution);
+
         if (candidates.size() <= maxSize) {
             return candidates;
         }
@@ -517,6 +570,10 @@ public class HybridRetrievalService {
                 finalPool.add(doc);
             }
         }
+        
+        Map<String, Long> finalDistribution = finalPool.stream()
+                .collect(Collectors.groupingBy(d -> (String) d.getMetadata().getOrDefault("sourceName", "unknown"), Collectors.counting()));
+        log.info("RRF Distribution AFTER diversity filter (pool size {}): {}", maxSize, finalDistribution);
 
         return finalPool;
     }

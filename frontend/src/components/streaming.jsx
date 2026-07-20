@@ -139,7 +139,7 @@ export default function Streaming({ text, isStreaming, citations = [], visuals =
   }), [citations, visuals, onCitationClick, isStreaming]);
 
   return (
-    <div className="streaming-markdown prose prose-sm dark:prose-invert max-w-none text-[14.5px] leading-relaxed break-words">
+    <div className="streaming-markdown prose dark:prose-invert max-w-none text-[15.5px] leading-relaxed break-words">
       {completedText && (
         <ReactMarkdown 
           remarkPlugins={[remarkGfm]} 

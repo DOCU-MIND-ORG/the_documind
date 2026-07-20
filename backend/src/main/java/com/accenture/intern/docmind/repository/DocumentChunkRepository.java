@@ -37,6 +37,15 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, Lo
             """, nativeQuery = true)
     List<DocumentChunk> keywordSearch(@Param("query") String query, @Param("topK") int topK);
 
+    @Query(value = """
+            SELECT * FROM document_chunks dc
+            WHERE dc.source_name IN (:targetDocuments)
+            AND to_tsvector('english', dc.content) @@ plainto_tsquery('english', :query)
+            ORDER BY ts_rank_cd(to_tsvector('english', dc.content), plainto_tsquery('english', :query)) DESC
+            LIMIT :topK
+            """, nativeQuery = true)
+    List<DocumentChunk> keywordSearchInSources(@Param("query") String query, @Param("topK") int topK, @Param("targetDocuments") List<String> targetDocuments);
+
     /**
      * Lexical / keyword search filtered specifically to chunks that are images.
      */
@@ -133,4 +142,14 @@ public interface DocumentChunkRepository extends JpaRepository<DocumentChunk, Lo
 
     @Query("SELECT dc FROM DocumentChunk dc WHERE dc.chunkIndex = -1 AND dc.sessionId = :sessionId")
     List<DocumentChunk> findSectionMapsBySession(@Param("sessionId") Long sessionId);
+
+    /**
+     * Fetch all image chunks for the given source names and optional section paths.
+     */
+    @Query("SELECT dc FROM DocumentChunk dc WHERE dc.sourceName IN :sourceNames " +
+           "AND (COALESCE(:sectionPaths, NULL) IS NULL OR dc.sectionPath IN :sectionPaths) " +
+           "AND dc.imageUrl IS NOT NULL")
+    List<DocumentChunk> findImages(
+        @Param("sourceNames") List<String> sourceNames, 
+        @Param("sectionPaths") List<String> sectionPaths);
 }

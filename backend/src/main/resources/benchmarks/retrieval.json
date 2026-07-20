@@ -1,0 +1,43 @@
+{
+  "version": "2.0",
+  "corpusVersion": "ml-v1",
+  "description": "Retrieval accuracy and scaling tests.",
+  "queries": [
+    {
+      "id": "three_way_ml",
+      "category": "Multi Source",
+      "query": "Compare how Neural networks, Transformers, and Large language models are related to one another.",
+      "expectedTier": "DECOMPOSE",
+      "expectedStrategy": "MULTI_SOURCE",
+      "mustContainDocuments": [
+        "neural network",
+        "transformer (deep learning)",
+        "large language model"
+      ],
+      "minimumChunksPerDocument": {
+        "neural network": 1,
+        "transformer (deep learning)": 1,
+        "large language model": 1
+      },
+      "minCitations": 3,
+      "expectedDocumentsCount": 3,
+      "groundTruth": "Neural networks are the foundational machine learning concept. Transformers are a specific architecture of neural networks based on self-attention. Large language models (LLMs) are massive applications built using the Transformer neural network architecture."
+    },
+    {
+      "id": "summary_rag",
+      "category": "Whole Document",
+      "query": "Provide a comprehensive summary of Retrieval-augmented generation.",
+      "expectedTier": "DIRECT",
+      "expectedStrategy": "SINGLE_SOURCE",
+      "mustContainDocuments": [
+        "retrieval augmented generation"
+      ],
+      "minimumChunksPerDocument": {
+        "retrieval augmented generation": 1
+      },
+      "minCitations": 1,
+      "expectedDocumentsCount": 1,
+      "groundTruth": "Retrieval-augmented generation (RAG) is a framework that combines an information retrieval system with a generative LLM. RAG queries a vector database for relevant documents, then feeds those documents alongside the original prompt to the LLM to prevent hallucinations."
+    }
+  ]
+}

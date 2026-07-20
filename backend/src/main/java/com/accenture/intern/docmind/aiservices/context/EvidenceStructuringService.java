@@ -49,7 +49,8 @@ public class EvidenceStructuringService {
 
                 VisualEvidence updated = new VisualEvidence(
                         ve.semanticId(), stableId, ve.imageUrl(), ve.thumbnailUrl(),
-                        displayTitle, ve.score(), ve.sourceDocument()
+                        displayTitle, ve.score(), ve.sourceDocument(),
+                        ve.sectionPath(), ve.page(), ve.heading(), ve.retrievalReason()
                 );
                 updatedVisuals.add(updated);
 

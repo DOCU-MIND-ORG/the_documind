@@ -83,24 +83,9 @@ public class MultiSignalRanker {
         // Sort descending by finalScore
         rankedCandidates.sort((a, b) -> Double.compare(b.finalScore(), a.finalScore()));
 
-        if (!rankedCandidates.isEmpty()) {
-            double bestScore = rankedCandidates.get(0).finalScore();
-            // Lowered absolute minimum threshold from 0.1 to 0.005 to prevent aggressive filtering 
-            // of documents that might actually be relevant but received a low cross-encoder logit.
-            double threshold = Math.max(bestScore * 0.6, 0.005);
-            
-            // Filter out highly irrelevant candidates to avoid polluting the LLM context
-            rankedCandidates = rankedCandidates.stream()
-                    .filter(c -> {
-                        Object isImageObj = c.chunk().getMetadata().get("isImage");
-                        boolean isImage = Boolean.TRUE.equals(isImageObj) || "true".equals(String.valueOf(isImageObj).toLowerCase());
-                        return c.finalScore() >= threshold || isImage;
-                    })
-                    .collect(Collectors.toList());
-        }
-
-        // Log top results for debugging
-        log.info("MultiSignalRanker completed for {} candidates.", rankedCandidates.size());
+        // Return ALL scored candidates, sorted descending.
+        // Thresholding and fallback logic is now handled by the caller (RetrievalOrchestrator).
+        log.info("MultiSignalRanker scored {} candidates.", rankedCandidates.size());
         for (int i = 0; i < Math.min(3, rankedCandidates.size()); i++) {
             RetrievalCandidate c = rankedCandidates.get(i);
             log.info("Rank {}: Source={} | {}", i + 1, c.chunk().getMetadata().get("sourceName"), c.explanation().reasoning());

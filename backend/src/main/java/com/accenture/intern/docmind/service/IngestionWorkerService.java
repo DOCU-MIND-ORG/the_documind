@@ -312,10 +312,6 @@ public class IngestionWorkerService {
 
         if (!ingestionMonos.isEmpty()) {
             Mono.when(ingestionMonos).block();
-            embeddingService.triggerSuggestedQuestionGeneration(
-                    payload.getSessionId(), 
-                    sessionCacheService.getOrCreateState(payload.getSessionId())
-            );
         }
     }
 }

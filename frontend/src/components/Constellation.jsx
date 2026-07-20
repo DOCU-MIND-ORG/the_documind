@@ -47,7 +47,7 @@ function ConstellationDark({ className = '', style = {} }) {
   }, []);
 
   return (
-    <svg viewBox="0 0 226 226" className={`dark:hidden inline-block ${className}`} style={style} aria-hidden="true">
+    <svg viewBox="0 0 226 226" className={`inline-block ${className}`} style={style} aria-hidden="true">
       <defs>
         <filter id="dotBlur" x="-300%" y="-300%" width="700%" height="700%">
           <feGaussianBlur stdDeviation="5" result="blur"/>
@@ -133,7 +133,7 @@ function ConstellationLight({ className = '', style = {} }) {
   }, []);
 
   return (
-    <svg viewBox="0 0 226 226" className={`hidden dark:inline-block ${className}`} style={style} aria-hidden="true">
+    <svg viewBox="0 0 226 226" className={`inline-block ${className}`} style={style} aria-hidden="true">
       <defs>
         <filter id="dotBlurLight" x="-300%" y="-300%" width="700%" height="700%">
           <feGaussianBlur stdDeviation="5" result="blur"/>
@@ -181,8 +181,8 @@ export default function Constellation({ className = '', style = {}, invert = fal
   const effectiveTheme = invert ? (theme === 'dark' ? 'light' : 'dark') : theme;
 
   if (effectiveTheme === 'dark') {
-    return <ConstellationLight className={className} style={style} />;
+    return <ConstellationDark className={className} style={style} />;
   }
   
-  return <ConstellationDark className={className} style={style} />;
+  return <ConstellationLight className={className} style={style} />;
 }

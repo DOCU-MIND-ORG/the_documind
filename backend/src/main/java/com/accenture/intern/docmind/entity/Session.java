@@ -23,8 +23,20 @@ public class Session {
 
     private String title;
 
+    @Builder.Default
     private Boolean archived = false;
 
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+        name = "session_folders",
+        joinColumns = @JoinColumn(name = "session_id"),
+        inverseJoinColumns = @JoinColumn(name = "folder_id")
+    )
+    @Builder.Default
+    private Set<Folder> folders = new HashSet<>();
+
+    @Column(name = "display_order")
+    private Integer displayOrder;
     @OneToMany(mappedBy = "session", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<Message> messages = new ArrayList<>();

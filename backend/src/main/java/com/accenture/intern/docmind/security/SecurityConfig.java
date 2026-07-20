@@ -70,6 +70,8 @@ public class SecurityConfig {
                                 "/auth/reset-password",
 
                                 "/api/proxy",
+                                
+                                "/evaluation/**",
 
                                 // Static file serving — storage/** exposed under /files/**
                                 "/files/**",

@@ -12,9 +12,10 @@ public record ContextResult(
         List<RetrievalCandidate> memoryChunks,
         List<VisualEvidence> visuals,
         RetrievalTrace trace,
-        Double topScore
+        Double topScore,
+        boolean emptySearch
 ) {
     public ContextResult(String systemPrompt, String prompt, List<RetrievalCandidate> documents, Double topScore) {
-        this(systemPrompt, prompt, documents, documents, java.util.Collections.emptyList(), java.util.Collections.emptyList(), java.util.Collections.emptyList(), new RetrievalTrace(), topScore);
+        this(systemPrompt, prompt, documents, documents, java.util.Collections.emptyList(), java.util.Collections.emptyList(), java.util.Collections.emptyList(), new RetrievalTrace(), topScore, false);
     }
 }

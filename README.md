@@ -19,9 +19,10 @@ You can ask questions, extract specific data points, summarize entire sections, 
 
 ## Technical Overview
 
-This project is divided into two main components:
+This project is divided into three main components:
 1. **Frontend**: A sleek, modern React and Vite-based web application.
 2. **Backend**: A robust Java Spring Boot application handling document processing and AI integration.
+3. **Voice Service**: A Python-based real-time voice transcription service using WebSockets.
 
 ### Project Structure & Documentation
 
@@ -29,6 +30,7 @@ To easily navigate and run the project, please refer to the following documentat
 - **Root README** (`README.md`): This file, providing a high-level overview of the project.
 - **Frontend Setup** (`frontend/Setup.md`): Contains instructions on how to set up, build, and run the React frontend.
 - **Backend Setup** (`backend/Setup.md`): Contains instructions on how to set up, configure, and run the Spring Boot backend.
+- **Voice Service Setup**: Navigate to the `voice-service/` directory, install dependencies (`pip install -r requirements.txt`), and start the server with `python main.py`.
 - **Services Info** (`frontend/Services_Info.md` & `backend/Services_Info.md`): Explains why each third-party tool and library was chosen for this project.
 
 ## Environment Variables & Third-Party Services
@@ -45,4 +47,4 @@ Before running the backend, you must configure the `.env` file located in the `b
 
 ---
 
-Once the `.env` values are configured, please proceed to `backend/Setup.md` and `frontend/Setup.md` to start the respective servers.
+Once the `.env` values are configured, please proceed to `backend/Setup.md`, `frontend/Setup.md`, and the `voice-service/` directory to start the respective servers.

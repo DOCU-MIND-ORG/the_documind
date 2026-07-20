@@ -1,0 +1,218 @@
+{
+  "results" : [ {
+    "queryId" : "odyssey_vs_spiderman",
+    "query" : "Compare the theme of sacrifice in The Odyssey (2026 film) and Spider-Man: No Way Home.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "targetDocuments" : [ "the odyssey (2026 film)", "spider man: no way home" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 29,
+    "chunkDistribution" : {
+      "spider man: no way home" : 15,
+      "the odyssey (2026 film)" : 14
+    },
+    "planDistribution" : {
+      "9ed93f10-4eaf-4d45-93df-8e9f2fa06e01" : 15,
+      "e76473a8-adf4-4e53-9359-26fb38c3eab1" : 14
+    },
+    "retrievedVisuals" : 4,
+    "visualDistribution" : {
+      "spider man: no way home" : 1,
+      "the odyssey (2026 film)" : 3
+    },
+    "telemetry" : {
+      "denseHits" : 90,
+      "keywordHits" : 0,
+      "rrfHits" : 80,
+      "afterRerankHits" : 30,
+      "afterMultiSignalHits" : 29,
+      "contextExpandedHits" : 29,
+      "finalHits" : 29,
+      "visualTier" : "Same Section",
+      "visualCandidates" : 4,
+      "plannerLatency" : 2425,
+      "denseLatency" : 5906,
+      "keywordLatency" : 5906,
+      "fusionLatency" : 5908,
+      "rerankLatency" : 21079,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 14338,
+      "plannerReason" : "Analyze the theme of sacrifice in The Odyssey (2026 film)",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "he_who_remains",
+    "query" : "Who is He Who Remains and why is he important?",
+    "passed" : false,
+    "failureReason" : "Expected 1 unique documents but retrieved 2",
+    "actualTier" : "DIRECT",
+    "actualStrategy" : "SINGLE_SOURCE",
+    "generatedPlans" : 1,
+    "targetDocuments" : [ ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 4,
+    "chunkDistribution" : {
+      "spider man: no way home" : 2,
+      "loki (tv series)" : 2
+    },
+    "planDistribution" : {
+      "71c48b8e-d09e-41c6-8efc-f9b2607af19d" : 4
+    },
+    "retrievedVisuals" : 1,
+    "visualDistribution" : {
+      "spider man: no way home" : 1
+    },
+    "telemetry" : {
+      "denseHits" : 60,
+      "keywordHits" : 0,
+      "rrfHits" : 60,
+      "afterRerankHits" : 15,
+      "afterMultiSignalHits" : 4,
+      "contextExpandedHits" : 4,
+      "finalHits" : 4,
+      "visualTier" : "Same Section",
+      "visualCandidates" : 1,
+      "plannerLatency" : 2059,
+      "denseLatency" : 913,
+      "keywordLatency" : 913,
+      "fusionLatency" : 913,
+      "rerankLatency" : 7626,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 8395,
+      "plannerReason" : "Identify the character He Who Remains and explain his narrative importance and role.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "alias_peter_parker",
+    "query" : "Compare Peter Parker's final sacrifice in No Way Home with Loki's final sacrifice.",
+    "passed" : false,
+    "failureReason" : "Pipeline violation: Telemetry finalHits (32) does not match survivingChunks (27)",
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "targetDocuments" : [ "loki (tv series)" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 27,
+    "chunkDistribution" : {
+      "spider man: into the spider verse" : 5,
+      "Past Conversation: Comparative analysis of film and television series" : 1,
+      "spider man: no way home" : 10,
+      "loki (tv series)" : 11
+    },
+    "planDistribution" : {
+      "0fea0d9a-64ea-4efb-9875-3370c2fd77ac" : 18,
+      "2c136037-0dc0-4962-a4fe-7e45bc4d3b59" : 9
+    },
+    "retrievedVisuals" : 5,
+    "visualDistribution" : {
+      "spider man: into the spider verse" : 2,
+      "spider man: no way home" : 3
+    },
+    "telemetry" : {
+      "denseHits" : 180,
+      "keywordHits" : 0,
+      "rrfHits" : 180,
+      "afterRerankHits" : 60,
+      "afterMultiSignalHits" : 32,
+      "contextExpandedHits" : 32,
+      "finalHits" : 32,
+      "visualTier" : "Same Section",
+      "visualCandidates" : 5,
+      "plannerLatency" : 2319,
+      "denseLatency" : 2569,
+      "keywordLatency" : 2569,
+      "fusionLatency" : 2574,
+      "rerankLatency" : 46598,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 24505,
+      "plannerReason" : "Analyze Peter Parker's final sacrifice in Spider-Man: No Way Home",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "hidden_entity",
+    "query" : "Who created the Sacred Timeline?",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DIRECT",
+    "actualStrategy" : "SINGLE_SOURCE",
+    "generatedPlans" : 1,
+    "targetDocuments" : [ ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 4,
+    "chunkDistribution" : {
+      "loki (tv series)" : 4
+    },
+    "planDistribution" : {
+      "1c5524df-dbeb-480d-9d5c-25952aa73c6e" : 4
+    },
+    "retrievedVisuals" : 0,
+    "visualDistribution" : { },
+    "telemetry" : {
+      "denseHits" : 60,
+      "keywordHits" : 0,
+      "rrfHits" : 60,
+      "afterRerankHits" : 15,
+      "afterMultiSignalHits" : 4,
+      "contextExpandedHits" : 4,
+      "finalHits" : 4,
+      "visualTier" : "Same Document",
+      "visualCandidates" : 0,
+      "plannerLatency" : 1942,
+      "denseLatency" : 750,
+      "keywordLatency" : 750,
+      "fusionLatency" : 750,
+      "rerankLatency" : 8615,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 9054,
+      "plannerReason" : "Identify the creator of the Sacred Timeline within the Marvel Cinematic Universe context.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "implicit_document",
+    "query" : "Compare the organizations responsible for maintaining order in the timelines across the multiverse.",
+    "passed" : false,
+    "failureReason" : "Expected strategy CONCEPT_EXPANSION but got MULTI_SOURCE",
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "targetDocuments" : [ ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 0,
+    "chunkDistribution" : { },
+    "planDistribution" : { },
+    "retrievedVisuals" : 0,
+    "visualDistribution" : { },
+    "telemetry" : {
+      "denseHits" : 120,
+      "keywordHits" : 0,
+      "rrfHits" : 120,
+      "afterRerankHits" : 30,
+      "afterMultiSignalHits" : 0,
+      "contextExpandedHits" : 0,
+      "finalHits" : 0,
+      "visualTier" : null,
+      "visualCandidates" : 0,
+      "plannerLatency" : 2370,
+      "denseLatency" : 1173,
+      "keywordLatency" : 1173,
+      "fusionLatency" : 1175,
+      "rerankLatency" : 35604,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 17562,
+      "plannerReason" : "Identify and describe organizations responsible for maintaining order in multiverse timelines.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  } ],
+  "runId" : "e760199f-90a6-4459-a87f-2ad4128e7328",
+  "passed" : 2,
+  "totalQueries" : 5,
+  "profile" : "reasoning"
+}

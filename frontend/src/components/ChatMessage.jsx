@@ -33,7 +33,7 @@ const ChatMessage = memo(function ChatMessage({ msg, isStreaming, setActiveCitat
     <div className={`flex items-start gap-2.5 ${isBot ? '' : 'flex-row-reverse'}`}>
       <div className={`flex flex-col gap-1 max-w-[85%] ${isBot ? '' : 'items-end'}`}>
         <div className="flex flex-col gap-1.5 w-full">
-          <div className={`px-4 py-3 rounded-2xl text-[13px] leading-relaxed ${isBot
+          <div className={`px-4 py-3 rounded-2xl text-[15px] leading-relaxed ${isBot
             ? 'text-primary'
             : 'bg-blue-600 text-white rounded-tr-sm'
           } ${msg.status === 'error' ? 'border border-red-500/40' : ''}`}

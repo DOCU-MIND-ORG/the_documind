@@ -43,6 +43,11 @@ public class RetrievalOrchestrator {
         this.documentChunkRepository = documentChunkRepository;
     }
 
+    private record PlanRetrievalResult(
+        List<RetrievalCandidate> candidates,
+        com.accenture.intern.docmind.dto.chat.RetrievalTelemetry telemetry
+    ) {}
+
     public Mono<RetrievalResult> orchestrate(String question, Long sessionId, ExecutionPlan execPlan, reactor.core.publisher.Sinks.Many<org.springframework.http.codec.ServerSentEvent<String>> progressSink) {
         if (progressSink != null) {
             java.util.Map<String, Object> meta = new java.util.HashMap<>();
@@ -56,54 +61,101 @@ public class RetrievalOrchestrator {
             progressSink.tryEmitNext(org.springframework.http.codec.ServerSentEvent.<String>builder(msg).event("progress").build());
         }
 
+        if (execPlan.getPlans() == null || execPlan.getPlans().isEmpty()) {
+            log.info("ORCHESTRATOR: Out of domain or empty plans. Bypassing retrieval.");
+            return Mono.just(new RetrievalResult(List.of(), List.of(), 
+                Scope.CORPUS, 
+                Scope.CORPUS, 
+                false, 
+                ExpansionReason.NONE, 
+                com.accenture.intern.docmind.dto.chat.RetrievalTelemetry.empty()));
+        }
+
         List<Mono<RetrievalResult>> retrieves = new ArrayList<>();
         
         for (RetrievalPlan plan : execPlan.getPlans()) {
             log.info("ORCHESTRATOR: Executing Plan: Purpose='{}', Mode={}, Scope={}, Query='{}'", 
                      plan.purpose(), plan.executionMode(), plan.scope(), plan.optimizedQuery());
-            Mono<List<RetrievalCandidate>> planRetrievalMono = orchestratePlan(question, sessionId, plan, execPlan.getEntities(), progressSink);
-
-            Mono<List<VisualEvidence>> visualMono = Mono.just(List.of());
-            if (execPlan.isVisualSearch()) {
-                String retrievalQuery = (plan.optimizedQuery() != null && !plan.optimizedQuery().isBlank()) ? plan.optimizedQuery() : question;
-                boolean skipWholeDocument = plan.executionMode() != RetrievalExecutionMode.WHOLE_DOCUMENT;
-                
-                log.info("ORCHESTRATOR: Starting VISUAL PIPELINE | skipWholeDocument={} | sessionId={} | retrievalQuery='{}'",
-                         skipWholeDocument, sessionId, retrievalQuery);
-                         
-                visualMono = hybridRetrievalService.retrieve(execPlan.getEntities(), retrievalQuery, sessionId, 30, skipWholeDocument, plan.targetDocuments(), true, execPlan.getImageType())
-                    .map(docs -> rerankService.rerank(question, docs, 15, sessionId))
-                    .map(docs -> multiSignalRanker.rank(docs, plan, execPlan.getEntities(), sessionId))
-                    .map(docs -> {
-                        java.util.Set<String> seenUrls = new java.util.HashSet<>();
-                        return docs.stream()
-                            .filter(cand -> {
-                                String url = (String) cand.chunk().getMetadata().get("imageUrl");
-                                return url != null && seenUrls.add(url);
-                            })
-                            .limit(15)
-                            .map(cand -> new VisualEvidence(
-                                (String) cand.chunk().getMetadata().get("semanticId"),
-                                null,
-                                (String) cand.chunk().getMetadata().get("imageUrl"),
-                                null,
-                                cand.chunk().getText(),
-                                cand.finalScore(),
-                                (String) cand.chunk().getMetadata().get("sourceName")
-                            )).collect(Collectors.toList());
-                    });
-            }
+            Mono<PlanRetrievalResult> planRetrievalMono = orchestratePlan(question, sessionId, plan, execPlan.getEntities(), progressSink);
 
             Mono<RetrievalResult> planRetrieval = planRetrievalMono
                 .flatMap(primary -> fallbackQualityCheck(primary, plan, question, sessionId, execPlan.getEntities(), progressSink))
-                .zipWith(visualMono)
-                .map(tuple -> {
-                    RetrievalResult result = tuple.getT1();
-                    List<VisualEvidence> visuals = tuple.getT2();
-                    List<RetrievalCandidate> attached = attachMetadata(result.evidence(), plan);
-                    return new RetrievalResult(
-                        attached, visuals, result.requestedScope(), result.actualScope(), result.expandedScope(), result.reason()
-                    );
+                .flatMap(result -> {
+                    List<RetrievalCandidate> attached = attachMetadata(result.getEvidence(), plan);
+                    if (!execPlan.isVisualSearch() || attached.isEmpty()) {
+                        return Mono.just(new RetrievalResult(attached, List.of(), result.getRequestedScope(), result.getActualScope(), result.isExpandedScope(), result.getReason(), result.getTelemetry()));
+                    }
+
+                    // Extract exact source names from final text result
+                    List<String> finalSources = attached.stream()
+                        .map(c -> (String) c.chunk().getMetadata().get("sourceName"))
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .toList();
+
+                    if (finalSources.isEmpty()) {
+                        return Mono.just(new RetrievalResult(attached, List.of(), result.getRequestedScope(), result.getActualScope(), result.isExpandedScope(), result.getReason(), result.getTelemetry()));
+                    }
+                    
+                    log.info("ORCHESTRATOR: Starting SEQUENTIAL VISUAL PIPELINE grounded to sources: {}", finalSources);
+
+                    return Mono.fromCallable(() -> {
+                        // 1. Extract unique sectionPaths from the cited text chunks
+                        java.util.List<String> sectionPaths = attached.stream()
+                            .map(cand -> (String) cand.chunk().getMetadata().get("sectionPath"))
+                            .filter(java.util.Objects::nonNull)
+                            .distinct()
+                            .collect(Collectors.toList());
+
+                        // 2. Tier 1: Same Section
+                        String retrievalReason = "Same Section";
+                        List<com.accenture.intern.docmind.entity.DocumentChunk> allImages;
+                        if (!sectionPaths.isEmpty()) {
+                            allImages = documentChunkRepository.findImages(finalSources, sectionPaths);
+                        } else {
+                            allImages = new java.util.ArrayList<>();
+                        }
+
+                        // 3. Tier 2: Same Document (Fallback)
+                        if (allImages.isEmpty()) {
+                            retrievalReason = "Same Document";
+                            allImages = documentChunkRepository.findImages(finalSources, null);
+                        }
+                        
+                        // 4. Sort images by proximity to the cited text chunks
+                        String finalReason = retrievalReason;
+                        java.util.Set<String> seenUrls = new java.util.HashSet<>();
+                        List<VisualEvidence> visuals = allImages.stream()
+                            .sorted(java.util.Comparator.comparingInt(img -> getMinDistance(img, attached)))
+                            .filter(img -> {
+                                String url = img.getImageUrl();
+                                return url != null && seenUrls.add(url);
+                            })
+                            .limit(15)
+                            .map(img -> new VisualEvidence(
+                                img.getVectorId(),
+                                null,
+                                img.getImageUrl(),
+                                null,
+                                img.getContent(),
+                                1.0, // Base visual score
+                                img.getSourceName(),
+                                img.getSectionPath(),
+                                img.getPage(),
+                                img.getHeading(),
+                                finalReason
+                            )).collect(Collectors.toList());
+                        
+                        
+                        // We do not have VisualResult from repository directly, but we can capture visual metrics
+                        com.accenture.intern.docmind.dto.chat.RetrievalTelemetry updatedTelemetry = result.getTelemetry().toBuilder()
+                                .visualCandidates(allImages.size())
+                                .visualTier(retrievalReason)
+                                .visualLatency(0) // since it's immediate SQL we can leave 0 or measure it
+                                .build();
+                                
+                        return new RetrievalResult(attached, visuals, result.getRequestedScope(), result.getActualScope(), result.isExpandedScope(), result.getReason(), updatedTelemetry);
+                    }).subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic());
                 })
                 .onErrorResume(e -> {
                      log.error("Plan {} failed: {}", plan.purpose(), e.getMessage(), e);
@@ -120,17 +172,43 @@ public class RetrievalOrchestrator {
             Scope reqScope = Scope.CORPUS;
             Scope actScope = Scope.CORPUS;
             
+            com.accenture.intern.docmind.dto.chat.RetrievalTelemetry mergedTelemetry = com.accenture.intern.docmind.dto.chat.RetrievalTelemetry.empty();
+            int planIndex = 0;
             for (Object r : results) {
                 RetrievalResult res = (RetrievalResult) r;
-                combined.addAll(res.evidence());
-                combinedVisuals.addAll(res.visuals());
-                if (res.expandedScope()) {
-                    anyExpanded = true;
-                    reason = res.reason();
+                
+                // Priority 2: Per-plan source distribution logging before merge
+                RetrievalPlan loggedPlan = planIndex < execPlan.getPlans().size() ? execPlan.getPlans().get(planIndex) : null;
+                if (loggedPlan != null) {
+                    java.util.Map<String, Long> planSources = res.getEvidence().stream()
+                        .map(c -> (String) c.chunk().getMetadata().get("sourceName"))
+                        .filter(java.util.Objects::nonNull)
+                        .collect(Collectors.groupingBy(s -> s, Collectors.counting()));
+                    log.debug("MERGE [Plan {}] id={} | query='{}' | targets={} | chunks={} | sources={}",
+                        planIndex + 1,
+                        loggedPlan.id(),
+                        loggedPlan.optimizedQuery(),
+                        loggedPlan.targetDocuments(),
+                        res.getEvidence().size(),
+                        planSources);
                 }
-                reqScope = res.requestedScope();
-                actScope = res.actualScope();
+                planIndex++;
+                
+                combined.addAll(res.getEvidence());
+                combinedVisuals.addAll(res.getVisuals());
+                if (res.isExpandedScope()) {
+                    anyExpanded = true;
+                    reason = res.getReason();
+                }
+                reqScope = res.getRequestedScope();
+                if (res.getActualScope() != reqScope) {
+                    actScope = res.getActualScope();
+                }
+                mergedTelemetry = mergedTelemetry.mergeWith(res.getTelemetry());
             }
+            
+            // Priority 1: UNION dedup with before/after logging
+            int preDedupeCount = combined.size();
             if (execPlan.getMergeOperation() == MergeOperation.UNION) {
                 java.util.Set<String> seen = new java.util.HashSet<>();
                 List<RetrievalCandidate> deduplicated = new ArrayList<>();
@@ -139,18 +217,26 @@ public class RetrievalOrchestrator {
                         deduplicated.add(cand);
                     }
                 }
+                int duplicatesRemoved = preDedupeCount - deduplicated.size();
+                log.debug("MERGE DEDUP: before={} | after={} | duplicates_removed={}",
+                    preDedupeCount, deduplicated.size(), duplicatesRemoved);
                 combined = deduplicated;
             } else if (execPlan.getMergeOperation() == MergeOperation.COMPARE) {
                 // Keep everything to compare across sources
             }
             
+            // Priority 1: Set finalHits ONCE after dedup — this is the authoritative count
+            mergedTelemetry = mergedTelemetry.toBuilder()
+                .finalHits(combined.size())
+                .build();
             
             log.info("ORCHESTRATOR: Finished orchestrating all plans. Combined {} chunks and {} visuals (MergeOp: {})", 
                      combined.size(), combinedVisuals.size(), execPlan.getMergeOperation());
             
-            return new RetrievalResult(combined, combinedVisuals, reqScope, actScope, anyExpanded, reason);
+            return new RetrievalResult(combined, combinedVisuals, reqScope, actScope, anyExpanded, reason, mergedTelemetry);
         });
     }
+
     
     public RetrievalObservation generateObservation(List<RetrievalCandidate> candidates, RetrievalPlan plan, List<RetrievalCandidate> previousCandidates) {
         if (candidates.isEmpty()) {
@@ -224,20 +310,20 @@ public class RetrievalOrchestrator {
         }
     }
 
-    private Mono<RetrievalResult> fallbackQualityCheck(List<RetrievalCandidate> primary, RetrievalPlan plan, String question, Long sessionId, List<EntityResolution> entities, reactor.core.publisher.Sinks.Many<org.springframework.http.codec.ServerSentEvent<String>> progressSink) {
-        RetrievalQuality primaryQuality = evaluateQuality(primary);
-        boolean shouldExpand = primary.isEmpty() || primaryQuality.getConfidence() < retrievalProperties.getPrimaryThreshold();
+    private Mono<RetrievalResult> fallbackQualityCheck(PlanRetrievalResult primary, RetrievalPlan plan, String question, Long sessionId, List<EntityResolution> entities, reactor.core.publisher.Sinks.Many<org.springframework.http.codec.ServerSentEvent<String>> progressSink) {
+        RetrievalQuality primaryQuality = evaluateQuality(primary.candidates());
+        boolean shouldExpand = primary.candidates().isEmpty() || primaryQuality.getConfidence() < retrievalProperties.getPrimaryThreshold();
         
         if (!shouldExpand || plan.targetDocuments() == null || plan.targetDocuments().isEmpty()) {
-            return Mono.just(new RetrievalResult(primary, List.of(), plan.scope()));
+            return Mono.just(new RetrievalResult(primary.candidates(), List.of(), plan.scope(), plan.scope(), false, ExpansionReason.NONE, primary.telemetry()));
         }
 
-        ExpansionReason reason = primary.isEmpty() ? 
+        ExpansionReason reason = primary.candidates().isEmpty() ? 
             ExpansionReason.NO_RESULTS : 
             ExpansionReason.LOW_CONFIDENCE;
             
         log.info("[Planner]\nExecution = DIRECT\nTarget = {}\n?\n[Retriever]\nTopK = {} (Confidence: {})\n?\nScope Expansion (Reason: {})\n?\nGlobal\n?", 
-            plan.targetDocuments(), primary.size(), primaryQuality.getConfidence(), reason);
+            plan.targetDocuments(), primary.candidates().size(), primaryQuality.getConfidence(), reason);
 
         RetrievalPlan globalPlan = plan.withGlobalScope();
         
@@ -248,16 +334,16 @@ public class RetrievalOrchestrator {
         
         return orchestratePlan(question, sessionId, globalPlan, entities, progressSink)
             .map(globalPrimary -> {
-                log.info("TopK = {}\n?\nGeneration", globalPrimary.size());
-                List<RetrievalCandidate> merged = new ArrayList<>(primary);
-                java.util.Set<String> seenIds = primary.stream().map(c -> c.chunk().getId()).collect(Collectors.toSet());
-                for (RetrievalCandidate gc : globalPrimary) {
+                log.info("TopK = {}\n?\nGeneration", globalPrimary.candidates().size());
+                List<RetrievalCandidate> merged = new ArrayList<>(primary.candidates());
+                java.util.Set<String> seenIds = primary.candidates().stream().map(c -> c.chunk().getId()).collect(Collectors.toSet());
+                for (RetrievalCandidate gc : globalPrimary.candidates()) {
                     if (seenIds.add(gc.chunk().getId())) {
                         merged.add(gc);
                     }
                 }
                 merged.sort((a, b) -> Double.compare(b.finalScore(), a.finalScore()));
-                return new RetrievalResult(merged, List.of(), plan.scope(), globalPlan.scope(), true, reason);
+                return new RetrievalResult(merged, List.of(), plan.scope(), globalPlan.scope(), true, reason, primary.telemetry().mergeWith(globalPrimary.telemetry()));
             });
     }
 
@@ -291,19 +377,24 @@ public class RetrievalOrchestrator {
             java.util.Map<String, Object> newMetadata = new java.util.HashMap<>(cand.chunk().getMetadata());
             newMetadata.put("planId", plan.id());
             newMetadata.put("purpose", plan.purpose());
+            if (plan.executionMode() != null) {
+                newMetadata.put("planType", plan.executionMode().name());
+            }
             Document newDoc = new Document(cand.chunk().getId(), cand.chunk().getText(), newMetadata);
             return new RetrievalCandidate(newDoc, cand.finalScore());
         }).collect(Collectors.toList());
     }
 
-    private Mono<List<RetrievalCandidate>> orchestratePlan(String question, Long sessionId, RetrievalPlan plan, List<EntityResolution> entities, reactor.core.publisher.Sinks.Many<org.springframework.http.codec.ServerSentEvent<String>> progressSink) {
+    private Mono<PlanRetrievalResult> orchestratePlan(String question, Long sessionId, RetrievalPlan plan, List<EntityResolution> entities, reactor.core.publisher.Sinks.Many<org.springframework.http.codec.ServerSentEvent<String>> progressSink) {
         String retrievalQuery = (plan.optimizedQuery() != null && !plan.optimizedQuery().isBlank()) ? plan.optimizedQuery() : question;
         boolean skipWholeDocument = plan.executionMode() != RetrievalExecutionMode.WHOLE_DOCUMENT;
         
         log.info("ORCHESTRATOR: skipWholeDocument={} | sessionId={} | retrievalQuery='{}' | executionMode={} | isStructuralQuery={}",
                 skipWholeDocument, sessionId, retrievalQuery, plan.executionMode(), plan.isStructuralQuery());
 
-        Mono<List<RetrievalCandidate>> baseRetrievalMono;
+        int poolSize = determineAdaptivePoolSize(plan);
+
+        Mono<com.accenture.intern.docmind.dto.chat.HybridRetrievalResult> baseRetrievalMono;
         
         if (plan.isStructuralQuery()) {
             baseRetrievalMono = hybridRetrievalService.retrieveDocumentStructure(plan.targetDocuments(), sessionId)
@@ -311,36 +402,97 @@ public class RetrievalOrchestrator {
                     boolean sectionMapRetrieved = !structuralChunks.isEmpty();
                     log.info("ORCHESTRATOR: isStructuralQuery=true, sectionMapRetrieved={}", sectionMapRetrieved);
                     if (sectionMapRetrieved) {
-                        return Mono.just(structuralChunks);
+                        return Mono.just(new com.accenture.intern.docmind.dto.chat.HybridRetrievalResult(structuralChunks, structuralChunks.size(), 0, structuralChunks.size(), 0, 0, 0));
                     } else {
                         // Fallback to normal retrieval if no structural chunk is found
-                        return hybridRetrievalService.retrieve(entities, retrievalQuery, sessionId, 15, skipWholeDocument, plan.targetDocuments(), false, null);
+                        return hybridRetrievalService.retrieve(entities, retrievalQuery, sessionId, poolSize, skipWholeDocument, plan.targetDocuments(), false, null);
                     }
                 });
         } else {
-            baseRetrievalMono = hybridRetrievalService.retrieve(entities, retrievalQuery, sessionId, 15, skipWholeDocument, plan.targetDocuments(), false, null);
+            baseRetrievalMono = hybridRetrievalService.retrieve(entities, retrievalQuery, sessionId, poolSize, skipWholeDocument, plan.targetDocuments(), false, null);
         }
 
 
-        return baseRetrievalMono
-                .map(candidates -> {
+        var telemetryBuilder = com.accenture.intern.docmind.dto.chat.RetrievalTelemetry.builder();
+        long planStart = System.currentTimeMillis();
+
+        Mono<List<RetrievalCandidate>> candidatesMono = baseRetrievalMono
+                .flatMap(hybridResult -> {
+                    telemetryBuilder.denseHits(hybridResult.denseHits());
+                    telemetryBuilder.keywordHits(hybridResult.keywordHits());
+                    telemetryBuilder.rrfHits(hybridResult.rrfHits());
+                    telemetryBuilder.denseLatency(hybridResult.denseLatency());
+                    telemetryBuilder.keywordLatency(hybridResult.keywordLatency());
+                    telemetryBuilder.fusionLatency(hybridResult.fusionLatency());
+
+                    List<RetrievalCandidate> candidates = hybridResult.candidates();
                     boolean isOrderPreserved = candidates.stream().anyMatch(c ->
                             "WHOLE_DOCUMENT".equals(c.chunk().getMetadata().get("retrievalModeUsed"))
                             || "CONTIGUOUS".equals(c.chunk().getMetadata().get("retrievalModeUsed")));
                     if (isOrderPreserved) {
-                        return candidates; // Bypass reranking: order was already set during retrieval
+                        return Mono.just(new com.accenture.intern.docmind.dto.chat.RerankResult(candidates, candidates.size(), 0)); 
                     }
-                    return rerankService.rerank(retrievalQuery, candidates, 5, sessionId);
+                    return rerankService.rerank(retrievalQuery, candidates, 15, sessionId);
                 })
-                .doOnNext(reranked -> emitRanking(progressSink))
-                .map(reranked -> {
+                .doOnNext(rerankResult -> emitRanking(progressSink))
+                .map(rerankResult -> {
+                    telemetryBuilder.afterRerankHits(rerankResult.afterRerankHits());
+                    telemetryBuilder.rerankLatency(rerankResult.latency());
+
+                    List<RetrievalCandidate> reranked = rerankResult.candidates();
+                    java.util.List<String> candidateDocs = reranked.stream()
+                            .map(c -> (String) c.chunk().getMetadata().get("sourceName"))
+                            .filter(java.util.Objects::nonNull)
+                            .distinct()
+                            .collect(Collectors.toList());
+                    telemetryBuilder.retrievalCandidateDocs(candidateDocs);
+
                     boolean isOrderPreserved = reranked.stream().anyMatch(c ->
                             "WHOLE_DOCUMENT".equals(c.chunk().getMetadata().get("retrievalModeUsed"))
                             || "CONTIGUOUS".equals(c.chunk().getMetadata().get("retrievalModeUsed")));
                     if (isOrderPreserved) {
-                        return reranked; // Bypass multi-signal ranker: preserve reading order
+                        return reranked;
                     }
-                    return multiSignalRanker.rank(reranked, plan, entities, sessionId);
+                    List<RetrievalCandidate> ranked = multiSignalRanker.rank(reranked, plan, entities, sessionId);
+
+                    // Apply thresholding and fallback floor
+                    double threshold = 0.005;
+                    List<RetrievalCandidate> finalCandidates = new java.util.ArrayList<>();
+                    List<RetrievalCandidate> rejectedCandidates = new java.util.ArrayList<>();
+
+                    for (RetrievalCandidate c : ranked) {
+                        Object isImageObj = c.chunk().getMetadata().get("isImage");
+                        boolean isImage = Boolean.TRUE.equals(isImageObj) || "true".equals(String.valueOf(isImageObj).toLowerCase());
+                        if (c.finalScore() >= threshold || isImage) {
+                            finalCandidates.add(c);
+                        } else {
+                            rejectedCandidates.add(c);
+                        }
+                    }
+
+                    if (plan.scope() == Scope.CORPUS && (plan.targetDocuments() == null || plan.targetDocuments().isEmpty())) {
+                        int minResults = 3;
+                        if (finalCandidates.size() < minResults) {
+                            log.info("ORCHESTRATOR: CONCEPT_EXPANSION floor triggered. Survivors={}, Minimum={}. Attempting to rescue...", finalCandidates.size(), minResults);
+                            java.util.Set<String> representedSources = finalCandidates.stream()
+                                    .map(c -> (String) c.chunk().getMetadata().get("sourceName"))
+                                    .filter(java.util.Objects::nonNull)
+                                    .collect(Collectors.toSet());
+
+                            for (RetrievalCandidate rejected : rejectedCandidates) {
+                                if (finalCandidates.size() >= minResults) break;
+                                String source = (String) rejected.chunk().getMetadata().get("sourceName");
+                                if (source != null && !representedSources.contains(source) && rejected.finalScore() >= 0.05) {
+                                    finalCandidates.add(rejected);
+                                    representedSources.add(source);
+                                    log.info("ORCHESTRATOR: Rescued chunk from '{}' (Score: {})", source, rejected.finalScore());
+                                }
+                            }
+                        }
+                    }
+
+                    telemetryBuilder.afterMultiSignalHits(finalCandidates.size());
+                    return finalCandidates;
                 })
                 .flatMap(ranked -> {
                     if (plan.executionMode() == RetrievalExecutionMode.CONTIGUOUS) {
@@ -359,8 +511,24 @@ public class RetrievalOrchestrator {
                     boolean isOrderPreserved = ranked.stream().anyMatch(c ->
                             "WHOLE_DOCUMENT".equals(c.chunk().getMetadata().get("retrievalModeUsed"))
                             || "CONTIGUOUS".equals(c.chunk().getMetadata().get("retrievalModeUsed")));
-                    return isOrderPreserved ? Mono.just(ranked) : expandContext(ranked);
+                    if (isOrderPreserved) {
+                        return Mono.just(ranked);
+                    } else {
+                        return expandContext(ranked).doOnNext(expanded -> telemetryBuilder.contextExpandedHits(expanded.size()));
+                    }
                 });
+                
+        return candidatesMono.map(finalCandidates -> {
+            telemetryBuilder.finalHits(finalCandidates.size());
+            telemetryBuilder.plannerReason(plan.purpose());
+            telemetryBuilder.plannerLatency(System.currentTimeMillis() - planStart);
+            
+            String path = plan.executionMode() == RetrievalExecutionMode.WHOLE_DOCUMENT ? "WHOLE_DOCUMENT" 
+                        : plan.executionMode() == RetrievalExecutionMode.CONTIGUOUS ? "CONTIGUOUS" 
+                        : "RANKED -> Rerank -> MultiSignal";
+            telemetryBuilder.executionPath(path);
+            return new PlanRetrievalResult(finalCandidates, telemetryBuilder.build());
+        });
     }
 
     private void emitRanking(reactor.core.publisher.Sinks.Many<org.springframework.http.codec.ServerSentEvent<String>> progressSink) {
@@ -371,6 +539,15 @@ public class RetrievalOrchestrator {
                     "Ranking evidence...", null, null, null).toJson(objectMapper);
             progressSink.tryEmitNext(org.springframework.http.codec.ServerSentEvent.<String>builder(msg).event("progress").build());
         }
+    }
+
+    private int determineAdaptivePoolSize(RetrievalPlan plan) {
+        if (plan.targetDocuments() != null && plan.targetDocuments().size() > 1) {
+            return Math.min(80, Math.max(40, plan.targetDocuments().size() * 12));
+        } else if (plan.targetDocuments() == null || plan.targetDocuments().isEmpty()) {
+            return 60; // Wider net for Concept Expansion and untargeted global searches
+        }
+        return 30;
     }
 
     private Mono<List<RetrievalCandidate>> expandContext(List<RetrievalCandidate> candidates) {
@@ -391,10 +568,10 @@ public class RetrievalOrchestrator {
                 }
                 
                 int idx = -1;
-                if (idxObj instanceof Integer) {
-                    idx = (Integer) idxObj;
-                } else if (idxObj instanceof String) {
-                    try { idx = Integer.parseInt((String) idxObj); } catch (Exception ignored) {}
+                if (idxObj instanceof Number number) {
+                    idx = number.intValue();
+                } else if (idxObj instanceof String s) {
+                    try { idx = Integer.parseInt(s); } catch (Exception ignored) {}
                 }
                 
                 if (idx < 0) {
@@ -431,5 +608,30 @@ public class RetrievalOrchestrator {
             }
             return expanded;
         }).subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic());
+    }
+
+    private int getMinDistance(com.accenture.intern.docmind.entity.DocumentChunk img, java.util.List<com.accenture.intern.docmind.dto.retrieval.RetrievalCandidate> textChunks) {
+        if (img.getChunkIndex() == null) return Integer.MAX_VALUE;
+        int imgIndex = img.getChunkIndex();
+        int min = Integer.MAX_VALUE;
+        for (com.accenture.intern.docmind.dto.retrieval.RetrievalCandidate cand : textChunks) {
+            Object obj = cand.chunk().getMetadata().get("chunkIndex");
+            int textIndex = -1;
+            if (obj instanceof Number number) {
+                textIndex = number.intValue();
+            } else if (obj instanceof String s) {
+                try {
+                    textIndex = Integer.parseInt(s);
+                } catch (NumberFormatException ignored) {}
+            }
+            
+            if (textIndex >= 0) {
+                int dist = Math.abs(imgIndex - textIndex);
+                if (dist < min) {
+                    min = dist;
+                }
+            }
+        }
+        return min;
     }
 }

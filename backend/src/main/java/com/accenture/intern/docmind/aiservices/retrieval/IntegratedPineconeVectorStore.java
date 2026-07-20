@@ -137,12 +137,13 @@ public class IntegratedPineconeVectorStore implements VectorStore {
             SearchRecordsRequestQuery query = new SearchRecordsRequestQuery();
             query.setInputs(Collections.singletonMap("text", request.getQuery()));
 
-            int topK = request.getTopK() > 0 ? request.getTopK() : 5;
+            int topK = request.getTopK() > 0 ? request.getTopK() : 15;
             query.setTopK(topK);
 
             if (request.getFilterExpression() != null) {
                 org.springframework.ai.vectorstore.filter.converter.PineconeFilterExpressionConverter converter = new org.springframework.ai.vectorstore.filter.converter.PineconeFilterExpressionConverter();
                 String filterJson = converter.convertExpression(request.getFilterExpression());
+                log.info("Converted Pinecone JSON Filter: {}", filterJson);
                 if (filterJson != null && !filterJson.isBlank()) {
                     try {
                         Map<String, Object> filterMap = MAPPER.readValue(filterJson,
@@ -150,13 +151,17 @@ public class IntegratedPineconeVectorStore implements VectorStore {
                                 });
                         query.setFilter(filterMap);
                     } catch (Exception e) {
-                        // ignore or log
+                        log.error("Failed to parse Pinecone filter JSON: {}", filterJson, e);
                     }
                 }
             }
 
             SearchRecordsRequest searchRequest = new SearchRecordsRequest();
             searchRequest.setQuery(query);
+
+            if (query.getFilter() != null) {
+                log.info("Pinecone request metadata filter: {}", query.getFilter());
+            }
 
             long pineconeStart = System.currentTimeMillis();
             SearchRecordsResponse response = api.searchRecordsNamespace(namespace, searchRequest);

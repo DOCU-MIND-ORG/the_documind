@@ -92,12 +92,12 @@ public class ContextBuilderService {
                 List<RetrievalPlan> plans = Collections.emptyList();
 
                 if (execPlan instanceof DirectExecutionPlan dir) {
-                    decision = dir.retrievalPlan();
-                    plans = List.of(decision);
+                    decision = dir.getPlans().isEmpty() ? null : dir.getPlans().get(0);
+                    plans = dir.getPlans();
                 } else if (execPlan instanceof StaticExecutionPlan stat) {
-                    decision = stat.plans().isEmpty() ? null : stat.plans().get(0);
+                    decision = stat.getPlans().isEmpty() ? null : stat.getPlans().get(0);
                     decompositionRequired = true;
-                    mergeOperation = stat.mergeOperation();
+                    mergeOperation = stat.getMergeOperation();
                     plans = stat.plans();
                 } else if (execPlan instanceof AdaptiveExecutionPlan adapt) {
                     return orchestrateAdaptive(question, sessionId, adapt, Mono.just(historyBlock), sessionContext, progressSink);
@@ -169,7 +169,7 @@ public class ContextBuilderService {
                         return reactor.core.publisher.Flux.fromIterable(targetDocs)
                                 .flatMap(docName -> hybridRetrievalService.wholeDocumentRetrieve(docName))
                                 .reduce(new ArrayList<RetrievalCandidate>(), (acc, list) -> {
-                                    acc.addAll(list);
+                                    acc.addAll(list.candidates());
                                     return acc;
                                 })
                                 .map(selectedDocs -> {
@@ -220,7 +220,9 @@ public class ContextBuilderService {
                 null,
                 Collections.emptyList(),
                 false,
-                null
+                null,
+                "ADAPTIVE",
+                "ADAPTIVE"
         );
         Mono<String> historyBlockMono = fetchHistoryBlock(sessionId, question, true);
         return orchestrateAdaptive(question, sessionId, adaptivePlan, historyBlockMono, sessionContext, null);
@@ -231,7 +233,7 @@ public class ContextBuilderService {
             return buildFinalAdaptiveResult(adaptivePlan, originalQuestion, accumulatedCandidates, historyBlockMono, sessionContext, trace);
         }
         
-        StaticExecutionPlan singleStatic = new StaticExecutionPlan("ADAPTIVE_ITERATION", List.of(currentPlan), MergeOperation.UNION, Collections.emptyList(), false, null);
+        StaticExecutionPlan singleStatic = new StaticExecutionPlan("ADAPTIVE_ITERATION", List.of(currentPlan), MergeOperation.UNION, Collections.emptyList(), false, null, "ADAPTIVE", "ADAPTIVE_ITERATION");
         return retrievalOrchestrator.orchestrate(originalQuestion, sessionId, singleStatic, progressSink)
             .flatMap(newResult -> {
                 if (progressSink != null) {
@@ -243,10 +245,10 @@ public class ContextBuilderService {
                     progressSink.tryEmitNext(org.springframework.http.codec.ServerSentEvent.<String>builder(msg).event("progress").build());
                 }
 
-                com.accenture.intern.docmind.aiservices.understanding.plan.RetrievalObservation obs = retrievalOrchestrator.generateObservation(newResult.evidence(), currentPlan, accumulatedCandidates);
+                com.accenture.intern.docmind.aiservices.understanding.plan.RetrievalObservation obs = retrievalOrchestrator.generateObservation(newResult.getEvidence(), currentPlan, accumulatedCandidates);
                 trace.addObservation(obs);
                 trace.addStep(String.format("Iteration %d: %s", iteration, obs.message()));
-                accumulatedCandidates.addAll(newResult.evidence());
+                accumulatedCandidates.addAll(newResult.getEvidence());
                 
                 return retrievalController.decideNextAction(adaptivePlan, obs)
                     .flatMap(action -> {
@@ -278,7 +280,7 @@ public class ContextBuilderService {
              String augmentedPrompt = buildPrompt(question, agg.evidenceString(), historyBlock, sessionContext);
              return Mono.just(new ContextResult(
                      getSystemPrompt(candidates.isEmpty(), adaptivePlan.strategy(), MergeOperation.UNION, historyBlock, sessionContext),
-                     augmentedPrompt, agg.orderedCandidates(), agg.orderedCandidates(), Collections.emptyList(), Collections.emptyList(), agg.updatedVisuals(), trace, topScore));
+                     augmentedPrompt, agg.orderedCandidates(), agg.orderedCandidates(), Collections.emptyList(), Collections.emptyList(), agg.updatedVisuals(), trace, topScore, candidates.isEmpty()));
         });
     }
 
@@ -290,18 +292,18 @@ public class ContextBuilderService {
                     String historyBlock = tuple.getT2();
 
                     RetrievalTrace trace = new RetrievalTrace();
-                    trace.addStep(String.format("Orchestrator returned %d merged chunks.", result.evidence().size()));
+                    trace.addStep(String.format("Orchestrator returned %d merged chunks.", result.getEvidence().size()));
 
-                    double topScore = result.evidence().isEmpty() ? 0.0 : result.evidence().get(0).finalScore();
+                    double topScore = result.getEvidence().isEmpty() ? 0.0 : result.getEvidence().get(0).finalScore();
                     
                     String primaryStrategy = execPlan.strategy();
 
-                    com.accenture.intern.docmind.dto.chat.AggregatedEvidence agg = evidenceStructuringService.structure(result.evidence(), result.visuals(), execPlan.getMergeOperation());
+                    com.accenture.intern.docmind.dto.chat.AggregatedEvidence agg = evidenceStructuringService.structure(result.getEvidence(), result.getVisuals(), execPlan.getMergeOperation());
                     String augmentedPrompt = buildPrompt(question, agg.evidenceString(), historyBlock, sessionContext);
                     
                     return Mono.just(new ContextResult(
-                            getSystemPrompt(result.evidence().isEmpty(), primaryStrategy, execPlan.getMergeOperation(), historyBlock, sessionContext),
-                            augmentedPrompt, agg.orderedCandidates(), agg.orderedCandidates(), Collections.emptyList(), Collections.emptyList(), agg.updatedVisuals(), trace, topScore));
+                            getSystemPrompt(result.getEvidence().isEmpty(), primaryStrategy, execPlan.getMergeOperation(), historyBlock, sessionContext),
+                            augmentedPrompt, agg.orderedCandidates(), agg.orderedCandidates(), Collections.emptyList(), Collections.emptyList(), agg.updatedVisuals(), trace, topScore, result.getEvidence().isEmpty()));
                 });
     }
 

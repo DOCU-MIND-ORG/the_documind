@@ -1,0 +1,760 @@
+{
+  "profile" : "all",
+  "results" : [ {
+    "queryId" : "compare_loki_stranger",
+    "query" : "Compare how alternate realities are portrayed in Loki and Stranger Things. Explain the role of the Sacred Timeline, branching timelines, and the Upside Down.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "plannedDocuments" : [ "loki (tv series)", "stranger things" ],
+    "retrievedDocuments" : [ "loki (tv series)", "stranger things" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 17,
+    "chunkDistribution" : {
+      "loki (tv series)" : 7,
+      "stranger things" : 10
+    },
+    "planDistribution" : {
+      "bc4ffa3a-e61d-48a5-8403-10c8f662556d" : 7,
+      "c37d7f47-cb44-459a-bc97-147048a270c5" : 10
+    },
+    "retrievedVisuals" : 6,
+    "visualDistribution" : {
+      "stranger things" : 6
+    },
+    "telemetry" : {
+      "denseHits" : 82,
+      "keywordHits" : 0,
+      "rrfHits" : 80,
+      "afterRerankHits" : 30,
+      "afterMultiSignalHits" : 17,
+      "contextExpandedHits" : 17,
+      "finalHits" : 17,
+      "visualTier" : "Same Document",
+      "visualCandidates" : 6,
+      "plannerLatency" : 2637,
+      "denseLatency" : 6437,
+      "keywordLatency" : 6437,
+      "fusionLatency" : 6439,
+      "rerankLatency" : 16996,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 12276,
+      "plannerReason" : "Analyze alternate reality mechanics in Loki",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "single_doc_loki",
+    "query" : "Explain the purpose of the Time Variance Authority and how it maintains the Sacred Timeline according to Loki.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DIRECT",
+    "actualStrategy" : "SINGLE_SOURCE",
+    "generatedPlans" : 1,
+    "plannedDocuments" : [ "loki (tv series)" ],
+    "retrievedDocuments" : [ "loki (tv series)" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 4,
+    "chunkDistribution" : {
+      "loki (tv series)" : 4
+    },
+    "planDistribution" : {
+      "e0a20609-79b4-4ebc-a9fa-f44bde287f93" : 4
+    },
+    "retrievedVisuals" : 0,
+    "visualDistribution" : { },
+    "telemetry" : {
+      "denseHits" : 30,
+      "keywordHits" : 0,
+      "rrfHits" : 30,
+      "afterRerankHits" : 15,
+      "afterMultiSignalHits" : 4,
+      "contextExpandedHits" : 4,
+      "finalHits" : 4,
+      "visualTier" : "Same Document",
+      "visualCandidates" : 0,
+      "plannerLatency" : 2198,
+      "denseLatency" : 1019,
+      "keywordLatency" : 1019,
+      "fusionLatency" : 1019,
+      "rerankLatency" : 3548,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 5149,
+      "plannerReason" : "Explain the function of the TVA and the maintenance of the Sacred Timeline in Loki.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "compare_spiderman",
+    "query" : "Compare how Spider-Man: No Way Home and Spider-Man: Into the Spider-Verse portray multiverse travel and its consequences.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "plannedDocuments" : [ "spider man: no way home", "spider man: into the spider verse" ],
+    "retrievedDocuments" : [ "spider man: into the spider verse", "spider man: no way home" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 23,
+    "chunkDistribution" : {
+      "spider man: into the spider verse" : 12,
+      "spider man: no way home" : 11
+    },
+    "planDistribution" : {
+      "a745da16-397b-4ce3-a99e-f19a5ab7b017" : 11,
+      "c1a27aeb-e89f-4822-a8e3-1e7bd597c39b" : 12
+    },
+    "retrievedVisuals" : 3,
+    "visualDistribution" : {
+      "spider man: into the spider verse" : 2,
+      "spider man: no way home" : 1
+    },
+    "telemetry" : {
+      "denseHits" : 80,
+      "keywordHits" : 0,
+      "rrfHits" : 80,
+      "afterRerankHits" : 30,
+      "afterMultiSignalHits" : 23,
+      "contextExpandedHits" : 23,
+      "finalHits" : 23,
+      "visualTier" : "Same Section",
+      "visualCandidates" : 3,
+      "plannerLatency" : 2373,
+      "denseLatency" : 3975,
+      "keywordLatency" : 3975,
+      "fusionLatency" : 3977,
+      "rerankLatency" : 21764,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 13394,
+      "plannerReason" : "Analyze multiverse travel mechanics and consequences in Spider-Man: No Way Home",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "stranger_things_summary",
+    "query" : "Summarize the events of Stranger Things season 1 in 100 words.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DIRECT",
+    "actualStrategy" : "SINGLE_SOURCE",
+    "generatedPlans" : 1,
+    "plannedDocuments" : [ ],
+    "retrievedDocuments" : [ "stranger things" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 12,
+    "chunkDistribution" : {
+      "stranger things" : 12
+    },
+    "planDistribution" : {
+      "c9d5e52b-03d2-4b30-8710-35d748f5ae2f" : 12
+    },
+    "retrievedVisuals" : 6,
+    "visualDistribution" : {
+      "stranger things" : 6
+    },
+    "telemetry" : {
+      "denseHits" : 60,
+      "keywordHits" : 0,
+      "rrfHits" : 60,
+      "afterRerankHits" : 15,
+      "afterMultiSignalHits" : 12,
+      "contextExpandedHits" : 12,
+      "finalHits" : 12,
+      "visualTier" : "Same Document",
+      "visualCandidates" : 6,
+      "plannerLatency" : 1981,
+      "denseLatency" : 649,
+      "keywordLatency" : 649,
+      "fusionLatency" : 650,
+      "rerankLatency" : 6691,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 8479,
+      "plannerReason" : "Summarize the plot events of Stranger Things season 1",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "exclude_spiderman",
+    "query" : "Compare alternate realities in Loki and Stranger Things. Do not mention Spider-Man under any circumstances.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "plannedDocuments" : [ "loki (tv series)", "stranger things" ],
+    "retrievedDocuments" : [ "loki (tv series)", "stranger things" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 18,
+    "chunkDistribution" : {
+      "loki (tv series)" : 8,
+      "stranger things" : 10
+    },
+    "planDistribution" : {
+      "262b25c2-7094-49a9-850f-d7500bbff96d" : 10,
+      "887dd1ad-08c2-4c5f-9403-2941bba91d23" : 8
+    },
+    "retrievedVisuals" : 6,
+    "visualDistribution" : {
+      "stranger things" : 6
+    },
+    "telemetry" : {
+      "denseHits" : 84,
+      "keywordHits" : 0,
+      "rrfHits" : 80,
+      "afterRerankHits" : 30,
+      "afterMultiSignalHits" : 18,
+      "contextExpandedHits" : 18,
+      "finalHits" : 18,
+      "visualTier" : "Same Document",
+      "visualCandidates" : 6,
+      "plannerLatency" : 2633,
+      "denseLatency" : 2356,
+      "keywordLatency" : 2356,
+      "fusionLatency" : 2358,
+      "rerankLatency" : 24563,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 13357,
+      "plannerReason" : "Analyze alternate reality mechanics in Loki",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "concept_multiverse",
+    "query" : "Explain the concept of the multiverse using all relevant documents in the knowledge base.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "CONCEPT_EXPANSION",
+    "generatedPlans" : 3,
+    "plannedDocuments" : [ ],
+    "retrievedDocuments" : [ "loki (tv series)" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 1,
+    "chunkDistribution" : {
+      "loki (tv series)" : 1
+    },
+    "planDistribution" : {
+      "4a27556e-82ea-426d-b563-06db5ab3de76" : 1
+    },
+    "retrievedVisuals" : 0,
+    "visualDistribution" : { },
+    "telemetry" : {
+      "denseHits" : 180,
+      "keywordHits" : 0,
+      "rrfHits" : 180,
+      "afterRerankHits" : 45,
+      "afterMultiSignalHits" : 1,
+      "contextExpandedHits" : 1,
+      "finalHits" : 1,
+      "visualTier" : "Same Document",
+      "visualCandidates" : 0,
+      "plannerLatency" : 2477,
+      "denseLatency" : 4081,
+      "keywordLatency" : 4081,
+      "fusionLatency" : 4090,
+      "rerankLatency" : 79121,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 27016,
+      "plannerReason" : "Search for theoretical definitions and scientific frameworks of the multiverse.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "exclude_stranger",
+    "query" : "Compare Loki and Spider-Man: No Way Home but exclude Stranger Things.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "plannedDocuments" : [ "loki (tv series)", "spider man: no way home" ],
+    "retrievedDocuments" : [ "spider man: no way home", "loki (tv series)" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 29,
+    "chunkDistribution" : {
+      "spider man: no way home" : 13,
+      "loki (tv series)" : 16
+    },
+    "planDistribution" : {
+      "faf55618-9acb-4687-83f5-eb61c5ff53c8" : 15,
+      "ad9aaf4d-4225-44bc-bf48-3c3eaa8aaef2" : 14
+    },
+    "retrievedVisuals" : 2,
+    "visualDistribution" : {
+      "spider man: no way home" : 2
+    },
+    "telemetry" : {
+      "denseHits" : 83,
+      "keywordHits" : 0,
+      "rrfHits" : 80,
+      "afterRerankHits" : 30,
+      "afterMultiSignalHits" : 29,
+      "contextExpandedHits" : 29,
+      "finalHits" : 29,
+      "visualTier" : "Same Document",
+      "visualCandidates" : 2,
+      "plannerLatency" : 2401,
+      "denseLatency" : 2407,
+      "keywordLatency" : 2407,
+      "fusionLatency" : 2409,
+      "rerankLatency" : 20007,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 12446,
+      "plannerReason" : "Retrieve key plot points, themes, and character arcs for Loki.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "loki_spiderman_multiverse",
+    "query" : "Compare how Loki and Spider-Man: No Way Home explain multiverse instability.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "plannedDocuments" : [ "loki (tv series)", "spider man: no way home" ],
+    "retrievedDocuments" : [ "spider man: no way home", "loki (tv series)" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 19,
+    "chunkDistribution" : {
+      "spider man: no way home" : 11,
+      "loki (tv series)" : 8
+    },
+    "planDistribution" : {
+      "498d6725-ca2b-497d-b96d-c4c60991cf55" : 12,
+      "db70b348-9fd3-402d-98ed-6aefc9988b12" : 7
+    },
+    "retrievedVisuals" : 1,
+    "visualDistribution" : {
+      "spider man: no way home" : 1
+    },
+    "telemetry" : {
+      "denseHits" : 80,
+      "keywordHits" : 0,
+      "rrfHits" : 80,
+      "afterRerankHits" : 30,
+      "afterMultiSignalHits" : 19,
+      "contextExpandedHits" : 19,
+      "finalHits" : 19,
+      "visualTier" : "Same Document",
+      "visualCandidates" : 1,
+      "plannerLatency" : 1965,
+      "denseLatency" : 2546,
+      "keywordLatency" : 2546,
+      "fusionLatency" : 2547,
+      "rerankLatency" : 29909,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 16189,
+      "plannerReason" : "Analyze multiverse instability in Loki",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "three_way_multiverse",
+    "query" : "Compare how Loki, Stranger Things, and Spider-Man: No Way Home each portray alternate realities.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 3,
+    "plannedDocuments" : [ "loki (tv series)", "stranger things", "spider man: no way home" ],
+    "retrievedDocuments" : [ "spider man: no way home", "loki (tv series)", "stranger things" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 32,
+    "chunkDistribution" : {
+      "spider man: no way home" : 14,
+      "loki (tv series)" : 11,
+      "stranger things" : 7
+    },
+    "planDistribution" : {
+      "9d5eaebd-a07e-4545-ab1e-d1ba04be4f19" : 10,
+      "700bce80-aa3a-4281-980f-2fbf4b1d6adb" : 7,
+      "60ae56e9-df2a-4d1a-83f1-d9486a4a0322" : 15
+    },
+    "retrievedVisuals" : 3,
+    "visualDistribution" : {
+      "spider man: no way home" : 2,
+      "stranger things" : 1
+    },
+    "telemetry" : {
+      "denseHits" : 131,
+      "keywordHits" : 1,
+      "rrfHits" : 120,
+      "afterRerankHits" : 45,
+      "afterMultiSignalHits" : 32,
+      "contextExpandedHits" : 32,
+      "finalHits" : 32,
+      "visualTier" : "Same Document",
+      "visualCandidates" : 3,
+      "plannerLatency" : 2545,
+      "denseLatency" : 4984,
+      "keywordLatency" : 4984,
+      "fusionLatency" : 5014,
+      "rerankLatency" : 48594,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 18661,
+      "plannerReason" : "Analyze alternate reality portrayal in Loki",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "summary_stranger",
+    "query" : "Provide a comprehensive summary of Stranger Things.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DIRECT",
+    "actualStrategy" : "SINGLE_SOURCE",
+    "generatedPlans" : 1,
+    "plannedDocuments" : [ "stranger things" ],
+    "retrievedDocuments" : [ "stranger things" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 11,
+    "chunkDistribution" : {
+      "stranger things" : 11
+    },
+    "planDistribution" : {
+      "e3d655aa-3f33-4e8d-9e23-53b574605e3d" : 11
+    },
+    "retrievedVisuals" : 4,
+    "visualDistribution" : {
+      "stranger things" : 4
+    },
+    "telemetry" : {
+      "denseHits" : 60,
+      "keywordHits" : 0,
+      "rrfHits" : 60,
+      "afterRerankHits" : 15,
+      "afterMultiSignalHits" : 11,
+      "contextExpandedHits" : 11,
+      "finalHits" : 11,
+      "visualTier" : "Same Section",
+      "visualCandidates" : 4,
+      "plannerLatency" : 2092,
+      "denseLatency" : 725,
+      "keywordLatency" : 725,
+      "fusionLatency" : 725,
+      "rerankLatency" : 5996,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 8221,
+      "plannerReason" : "Provide a comprehensive summary of the Stranger Things series.",
+      "executionPath" : "WHOLE_DOCUMENT"
+    }
+  }, {
+    "queryId" : "odyssey_vs_spiderman",
+    "query" : "Compare the theme of sacrifice in The Odyssey (2026 film) and Spider-Man: No Way Home.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "plannedDocuments" : [ "the odyssey (2026 film)", "spider man: no way home" ],
+    "retrievedDocuments" : [ "spider man: no way home", "the odyssey (2026 film)" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 29,
+    "chunkDistribution" : {
+      "spider man: no way home" : 15,
+      "the odyssey (2026 film)" : 14
+    },
+    "planDistribution" : {
+      "54ed67b2-f160-469d-81b2-467f7a377681" : 14,
+      "c472378b-559c-45e4-a573-06d5ccc0aa94" : 15
+    },
+    "retrievedVisuals" : 4,
+    "visualDistribution" : {
+      "spider man: no way home" : 1,
+      "the odyssey (2026 film)" : 3
+    },
+    "telemetry" : {
+      "denseHits" : 90,
+      "keywordHits" : 0,
+      "rrfHits" : 80,
+      "afterRerankHits" : 30,
+      "afterMultiSignalHits" : 29,
+      "contextExpandedHits" : 29,
+      "finalHits" : 29,
+      "visualTier" : "Same Section",
+      "visualCandidates" : 4,
+      "plannerLatency" : 2108,
+      "denseLatency" : 2112,
+      "keywordLatency" : 2112,
+      "fusionLatency" : 2114,
+      "rerankLatency" : 21355,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 12902,
+      "plannerReason" : "Analyze the theme of sacrifice in The Odyssey (2026 film)",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "he_who_remains",
+    "query" : "Who is He Who Remains and why is he important?",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DIRECT",
+    "actualStrategy" : "SINGLE_SOURCE",
+    "generatedPlans" : 1,
+    "plannedDocuments" : [ ],
+    "retrievedDocuments" : [ "spider man: no way home", "loki (tv series)" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 4,
+    "chunkDistribution" : {
+      "spider man: no way home" : 2,
+      "loki (tv series)" : 2
+    },
+    "planDistribution" : {
+      "6ebdea57-e773-46d4-a78f-623c7d3d11c3" : 4
+    },
+    "retrievedVisuals" : 1,
+    "visualDistribution" : {
+      "spider man: no way home" : 1
+    },
+    "telemetry" : {
+      "denseHits" : 60,
+      "keywordHits" : 0,
+      "rrfHits" : 60,
+      "afterRerankHits" : 15,
+      "afterMultiSignalHits" : 4,
+      "contextExpandedHits" : 4,
+      "finalHits" : 4,
+      "visualTier" : "Same Section",
+      "visualCandidates" : 1,
+      "plannerLatency" : 2149,
+      "denseLatency" : 887,
+      "keywordLatency" : 887,
+      "fusionLatency" : 887,
+      "rerankLatency" : 7129,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 7974,
+      "plannerReason" : "Identify the character He Who Remains and explain his narrative importance and role.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "alias_peter_parker",
+    "query" : "Compare Peter Parker's final sacrifice in No Way Home with Loki's final sacrifice.",
+    "passed" : false,
+    "failureReason" : "Expected 2 unique documents but retrieved 4",
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "plannedDocuments" : [ "loki (tv series)" ],
+    "retrievedDocuments" : [ "spider man: into the spider verse", "Past Conversation: Comparative analysis of film and television series", "spider man: no way home", "loki (tv series)" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 27,
+    "chunkDistribution" : {
+      "spider man: into the spider verse" : 5,
+      "Past Conversation: Comparative analysis of film and television series" : 1,
+      "spider man: no way home" : 10,
+      "loki (tv series)" : 11
+    },
+    "planDistribution" : {
+      "8d335ca3-92c2-4516-bd90-74a30b8857cf" : 18,
+      "0015f5d9-c31f-44cd-a7e9-5ba0cd17f764" : 9
+    },
+    "retrievedVisuals" : 5,
+    "visualDistribution" : {
+      "spider man: into the spider verse" : 2,
+      "spider man: no way home" : 3
+    },
+    "telemetry" : {
+      "denseHits" : 180,
+      "keywordHits" : 0,
+      "rrfHits" : 180,
+      "afterRerankHits" : 60,
+      "afterMultiSignalHits" : 32,
+      "contextExpandedHits" : 32,
+      "finalHits" : 27,
+      "visualTier" : "Same Section",
+      "visualCandidates" : 5,
+      "plannerLatency" : 2552,
+      "denseLatency" : 2809,
+      "keywordLatency" : 2809,
+      "fusionLatency" : 2823,
+      "rerankLatency" : 46767,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 25281,
+      "plannerReason" : "Analyze Peter Parker's final sacrifice in Spider-Man: No Way Home",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "hidden_entity",
+    "query" : "Who created the Sacred Timeline?",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DIRECT",
+    "actualStrategy" : "SINGLE_SOURCE",
+    "generatedPlans" : 1,
+    "plannedDocuments" : [ ],
+    "retrievedDocuments" : [ "loki (tv series)" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 4,
+    "chunkDistribution" : {
+      "loki (tv series)" : 4
+    },
+    "planDistribution" : {
+      "15d2ebd0-e42b-4799-965e-164002a71e85" : 4
+    },
+    "retrievedVisuals" : 0,
+    "visualDistribution" : { },
+    "telemetry" : {
+      "denseHits" : 60,
+      "keywordHits" : 0,
+      "rrfHits" : 60,
+      "afterRerankHits" : 15,
+      "afterMultiSignalHits" : 4,
+      "contextExpandedHits" : 4,
+      "finalHits" : 4,
+      "visualTier" : "Same Document",
+      "visualCandidates" : 0,
+      "plannerLatency" : 2107,
+      "denseLatency" : 665,
+      "keywordLatency" : 665,
+      "fusionLatency" : 665,
+      "rerankLatency" : 7469,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 8448,
+      "plannerReason" : "Identify the creator of the Sacred Timeline within the Marvel Cinematic Universe context.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "implicit_document",
+    "query" : "Across all stories and media in the knowledge base, how do different fictional universes explore the idea of imposing order on chaos or controlling fate itself?",
+    "passed" : false,
+    "failureReason" : "Missing required document loki (tv series) or insufficient citations. Required: 2",
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "CONCEPT_EXPANSION",
+    "generatedPlans" : 3,
+    "plannedDocuments" : [ ],
+    "retrievedDocuments" : [ "the art of seduction robert greene", "loki (tv series)" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 5,
+    "chunkDistribution" : {
+      "the art of seduction robert greene" : 4,
+      "loki (tv series)" : 1
+    },
+    "planDistribution" : {
+      "c2fa8e24-b1d9-4c4a-bd8d-f8e3bf63756b" : 1,
+      "1f08c300-5d23-4560-8d95-79b11b2ffeda" : 4
+    },
+    "retrievedVisuals" : 0,
+    "visualDistribution" : { },
+    "telemetry" : {
+      "denseHits" : 180,
+      "keywordHits" : 0,
+      "rrfHits" : 180,
+      "afterRerankHits" : 45,
+      "afterMultiSignalHits" : 6,
+      "contextExpandedHits" : 6,
+      "finalHits" : 5,
+      "visualTier" : "Same Document",
+      "visualCandidates" : 0,
+      "plannerLatency" : 2284,
+      "denseLatency" : 2810,
+      "keywordLatency" : 2810,
+      "fusionLatency" : 2816,
+      "rerankLatency" : 51041,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 19271,
+      "plannerReason" : "Identify thematic instances of imposing order on chaos in fictional narratives.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "batman_hallucination",
+    "query" : "Explain Batman's contingency plans.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DIRECT",
+    "actualStrategy" : "SINGLE_SOURCE",
+    "generatedPlans" : 1,
+    "plannedDocuments" : [ ],
+    "retrievedDocuments" : [ ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 0,
+    "chunkDistribution" : { },
+    "planDistribution" : { },
+    "retrievedVisuals" : 0,
+    "visualDistribution" : { },
+    "telemetry" : {
+      "denseHits" : 60,
+      "keywordHits" : 0,
+      "rrfHits" : 60,
+      "afterRerankHits" : 15,
+      "afterMultiSignalHits" : 0,
+      "contextExpandedHits" : 0,
+      "finalHits" : 0,
+      "visualTier" : null,
+      "visualCandidates" : 0,
+      "plannerLatency" : 2144,
+      "denseLatency" : 464,
+      "keywordLatency" : 464,
+      "fusionLatency" : 464,
+      "rerankLatency" : 5453,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 5639,
+      "plannerReason" : "Retrieve details on Batman's contingency plans for Justice League members and adversaries.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "telemetry_validation",
+    "query" : "Compare the overarching themes of isolation in Loki, Spider-Man: No Way Home, Stranger Things, and The Odyssey (2026 film).",
+    "passed" : false,
+    "failureReason" : "Expected 4 unique documents but retrieved 5",
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 4,
+    "plannedDocuments" : [ "loki (tv series)", "spider man: no way home", "stranger things", "the odyssey (2026 film)" ],
+    "retrievedDocuments" : [ "the art of seduction robert greene", "spider man: no way home", "the odyssey (2026 film)", "loki (tv series)", "stranger things" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 26,
+    "chunkDistribution" : {
+      "the art of seduction robert greene" : 1,
+      "spider man: no way home" : 10,
+      "the odyssey (2026 film)" : 9,
+      "loki (tv series)" : 3,
+      "stranger things" : 3
+    },
+    "planDistribution" : {
+      "48a33df8-3e3b-4ad5-ab2a-9ccaebf4694f" : 3,
+      "5e36bb2e-153f-442d-84c5-b20fa8338c63" : 11,
+      "88daf41b-8e6e-4ca8-aa17-0d46e08165ef" : 8,
+      "81316f14-6236-40bf-a9c0-b4ce29941beb" : 4
+    },
+    "retrievedVisuals" : 10,
+    "visualDistribution" : {
+      "spider man: no way home" : 1,
+      "the odyssey (2026 film)" : 3,
+      "stranger things" : 6
+    },
+    "telemetry" : {
+      "denseHits" : 353,
+      "keywordHits" : 0,
+      "rrfHits" : 312,
+      "afterRerankHits" : 90,
+      "afterMultiSignalHits" : 31,
+      "contextExpandedHits" : 31,
+      "finalHits" : 26,
+      "visualTier" : "Same Section",
+      "visualCandidates" : 10,
+      "plannerLatency" : 2991,
+      "denseLatency" : 9305,
+      "keywordLatency" : 9305,
+      "fusionLatency" : 9311,
+      "rerankLatency" : 143900,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 43220,
+      "plannerReason" : "Analyze themes of isolation in Loki",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  } ],
+  "runId" : "4fd727d3-162a-4b36-beb7-b2b8c6a87a61",
+  "passed" : 14,
+  "totalQueries" : 17
+}

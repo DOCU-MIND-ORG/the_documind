@@ -23,6 +23,7 @@ class EvidenceStructuringServiceTest {
 
         Map<String, Object> meta1 = new HashMap<>();
         meta1.put("sourceName", "doc.pdf");
+        meta1.put("sourceType", "PDF");
         meta1.put("page", 1);
         meta1.put("charStart", 0);
         meta1.put("charEnd", 100);
@@ -32,6 +33,7 @@ class EvidenceStructuringServiceTest {
 
         Map<String, Object> meta2 = new HashMap<>();
         meta2.put("sourceName", "doc.pdf");
+        meta2.put("sourceType", "PDF");
         meta2.put("page", 1);
         meta2.put("charStart", 101);
         meta2.put("charEnd", 200);

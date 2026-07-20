@@ -12,6 +12,7 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record LlmRoutingResponse(
     String strategy,
+    String reason,
 
     @JsonProperty("is_bot_qa") Boolean isBotQa,
 

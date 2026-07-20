@@ -18,10 +18,22 @@ export const sessionService = {
       method: 'DELETE',
     }),
 
-  rename: (sessionId, title) =>
-    request(`/api/sessions/${sessionId}/rename`, {
+  rename: (id, newTitle) =>
+    request(`/api/sessions/${id}/rename`, {
       method: 'PUT',
-      body: JSON.stringify({ title }),
+      body: JSON.stringify({ title: newTitle })
+    }),
+
+  patch: (id, data) =>
+    request(`/api/sessions/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data)
+    }),
+
+  reorder: (requests) =>
+    request('/api/sessions/reorder', {
+      method: 'PATCH',
+      body: JSON.stringify(requests)
     }),
 
   getMessages: (sessionId, cursor = null, size = 20) => {
@@ -75,4 +87,13 @@ export const sessionService = {
     document.body.removeChild(link);
     window.URL.revokeObjectURL(blobUrl);
   },
+
+  transcribeAudio: (audioBlob) => {
+    const formData = new FormData();
+    formData.append('audio', audioBlob, 'audio.webm');
+    return request('/api/voice/transcribe', {
+      method: 'POST',
+      body: formData,
+    });
+  }
 };

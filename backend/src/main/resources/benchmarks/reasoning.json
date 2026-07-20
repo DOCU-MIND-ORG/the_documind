@@ -1,0 +1,86 @@
+{
+  "version": "2.0",
+  "corpusVersion": "ml-v1",
+  "description": "Deep reasoning, implicit context, and hidden entity tests.",
+  "queries": [
+    {
+      "id": "transformer_vs_rnn",
+      "category": "Cross Document",
+      "query": "Compare how Transformers and Neural Networks handle sequential data processing.",
+      "expectedTier": "DECOMPOSE",
+      "expectedStrategy": "MULTI_SOURCE",
+      "mustContainDocuments": [
+        "transformer (deep learning)",
+        "neural network"
+      ],
+      "minimumChunksPerDocument": {
+        "transformer (deep learning)": 1,
+        "neural network": 1
+      },
+      "minCitations": 2,
+      "expectedDocumentsCount": 2,
+      "groundTruth": "Neural Networks (specifically RNNs) handle sequential data by processing tokens one-by-one in order, which is slow. Transformers handle sequential data entirely through self-attention, allowing parallel processing of all tokens simultaneously and better long-range dependency capture."
+    },
+    {
+      "id": "self_attention",
+      "category": "Entity Resolution",
+      "query": "What is the self-attention mechanism and why is it important?",
+      "expectedTier": "DIRECT",
+      "expectedStrategy": "SINGLE_SOURCE",
+      "mustContainDocuments": [
+        "attention mechanism"
+      ],
+      "minimumChunksPerDocument": {
+        "attention mechanism": 1
+      },
+      "minCitations": 1,
+      "groundTruth": "Self-attention is a mechanism that allows a model to weigh the importance of different words in an input sequence relative to a specific word. It is important because it captures long-range dependencies and context far better than traditional recurrence."
+    },
+    {
+      "id": "alias_rlhf",
+      "category": "Alias Resolution",
+      "query": "How does RLHF improve the safety of LLMs?",
+      "expectedTier": "DECOMPOSE",
+      "expectedStrategy": "MULTI_SOURCE",
+      "mustContainDocuments": [
+        "reinforcement learning from human feedback",
+        "large language model"
+      ],
+      "minimumChunksPerDocument": {
+        "reinforcement learning from human feedback": 1,
+        "large language model": 1
+      },
+      "minCitations": 2,
+      "expectedDocumentsCount": 2,
+      "groundTruth": "RLHF (Reinforcement Learning from Human Feedback) uses human ratings to train a reward model, which then fine-tunes the LLM to output responses that align with human preferences, significantly reducing toxic, biased, or unsafe outputs."
+    },
+    {
+      "id": "hidden_entity",
+      "category": "Hidden Entity",
+      "query": "Who introduced the original Transformer architecture in 2017?",
+      "expectedTier": "DIRECT",
+      "expectedStrategy": "SINGLE_SOURCE",
+      "mustContainDocuments": [
+        "transformer (deep learning)"
+      ],
+      "minimumChunksPerDocument": {
+        "transformer (deep learning)": 1
+      },
+      "minCitations": 1,
+      "expectedDocumentsCount": 1,
+      "groundTruth": "The original Transformer architecture was introduced in 2017 by Vaswani et al. in the paper 'Attention Is All You Need'."
+    },
+    {
+      "id": "implicit_document",
+      "category": "Implicit Document",
+      "query": "Across different machine learning approaches, how do modern architectures address the problem of context window limitations?",
+      "expectedTier": "DECOMPOSE",
+      "expectedStrategy": "CONCEPT_EXPANSION",
+      "mustContainDocuments": [
+        "large language model"
+      ],
+      "minCitations": 1,
+      "groundTruth": "Modern architectures address context window limitations primarily through variations of the attention mechanism, retrieval-augmented generation (RAG) which fetches external context, and advanced memory techniques that allow scaling without quadratic computational explosion."
+    }
+  ]
+}

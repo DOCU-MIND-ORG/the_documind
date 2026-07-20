@@ -44,7 +44,11 @@ public class EvidenceAggregatorService {
                         ve.thumbnailUrl(),
                         displayTitle,
                         ve.score(),
-                        ve.sourceDocument()
+                        ve.sourceDocument(),
+                        ve.sectionPath(),
+                        ve.page(),
+                        ve.heading(),
+                        ve.retrievalReason()
                 );
                 updatedVisuals.add(updated);
 

@@ -1,0 +1,241 @@
+{
+  "results" : [ {
+    "queryId" : "compare_transformer_llm",
+    "query" : "Compare how Transformers and Large language models are related.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "plannedDocuments" : [ "transformer (deep learning)", "large language model" ],
+    "retrievalCandidates" : [ "transformer (deep learning)", "large language model" ],
+    "finalDocuments" : [ "transformer (deep learning)", "large language model" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 29,
+    "chunkDistribution" : {
+      "transformer (deep learning)" : 21,
+      "large language model" : 8
+    },
+    "planDistribution" : {
+      "767c8f3b-2cdf-4df2-a5a8-593b3cac87c7" : 14,
+      "496c26d7-79e8-4ffe-b31e-983aeabd719b" : 15
+    },
+    "retrievedVisuals" : 8,
+    "visualDistribution" : {
+      "transformer (deep learning)" : 4,
+      "large language model" : 4
+    },
+    "telemetry" : {
+      "denseHits" : 80,
+      "keywordHits" : 0,
+      "rrfHits" : 80,
+      "afterRerankHits" : 30,
+      "afterMultiSignalHits" : 29,
+      "contextExpandedHits" : 29,
+      "finalHits" : 29,
+      "retrievalCandidateDocs" : [ "transformer (deep learning)", "large language model" ],
+      "visualTier" : "Same Section",
+      "visualCandidates" : 8,
+      "plannerLatency" : 2718,
+      "denseLatency" : 6088,
+      "keywordLatency" : 6088,
+      "fusionLatency" : 6093,
+      "rerankLatency" : 21220,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 15760,
+      "plannerReason" : "Retrieve technical definition and architectural role of Transformers.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "single_doc_rag",
+    "query" : "Explain the core concept of RAG.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DIRECT",
+    "actualStrategy" : "SINGLE_SOURCE",
+    "generatedPlans" : 1,
+    "plannedDocuments" : [ "retrieval augmented generation" ],
+    "retrievalCandidates" : [ "retrieval augmented generation" ],
+    "finalDocuments" : [ "retrieval augmented generation" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 8,
+    "chunkDistribution" : {
+      "retrieval augmented generation" : 8
+    },
+    "planDistribution" : {
+      "07ab6d5f-e704-4c07-84f6-46e4a2e13549" : 8
+    },
+    "retrievedVisuals" : 0,
+    "visualDistribution" : { },
+    "telemetry" : {
+      "denseHits" : 30,
+      "keywordHits" : 0,
+      "rrfHits" : 30,
+      "afterRerankHits" : 15,
+      "afterMultiSignalHits" : 8,
+      "contextExpandedHits" : 8,
+      "finalHits" : 8,
+      "retrievalCandidateDocs" : [ "retrieval augmented generation" ],
+      "visualTier" : null,
+      "visualCandidates" : 0,
+      "plannerLatency" : 1749,
+      "denseLatency" : 403,
+      "keywordLatency" : 403,
+      "fusionLatency" : 404,
+      "rerankLatency" : 3437,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 4953,
+      "plannerReason" : "Explain the core concept and mechanism of RAG.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "compare_rlhf_rag",
+    "query" : "Compare RLHF and RAG as methods for improving LLM outputs.",
+    "passed" : false,
+    "failureReason" : "Missing required document reinforcement learning from human feedback or insufficient citations. Required: 1",
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "plannedDocuments" : [ "reinforcement learning", "retrieval augmented generation", "large language model" ],
+    "retrievalCandidates" : [ "reinforcement learning", "large language model", "retrieval augmented generation" ],
+    "finalDocuments" : [ "retrieval augmented generation", "large language model", "reinforcement learning" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 29,
+    "chunkDistribution" : {
+      "retrieval augmented generation" : 15,
+      "large language model" : 10,
+      "reinforcement learning" : 4
+    },
+    "planDistribution" : {
+      "bcc4f0a7-14cf-4964-a2e4-c3d1eea1e5e3" : 15,
+      "b82e38c2-d70d-48db-a8c4-5e983f4904be" : 14
+    },
+    "retrievedVisuals" : 12,
+    "visualDistribution" : {
+      "retrieval augmented generation" : 4,
+      "large language model" : 7,
+      "reinforcement learning" : 1
+    },
+    "telemetry" : {
+      "denseHits" : 80,
+      "keywordHits" : 0,
+      "rrfHits" : 80,
+      "afterRerankHits" : 30,
+      "afterMultiSignalHits" : 29,
+      "contextExpandedHits" : 29,
+      "finalHits" : 29,
+      "retrievalCandidateDocs" : [ "reinforcement learning", "large language model", "retrieval augmented generation" ],
+      "visualTier" : "Same Document",
+      "visualCandidates" : 12,
+      "plannerLatency" : 2658,
+      "denseLatency" : 1584,
+      "keywordLatency" : 1584,
+      "fusionLatency" : 1586,
+      "rerankLatency" : 21212,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 14107,
+      "plannerReason" : "Retrieve technical details on RLHF for LLM optimization",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "nn_summary",
+    "query" : "Summarize the basic components of an Artificial Neural Network.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DIRECT",
+    "actualStrategy" : "SINGLE_SOURCE",
+    "generatedPlans" : 1,
+    "plannedDocuments" : [ "neural network" ],
+    "retrievalCandidates" : [ "neural network" ],
+    "finalDocuments" : [ "neural network" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 10,
+    "chunkDistribution" : {
+      "neural network" : 10
+    },
+    "planDistribution" : {
+      "31719cdb-e5b6-4b93-9328-7191876cb40c" : 10
+    },
+    "retrievedVisuals" : 2,
+    "visualDistribution" : {
+      "neural network" : 2
+    },
+    "telemetry" : {
+      "denseHits" : 19,
+      "keywordHits" : 0,
+      "rrfHits" : 19,
+      "afterRerankHits" : 15,
+      "afterMultiSignalHits" : 10,
+      "contextExpandedHits" : 10,
+      "finalHits" : 10,
+      "retrievalCandidateDocs" : [ "neural network" ],
+      "visualTier" : "Same Section",
+      "visualCandidates" : 2,
+      "plannerLatency" : 2008,
+      "denseLatency" : 400,
+      "keywordLatency" : 400,
+      "fusionLatency" : 401,
+      "rerankLatency" : 2133,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 4111,
+      "plannerReason" : "Retrieve core components and architecture of an Artificial Neural Network",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  }, {
+    "queryId" : "exclude_llm",
+    "query" : "Explain the concept of attention mechanisms in Neural Networks. Do not discuss Large Language Models or LLMs.",
+    "passed" : true,
+    "failureReason" : null,
+    "actualTier" : "DECOMPOSE",
+    "actualStrategy" : "MULTI_SOURCE",
+    "generatedPlans" : 2,
+    "plannedDocuments" : [ "attention mechanism", "neural network" ],
+    "retrievalCandidates" : [ "attention mechanism", "neural network" ],
+    "finalDocuments" : [ "attention mechanism", "neural network" ],
+    "retrievedChunks" : 0,
+    "survivingChunks" : 18,
+    "chunkDistribution" : {
+      "attention mechanism" : 15,
+      "neural network" : 3
+    },
+    "planDistribution" : {
+      "e7e7ea43-d682-4369-809f-8adee3d7d673" : 14,
+      "0e61d0a2-227f-4113-8b1e-4101ed323d9c" : 4
+    },
+    "retrievedVisuals" : 6,
+    "visualDistribution" : {
+      "attention mechanism" : 5,
+      "neural network" : 1
+    },
+    "telemetry" : {
+      "denseHits" : 86,
+      "keywordHits" : 0,
+      "rrfHits" : 80,
+      "afterRerankHits" : 30,
+      "afterMultiSignalHits" : 25,
+      "contextExpandedHits" : 25,
+      "finalHits" : 18,
+      "retrievalCandidateDocs" : [ "attention mechanism", "neural network" ],
+      "visualTier" : "Same Section",
+      "visualCandidates" : 6,
+      "plannerLatency" : 2277,
+      "denseLatency" : 826,
+      "keywordLatency" : 826,
+      "fusionLatency" : 830,
+      "rerankLatency" : 15661,
+      "multiSignalLatency" : 0,
+      "visualLatency" : 0,
+      "totalRetrievalLatency" : 10667,
+      "plannerReason" : "Explain the core principles and mathematical function of attention mechanisms.",
+      "executionPath" : "RANKED -> Rerank -> MultiSignal"
+    }
+  } ],
+  "profile" : "regression",
+  "totalQueries" : 5,
+  "passed" : 4,
+  "runId" : "695e2221-2bfd-467a-bc6e-4c493e1a4474"
+}
